@@ -1,0 +1,563 @@
+<!doctype html>
+<html>
+    <head>
+        <style>
+            body {
+                font-family: sans-serif;
+            }
+            .node {
+                margin-left: 20px;
+                border-left: 3px solid #ccc; /* Thicker border for drop target visibility */
+                padding-left: 10px;
+                margin-bottom: 10px;
+                padding-top: 5px;
+                padding-bottom: 5px;
+                transition: border-color 0.2s;
+            }
+            /* Styles for inline name and description fields */
+            input {
+                font-weight: bold;
+                border: none;
+                background-color: #f0f0f0;
+                padding: 5px;
+                outline: none; /* Remove border box on selection */
+                width: 100px; /* Shorter name field */
+                margin-right: 10px; /* Space between name and description */
+                margin-bottom: 5px; /* Space if wrapping occurs */
+                display: inline-block;
+                vertical-align: middle;
+            }
+            textarea {
+                font-weight: bold;
+                border: none;
+                background-color: #f0f0f0;
+                padding: 5px;
+                outline: none; /* Remove border box on selection */
+                width: 300px;
+                height: 20px; /* Single line height */
+                vertical-align: middle;
+                white-space: pre-wrap;
+                resize: none; /* Disable textarea resizing */
+                margin-bottom: 5px; /* Separation from buttons */
+                display: inline-block;
+            }
+
+            /* Drag and Drop Visual Feedback */
+            .dragging {
+                opacity: 0.5;
+            }
+            .drag-above {
+                border-top: 3px solid #007bff;
+            }
+            .drag-below {
+                border-bottom: 3px solid #007bff;
+            }
+            .drag-as-child {
+                border-left-color: #007bff !important;
+                background-color: #f8f9fa;
+            }
+            .drag-handle {
+                cursor: grab;
+                font-size: 1.2em;
+                display: inline-block;
+                margin-bottom: 5px;
+            }
+
+            /* Expand/Collapse */
+            .node-header {
+                display: flex;
+                align-items: center;
+                margin-bottom: 5px;
+                flex-wrap: wrap;
+            }
+            .node-header .toggle {
+                width: 24px;
+                min-width: 24px;
+                height: 24px;
+                text-align: center;
+                line-height: 24px;
+                margin-right: 5px;
+                padding: 0;
+                border: none;
+                background: none;
+                cursor: pointer;
+                font-size: 1em;
+                box-sizing: border-box;
+                flex-shrink: 0;
+            }
+            .node-header .spacer {
+                width: 24px;
+                min-width: 24px;
+                height: 24px;
+                margin-right: 5px;
+                flex-shrink: 0;
+            }
+            .node-content {
+                display: block;
+            }
+            .node-content.collapsed {
+                display: none;
+            }
+        </style>
+    </head>
+    <body>
+        <h2>Editing: <span id="treeNameDisplay"></span></h2>
+        <a id="viewLink" href="#">Go to Read-Only View</a>
+        <button onclick="saveTree()" style="margin-left: 20px">
+            Save Changes
+        </button>
+        <button
+            onclick="addNewRoot()"
+            style="background: #28a745; color: white; margin-left: 10px"
+        >
+            + Add New Root Node
+        </button>
+
+        <div id="tree-container" style="margin-top: 20px"></div>
+
+        <script>
+            const id = window.location.pathname.split("/").pop();
+            document.getElementById("viewLink").href = "/view/" + id;
+
+            let treeData = { roots: [] };
+            let draggedNodeId = null;
+            let dropPosition = null; // 'above', 'below', or 'child'
+            let expandedNodes = new Set(); // Track expanded node IDs
+
+            async function loadTree() {
+                const res = await fetch("/api/tree/" + id);
+                treeData = await res.json();
+                // Migration: if it's an old file with .root instead of .roots
+                if (treeData.root && !treeData.roots) {
+                    treeData.roots = [treeData.root];
+                }
+                renderTree();
+            }
+
+            function addNewRoot() {
+                treeData.roots.push({
+                    id: "root-" + Math.random().toString(36).substr(2, 9),
+                    name: "New Section",
+                    description: "",
+                    children: [],
+                });
+                renderTree();
+            }
+
+            function renderNode(node, container, isTopLevel = false) {
+                const nodeDiv = document.createElement("div");
+                nodeDiv.className = "node";
+                nodeDiv.dataset.id = node.id;
+
+                const hasChildren = node.children && node.children.length > 0;
+
+                // Node header with toggle and input fields
+                const headerDiv = document.createElement("div");
+                headerDiv.className = "node-header";
+
+                // Toggle button or spacer
+                if (hasChildren) {
+                    const toggleBtn = document.createElement("button");
+                    toggleBtn.className = "toggle";
+                    const isExpanded = expandedNodes.has(node.id);
+                    toggleBtn.innerHTML = isExpanded ? "&#9660;" : "&#9654;";
+                    toggleBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        const contentDiv =
+                            nodeDiv.querySelector(".node-content");
+                        if (contentDiv.classList.contains("collapsed")) {
+                            contentDiv.classList.remove("collapsed");
+                            toggleBtn.innerHTML = "&#9660;";
+                            expandedNodes.add(node.id);
+                        } else {
+                            contentDiv.classList.add("collapsed");
+                            toggleBtn.innerHTML = "&#9654;";
+                            expandedNodes.delete(node.id);
+                        }
+                    };
+                    headerDiv.appendChild(toggleBtn);
+                } else {
+                    const spacer = document.createElement("span");
+                    spacer.className = "spacer";
+                    headerDiv.appendChild(spacer);
+                }
+
+                // D&D Logic
+                if (!isTopLevel) {
+                    nodeDiv.draggable = true;
+                    nodeDiv.addEventListener("dragstart", (e) => {
+                        draggedNodeId = node.id;
+                        e.stopPropagation();
+                        setTimeout(() => nodeDiv.classList.add("dragging"), 0);
+                    });
+                    nodeDiv.addEventListener("dragend", (e) => {
+                        e.stopPropagation();
+                        nodeDiv.classList.remove("dragging");
+                        draggedNodeId = null;
+                    });
+                }
+
+                nodeDiv.addEventListener("dragover", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // Remove all drop classes first
+                    nodeDiv.classList.remove(
+                        "drag-above",
+                        "drag-below",
+                        "drag-as-child",
+                    );
+
+                    // Determine drop position based on mouse Y position
+                    const rect = nodeDiv.getBoundingClientRect();
+                    const relativeY = e.clientY - rect.top;
+                    const height = rect.height;
+
+                    if (relativeY < height * 0.25) {
+                        dropPosition = "above";
+                        nodeDiv.classList.add("drag-above");
+                    } else if (relativeY > height * 0.75) {
+                        dropPosition = "below";
+                        nodeDiv.classList.add("drag-below");
+                    } else {
+                        dropPosition = "child";
+                        nodeDiv.classList.add("drag-as-child");
+                    }
+                });
+                nodeDiv.addEventListener("dragleave", (e) => {
+                    e.stopPropagation();
+                    nodeDiv.classList.remove(
+                        "drag-above",
+                        "drag-below",
+                        "drag-as-child",
+                    );
+                });
+                nodeDiv.addEventListener("drop", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    nodeDiv.classList.remove(
+                        "drag-above",
+                        "drag-below",
+                        "drag-as-child",
+                    );
+                    if (draggedNodeId && draggedNodeId !== node.id)
+                        moveNodeWithPosition(
+                            draggedNodeId,
+                            node.id,
+                            dropPosition,
+                        );
+                });
+
+                const nameInput = document.createElement("input");
+                nameInput.value = node.name;
+
+                const descInput = document.createElement("textarea");
+                descInput.value = node.description;
+
+                // Events for input fields
+                nameInput.oninput = (e) => {
+                    const el = e.target;
+                    const start = el.selectionStart;
+                    const transformed = replaceSymbols(el.value);
+                    if (transformed !== el.value) {
+                        el.value = transformed;
+                        el.setSelectionRange(start, start);
+                    }
+                    node.name = el.value;
+                    if (isTopLevel && treeData.roots[0] === node) {
+                        document.getElementById("treeNameDisplay").innerText =
+                            node.name;
+                    }
+                };
+
+                descInput.oninput = (e) => {
+                    const el = e.target;
+                    const start = el.selectionStart;
+                    const transformed = replaceSymbols(el.value);
+                    if (transformed !== el.value) {
+                        el.value = transformed;
+                        el.setSelectionRange(start, start);
+                    }
+                    node.description = el.value;
+                };
+
+                const addBtn = document.createElement("button");
+                addBtn.innerText = "+ Child";
+                addBtn.onclick = () => {
+                    if (!node.children) node.children = [];
+                    const newChild = {
+                        id: "node-" + Math.random().toString(36).substr(2, 9),
+                        name: "",
+                        description: "",
+                        children: [],
+                    };
+                    node.children.push(newChild);
+                    // Mark parent as expanded so it stays expanded after re-render
+                    expandedNodes.add(node.id);
+                    renderTree();
+                    // Focus the new child's name input
+                    setTimeout(() => {
+                        const input = document.querySelector(
+                            `.node[data-id="${newChild.id}"] input`,
+                        );
+                        if (input) input.focus();
+                    }, 0);
+                };
+
+                const deleteBtn = document.createElement("button");
+                deleteBtn.innerText = "Delete";
+                deleteBtn.style.color = "red";
+                deleteBtn.onclick = () => {
+                    if (confirm("Delete?")) deleteNode(node.id);
+                };
+
+                // Clear expanded state on delete
+                if (!hasChildren) expandedNodes.delete(node.id);
+
+                const upBtn = document.createElement("button");
+                upBtn.innerText = "▲";
+                upBtn.onclick = () => moveNodeUp(node.id);
+
+                const downBtn = document.createElement("button");
+                downBtn.innerText = "▼";
+                downBtn.onclick = () => moveNodeDown(node.id);
+
+                headerDiv.appendChild(nameInput);
+                headerDiv.appendChild(descInput);
+                nodeDiv.appendChild(headerDiv);
+
+                // Container for buttons
+                const buttonContainer = document.createElement("div");
+                buttonContainer.appendChild(addBtn);
+                buttonContainer.appendChild(deleteBtn);
+                if (!isTopLevel) {
+                    // Only show up/down for non-root nodes
+                    buttonContainer.appendChild(upBtn);
+                    buttonContainer.appendChild(downBtn);
+                }
+                nodeDiv.appendChild(buttonContainer);
+
+                // Collapsible content area for children
+                const contentDiv = document.createElement("div");
+                contentDiv.className =
+                    "node-content" +
+                    (expandedNodes.has(node.id) ? "" : " collapsed");
+                nodeDiv.appendChild(contentDiv);
+
+                if (hasChildren) {
+                    node.children.forEach((child) =>
+                        renderNode(child, contentDiv),
+                    );
+                }
+                container.appendChild(nodeDiv);
+            }
+
+            // New functions for moving nodes up and down
+            function moveNodeUp(nodeId) {
+                const res = findNodeAndParentGlobal(nodeId);
+                if (!res) return;
+
+                let collection = res.parent
+                    ? res.parent.children
+                    : treeData.roots;
+                const index = collection.findIndex((n) => n.id === nodeId);
+
+                if (index > 0) {
+                    // Move up within the same parent
+                    [collection[index], collection[index - 1]] = [
+                        collection[index - 1],
+                        collection[index],
+                    ];
+                } else if (res.parent) {
+                    // Already first child, move to parent's level above its parent
+                    const parentRes = findNodeAndParentGlobal(res.parent.id);
+                    if (parentRes) {
+                        const parentCollection = parentRes.parent
+                            ? parentRes.parent.children
+                            : treeData.roots;
+                        const parentIndex = parentCollection.findIndex(
+                            (n) => n.id === res.parent.id,
+                        );
+
+                        // Remove from current parent's children
+                        res.parent.children = res.parent.children.filter(
+                            (n) => n.id !== nodeId,
+                        );
+
+                        // Insert after parent in parent's collection
+                        parentCollection.splice(parentIndex + 1, 0, res.node);
+                    }
+                } else if (index === 0 && treeData.roots.length > 1) {
+                    // First root node, swap with the previous root node if one exists
+                    [collection[index], collection[index - 1]] = [
+                        collection[index - 1],
+                        collection[index],
+                    ];
+                }
+                renderTree();
+            }
+
+            function moveNodeDown(nodeId) {
+                const res = findNodeAndParentGlobal(nodeId);
+                if (!res) return;
+
+                let collection = res.parent
+                    ? res.parent.children
+                    : treeData.roots;
+                const index = collection.findIndex((n) => n.id === nodeId);
+
+                if (index < collection.length - 1) {
+                    // Move down within the same parent
+                    [collection[index], collection[index + 1]] = [
+                        collection[index + 1],
+                        collection[index],
+                    ];
+                } else if (res.parent) {
+                    // Already last child, move to parent's level below its parent
+                    const parentRes = findNodeAndParentGlobal(res.parent.id);
+                    if (parentRes) {
+                        const parentCollection = parentRes.parent
+                            ? parentRes.parent.children
+                            : treeData.roots;
+                        const parentIndex = parentCollection.findIndex(
+                            (n) => n.id === res.parent.id,
+                        );
+
+                        // Remove from current parent's children
+                        res.parent.children = res.parent.children.filter(
+                            (n) => n.id !== nodeId,
+                        );
+
+                        // Insert after parent in parent's collection
+                        parentCollection.splice(parentIndex + 1, 0, res.node);
+                    }
+                } else if (
+                    index === treeData.roots.length - 1 &&
+                    treeData.roots.length > 1
+                ) {
+                    // Last root node, swap with the next root node if one exists
+                    [collection[index], collection[index + 1]] = [
+                        collection[index + 1],
+                        collection[index],
+                    ];
+                }
+                renderTree();
+            }
+
+            function renderTree() {
+                const container = document.getElementById("tree-container");
+                container.innerHTML = "";
+
+                // Check for "roots" instead of "root"
+                if (treeData.roots && treeData.roots.length > 0) {
+                    document.getElementById("treeNameDisplay").innerText =
+                        treeData.roots[0].name || id;
+                    treeData.roots.forEach((root) => {
+                        renderNode(root, container, true); // true indicates it's a root
+                    });
+                }
+            }
+
+            function findNodeAndParentGlobal(searchId) {
+                for (let i = 0; i < treeData.roots.length; i++) {
+                    const res = findRecursive(
+                        treeData.roots[i],
+                        searchId,
+                        null,
+                    );
+                    if (res) return { ...res, rootIndex: i };
+                }
+                return null;
+            }
+
+            function findRecursive(current, searchId, parent) {
+                if (current.id === searchId)
+                    return { node: current, parent: parent };
+                if (current.children) {
+                    for (let child of current.children) {
+                        const res = findRecursive(child, searchId, current);
+                        if (res) return res;
+                    }
+                }
+                return null;
+            }
+
+            // Move node with precise drop position
+            function moveNodeWithPosition(sourceId, targetId, position) {
+                const source = findNodeAndParentGlobal(sourceId);
+                const target = findNodeAndParentGlobal(targetId);
+
+                if (!source || !target || source.node.id === target.node.id)
+                    return;
+
+                // 1. Remove from current location
+                if (source.parent) {
+                    source.parent.children = source.parent.children.filter(
+                        (c) => c.id !== sourceId,
+                    );
+                } else {
+                    treeData.roots = treeData.roots.filter(
+                        (r) => r.id !== sourceId,
+                    );
+                }
+
+                // 2. Insert at the correct position
+                const targetCollection = target.parent
+                    ? target.parent.children
+                    : treeData.roots;
+                const targetIndex = targetCollection.findIndex(
+                    (n) => n.id === targetId,
+                );
+
+                if (position === "above") {
+                    targetCollection.splice(targetIndex, 0, source.node);
+                } else if (position === "below") {
+                    targetCollection.splice(targetIndex + 1, 0, source.node);
+                } else {
+                    // child
+                    if (!target.node.children) target.node.children = [];
+                    target.node.children.push(source.node);
+                }
+
+                renderTree();
+            }
+
+            // Legacy moveNode (drops as child)
+            function moveNode(sourceId, targetId) {
+                moveNodeWithPosition(sourceId, targetId, "child");
+            }
+
+            function deleteNode(targetId) {
+                const res = findNodeAndParentGlobal(targetId);
+                if (!res) return;
+                if (res.parent) {
+                    res.parent.children = res.parent.children.filter(
+                        (c) => c.id !== targetId,
+                    );
+                } else {
+                    treeData.roots.splice(res.rootIndex, 1);
+                }
+                renderTree();
+            }
+
+            function replaceSymbols(text) {
+                return text
+                    .replace(/!c/g, "♣")
+                    .replace(/!d/g, "♦")
+                    .replace(/!h/g, "♥")
+                    .replace(/!s/g, "♠");
+            }
+
+            async function saveTree() {
+                await fetch("/api/tree/" + id, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(treeData),
+                });
+                alert("Saved!");
+            }
+
+            loadTree();
+        </script>
+    </body>
+</html>

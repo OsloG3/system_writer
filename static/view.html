@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+    <head>
+        <style>
+            body {
+                font-family: sans-serif;
+            }
+            .node {
+                margin-left: 20px;
+                border-left: 2px solid #333;
+                padding-left: 10px;
+                margin-top: 10px;
+            }
+            .node-header {
+                display: flex; /* Use flexbox for alignment */
+                align-items: center; /* Vertically align items */
+                margin-bottom: 5px; /* Space below header */
+            }
+            .node-header .toggle {
+                width: 24px; /* Fixed width for button/placeholder */
+                min-width: 24px;
+                height: 24px;
+                text-align: center;
+                line-height: 24px;
+                margin-right: 5px; /* Space between button/placeholder and name */
+                padding: 0;
+                border: none;
+                background: none;
+                cursor: pointer;
+                font-size: 1em;
+                box-sizing: border-box;
+            }
+            .node-header .name {
+                font-weight: bold;
+                font-size: 1.1em;
+                /* No direct margin-left needed if flexbox handles it */
+            }
+            .node-header .desc {
+                color: #555;
+                font-style: italic;
+                margin-left: 10px; /* Space between name and description */
+            }
+        </style>
+    </head>
+    <body>
+        <h2>View Tree: <span id="treeId"></span></h2>
+        <a id="editLink" href="#">Go to Edit View</a>
+        <div id="tree-container" style="margin-top: 20px"></div>
+
+        <script>
+            const id = window.location.pathname.split("/").pop();
+            document.getElementById("treeId").innerText = id;
+            document.getElementById("editLink").href = "/edit/" + id;
+
+            let treeData = { roots: [] };
+
+            async function loadTree() {
+                const res = await fetch("/api/tree/" + id);
+                if (!res.ok) {
+                    console.error("Failed to fetch tree data:", res.statusText);
+                    return;
+                }
+                treeData = await res.json();
+                // Migration: if it's an old file with .root instead of .roots
+                if (treeData.root && !treeData.roots) {
+                    treeData.roots = [treeData.root];
+                }
+                renderTree();
+            }
+
+            function renderTree() {
+                const container = document.getElementById("tree-container");
+                container.innerHTML = "";
+                if (treeData.roots && treeData.roots.length > 0) {
+                    document.getElementById("treeId").innerText =
+                        treeData.roots[0].name || id;
+                    treeData.roots.forEach((root) => {
+                        renderNode(root, container);
+                    });
+                }
+            }
+
+            function renderNode(node, container) {
+                const nodeDiv = document.createElement("div");
+                nodeDiv.className = "node";
+
+                // Expand/Collapse Logic
+                const hasChildren = node.children && node.children.length > 0;
+
+                const coloredName = node.name
+                    .replace(/♣/g, '<span style="color:green;">♣</span>')
+                    .replace(/♦/g, '<span style="color:red;">♦</span>')
+                    .replace(/♥/g, '<span style="color:red;">♥</span>')
+                    .replace(/♠/g, '<span style="color:green;">♠</span>');
+
+                const coloredDescription = node.description
+                    .replace(/♣/g, '<span style="color:green;">♣</span>')
+                    .replace(/♦/g, '<span style="color:red;">♦</span>')
+                    .replace(/♥/g, '<span style="color:red;">♥</span>')
+                    .replace(/♠/g, '<span style="color:green;">♠</span>');
+
+                nodeDiv.innerHTML = `
+                    <div class="node-header">
+                        ${hasChildren ? '<button class="toggle">&gt;</button>' : '<span style="display: inline-block; width: 24px;"></span>'} <!-- Placeholder for consistent spacing -->
+                        <span class="name"><strong>${coloredName}</strong></span>
+                        <span class="desc">${coloredDescription}</span>
+                    </div>
+                    <div class="node-content" style="display: none;">
+                        <div class="children"></div>
+                    </div>
+                `;
+
+                const childrenDiv = nodeDiv.querySelector(".children");
+                if (hasChildren) {
+                    node.children.forEach((child) =>
+                        renderNode(child, childrenDiv),
+                    );
+                    nodeDiv.querySelector(".toggle").onclick = (e) => {
+                        const nodeContent =
+                            nodeDiv.querySelector(".node-content");
+                        const isHidden = nodeContent.style.display === "none";
+                        nodeContent.style.display = isHidden ? "block" : "none";
+                        e.target.innerText = isHidden ? "v" : ">"; // Toggle arrow symbol
+                    };
+                }
+                container.appendChild(nodeDiv);
+            }
+
+            loadTree();
+        </script>
+    </body>
+</html>

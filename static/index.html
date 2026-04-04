@@ -1,0 +1,30 @@
+<body>
+    <h1>My Tree Notes</h1>
+    <button onclick="createTree()">+ Create New Tree Note</button>
+    <ul id="tree-list"></ul>
+
+    <script>
+        async function loadList() {
+            const res = await fetch("/api/list");
+            const trees = await res.json();
+            const list = document.getElementById("tree-list");
+            list.innerHTML = trees
+                .map(
+                    (t) => `
+                <li>
+                    <strong>${t.name}</strong>
+                    (<a href="/view/${t.id}">View</a> | <a href="/edit/${t.id}">Edit</a>)
+                </li>
+            `,
+                )
+                .join("");
+        }
+
+        async function createTree() {
+            const res = await fetch("/api/new", { method: "POST" });
+            const data = await res.json();
+            window.location.href = "/edit/" + data.id;
+        }
+        loadList();
+    </script>
+</body>

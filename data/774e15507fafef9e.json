@@ -1,0 +1,183 @@
+{
+  "id": "774e15507fafef9e",
+  "roots": [
+    {
+      "id": "root-dc78f2af7215a958",
+      "name": "Strong club",
+      "description": "Santa Fe Precision based strong club. Also known as Meckwell lite",
+      "children": [
+        {
+          "id": "node-57s7u7nwh",
+          "name": "1♣",
+          "description": "16+ any",
+          "children": []
+        },
+        {
+          "id": "node-0v7hptwo1",
+          "name": "1♦",
+          "description": "11-15 2+♦",
+          "children": [
+            {
+              "id": "node-kxfedec1a",
+              "name": "1♥",
+              "description": "4+♥ F1",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-gew7b9yi7",
+          "name": "1♥",
+          "description": "5+♥ 11-15",
+          "children": [
+            {
+              "id": "node-s9xp5367h",
+              "name": "1♠",
+              "description": "4+♠ F1",
+              "children": [
+                {
+                  "id": "node-htpt05qn8",
+                  "name": "1NT",
+                  "description": "11-13 balanced",
+                  "children": []
+                },
+                {
+                  "id": "node-ptofudcm4",
+                  "name": "2♣",
+                  "description": "4+♣ 11-15",
+                  "children": []
+                },
+                {
+                  "id": "node-jfypoj2o4",
+                  "name": "3♣",
+                  "description": "5+♥ 5+♣ 14-15",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-8or6xkyzb",
+              "name": "1NT",
+              "description": "0-3♠ semi-forcing",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-yfwzbmbup",
+          "name": "2♣",
+          "description": "6+♣ 11-15",
+          "children": [
+            {
+              "id": "node-mozqj2plg",
+              "name": "2♦",
+              "description": "asking inv+",
+              "children": [
+                {
+                  "id": "node-ymmsy1ou3",
+                  "name": "2♥",
+                  "description": "4♥ or 4♠",
+                  "children": [
+                    {
+                      "id": "node-xpkq0gu4l",
+                      "name": "2♠",
+                      "description": "non GF ask",
+                      "children": [
+                        {
+                          "id": "node-ilfkg28ny",
+                          "name": "2NT",
+                          "description": "4♥ min",
+                          "children": []
+                        },
+                        {
+                          "id": "node-mcskrx0a8",
+                          "name": "3♣",
+                          "description": "4♠ min",
+                          "children": []
+                        },
+                        {
+                          "id": "node-cn9r8g4a8",
+                          "name": "3♦",
+                          "description": "4♥ max",
+                          "children": []
+                        },
+                        {
+                          "id": "node-mkse20zfz",
+                          "name": "3♥",
+                          "description": "4♠ max",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "root-p0222h57p",
+      "name": "Competitive Bidding",
+      "description": "",
+      "children": [
+        {
+          "id": "node-875rgdclf",
+          "name": "1NT",
+          "description": "Strong",
+          "children": [
+            {
+              "id": "node-tbvwkpgka",
+              "name": "X",
+              "description": "15+ points",
+              "children": []
+            },
+            {
+              "id": "node-hg0upwwqi",
+              "name": "2♣",
+              "description": "Landy at least 54 in the majors",
+              "children": []
+            },
+            {
+              "id": "node-pxex7j5ca",
+              "name": "2♦",
+              "description": "multi 6+♦",
+              "children": []
+            },
+            {
+              "id": "node-7skaywqgm",
+              "name": "2♥",
+              "description": "5+♥ 4+m",
+              "children": []
+            },
+            {
+              "id": "node-syhodjlmy",
+              "name": "2♠",
+              "description": "5+♠ 4+m",
+              "children": []
+            },
+            {
+              "id": "node-cvmxfk26h",
+              "name": "2NT",
+              "description": "5+/5+ minors",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-ibn0wpvry",
+          "name": "1♣",
+          "description": "Strong",
+          "children": []
+        },
+        {
+          "id": "node-830mm0ebb",
+          "name": "1NT",
+          "description": "weak",
+          "children": []
+        }
+      ]
+    }
+  ]
+}
