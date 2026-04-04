@@ -1,56 +1,41 @@
 <!doctype html>
-<html>
+
+<html class="light" lang="en">
     <head>
-        <style>
-            body {
-                font-family: sans-serif;
-            }
-            .node {
-                margin-left: 20px;
-                border-left: 2px solid #333;
-                padding-left: 10px;
-                margin-top: 10px;
-            }
-            .node-header {
-                display: flex; /* Use flexbox for alignment */
-                align-items: center; /* Vertically align items */
-                margin-bottom: 5px; /* Space below header */
-            }
-            .node-header .toggle {
-                width: 24px; /* Fixed width for button/placeholder */
-                min-width: 24px;
-                height: 24px;
-                text-align: center;
-                line-height: 24px;
-                margin-right: 5px; /* Space between button/placeholder and name */
-                padding: 0;
-                border: none;
-                background: none;
-                cursor: pointer;
-                font-size: 1em;
-                box-sizing: border-box;
-            }
-            .node-header .name {
-                font-weight: bold;
-                font-size: 1.1em;
-                /* No direct margin-left needed if flexbox handles it */
-            }
-            .node-header .desc {
-                color: #555;
-                font-style: italic;
-                margin-left: 10px; /* Space between name and description */
-            }
-        </style>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>Atheneum | Digital Workspace</title>
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+            rel="stylesheet"
+        />
+        <script src="/static/shared.js"></script>
+        <link rel="stylesheet" href="/static/shared.css" />
     </head>
-    <body>
-        <h2>View Tree: <span id="treeId"></span></h2>
-        <a id="editLink" href="#">Go to Edit View</a>
-        <div id="tree-container" style="margin-top: 20px"></div>
+    <body
+        class="bg-background text-on-surface font-body selection:bg-tertiary-container/30 overflow-hidden"
+    >
+        <div id="app"></div>
 
         <script>
+            document.getElementById("app").innerHTML = renderLayout({
+                mode: "view",
+                badge: "Tree View",
+                title: "Loading...",
+                titleId: "treeId",
+                subtitle: "Read-only view of the knowledge tree structure.",
+            });
+            document.getElementById("treeId").innerText =
+                window.location.pathname.split("/").pop();
+            document.getElementById("editLink").href =
+                "/edit/" + window.location.pathname.split("/").pop();
+
             const id = window.location.pathname.split("/").pop();
-            document.getElementById("treeId").innerText = id;
-            document.getElementById("editLink").href = "/edit/" + id;
 
             let treeData = { roots: [] };
 
@@ -65,26 +50,24 @@
                 if (treeData.root && !treeData.roots) {
                     treeData.roots = [treeData.root];
                 }
+                if (treeData.roots && treeData.roots.length > 0) {
+                    document.getElementById("treeId").innerText =
+                        treeData.roots[0].name || id;
+                }
                 renderTree();
             }
 
             function renderTree() {
-                const container = document.getElementById("tree-container");
+                const container = document.getElementById("main-content");
                 container.innerHTML = "";
                 if (treeData.roots && treeData.roots.length > 0) {
-                    document.getElementById("treeId").innerText =
-                        treeData.roots[0].name || id;
                     treeData.roots.forEach((root) => {
-                        renderNode(root, container);
+                        renderNode(root, container, 0);
                     });
                 }
             }
 
-            function renderNode(node, container) {
-                const nodeDiv = document.createElement("div");
-                nodeDiv.className = "node";
-
-                // Expand/Collapse Logic
+            function renderNode(node, container, depth) {
                 const hasChildren = node.children && node.children.length > 0;
 
                 const coloredName = node.name
@@ -99,31 +82,94 @@
                     .replace(/♥/g, '<span style="color:red;">♥</span>')
                     .replace(/♠/g, '<span style="color:green;">♠</span>');
 
-                nodeDiv.innerHTML = `
-                    <div class="node-header">
-                        ${hasChildren ? '<button class="toggle">&gt;</button>' : '<span style="display: inline-block; width: 24px;"></span>'} <!-- Placeholder for consistent spacing -->
-                        <span class="name"><strong>${coloredName}</strong></span>
-                        <span class="desc">${coloredDescription}</span>
-                    </div>
-                    <div class="node-content" style="display: none;">
-                        <div class="children"></div>
-                    </div>
-                `;
+                const isRoot = depth === 0;
 
-                const childrenDiv = nodeDiv.querySelector(".children");
-                if (hasChildren) {
-                    node.children.forEach((child) =>
-                        renderNode(child, childrenDiv),
-                    );
-                    nodeDiv.querySelector(".toggle").onclick = (e) => {
-                        const nodeContent =
-                            nodeDiv.querySelector(".node-content");
-                        const isHidden = nodeContent.style.display === "none";
-                        nodeContent.style.display = isHidden ? "block" : "none";
-                        e.target.innerText = isHidden ? "v" : ">"; // Toggle arrow symbol
-                    };
+                const nodeWrapper = document.createElement("div");
+                nodeWrapper.className = isRoot
+                    ? "relative group mt-6 pt-4 border-t border-outline-variant/10 first:mt-0 first:border-t-0 first:pt-0"
+                    : "relative";
+
+                // Tree connector lines
+                if (!isRoot) {
+                    const lineH = document.createElement("div");
+                    lineH.className =
+                        "absolute -left-5 top-1/2 w-5 h-[1px] bg-outline-variant/20";
+                    nodeWrapper.appendChild(lineH);
                 }
-                container.appendChild(nodeDiv);
+
+                const flexRow = document.createElement("div");
+                flexRow.className = "flex items-center gap-2";
+
+                // Toggle button
+                const toggleIcon = document.createElement("span");
+                toggleIcon.className = `material-symbols-outlined ${
+                    hasChildren ? "text-primary" : "text-outline-variant"
+                } ${isRoot ? "text-lg" : "text-base"} cursor-pointer select-none`;
+                toggleIcon.innerHTML = "chevron_right";
+
+                const contentDiv = document.createElement("div");
+                contentDiv.className = "flex items-center gap-2 flex-wrap";
+
+                // Name
+                const nameEl = document.createElement("h3");
+                nameEl.className = `font-headline font-bold text-on-surface ${
+                    depth === 0
+                        ? "text-lg"
+                        : depth === 1
+                          ? "text-sm font-semibold"
+                          : "text-sm"
+                }`;
+                nameEl.innerHTML = coloredName;
+
+                // Description inline with name
+                const descEl = document.createElement("span");
+                descEl.className = "text-on-surface-variant text-sm";
+                descEl.innerHTML = coloredDescription;
+
+                contentDiv.appendChild(nameEl);
+                if (coloredDescription) {
+                    contentDiv.appendChild(descEl);
+                }
+
+                flexRow.appendChild(toggleIcon);
+                flexRow.appendChild(contentDiv);
+
+                nodeWrapper.appendChild(flexRow);
+
+                // Children container
+                if (hasChildren) {
+                    const childrenWrapper = document.createElement("div");
+                    childrenWrapper.className = `relative`;
+                    if (isRoot) {
+                        childrenWrapper.className +=
+                            " ml-5 border-l border-outline-variant/20 pl-5 space-y-4 relative mt-4";
+                    } else {
+                        childrenWrapper.className +=
+                            " ml-5 border-l border-outline-variant/20 pl-5 space-y-4 relative mt-4";
+                    }
+
+                    node.children.forEach((child) =>
+                        renderNode(child, childrenWrapper, depth + 1),
+                    );
+
+                    // Initially hidden
+                    childrenWrapper.style.display = "none";
+
+                    toggleIcon.onclick = (e) => {
+                        const isHidden =
+                            childrenWrapper.style.display === "none";
+                        childrenWrapper.style.display = isHidden
+                            ? "block"
+                            : "none";
+                        toggleIcon.innerHTML = isHidden
+                            ? "expand_more"
+                            : "chevron_right";
+                    };
+
+                    nodeWrapper.appendChild(childrenWrapper);
+                }
+
+                container.appendChild(nodeWrapper);
             }
 
             loadTree();

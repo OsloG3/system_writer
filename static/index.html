@@ -1,30 +1,86 @@
-<body>
-    <h1>My Tree Notes</h1>
-    <button onclick="createTree()">+ Create New Tree Note</button>
-    <ul id="tree-list"></ul>
+<!doctype html>
 
-    <script>
-        async function loadList() {
-            const res = await fetch("/api/list");
-            const trees = await res.json();
-            const list = document.getElementById("tree-list");
-            list.innerHTML = trees
-                .map(
-                    (t) => `
-                <li>
-                    <strong>${t.name}</strong>
-                    (<a href="/view/${t.id}">View</a> | <a href="/edit/${t.id}">Edit</a>)
-                </li>
-            `,
-                )
-                .join("");
-        }
+<html class="light" lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>Atheneum | Digital Workspace</title>
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+            rel="stylesheet"
+        />
+        <script src="/static/shared.js"></script>
+        <link rel="stylesheet" href="/static/shared.css" />
+    </head>
+    <body
+        class="bg-background text-on-surface font-body selection:bg-tertiary-container/30 overflow-hidden"
+    >
+        <div id="app"></div>
 
-        async function createTree() {
-            const res = await fetch("/api/new", { method: "POST" });
-            const data = await res.json();
-            window.location.href = "/edit/" + data.id;
-        }
-        loadList();
-    </script>
-</body>
+        <script>
+            document.getElementById("app").innerHTML = renderLayout({
+                mode: "index",
+                badge: "Home",
+                title: "My Tree Notes",
+                subtitle: "Create and manage your knowledge tree collections.",
+            });
+
+            async function loadList() {
+                const res = await fetch("/api/list");
+                const trees = await res.json();
+                const content = document.getElementById("main-content");
+
+                if (trees.length === 0) {
+                    content.innerHTML = `
+                        <div class="text-center py-16">
+                            <span class="material-symbols-outlined text-outline-variant text-6xl mb-4">account_tree</span>
+                            <p class="text-on-surface-variant text-lg font-body">No collections yet.</p>
+                            <p class="text-on-surface-variant text-sm font-body mt-2">Click "New Collection" to get started.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                content.innerHTML = `
+                    <div class="space-y-3">
+                        ${trees
+                            .map(
+                                (t) => `
+                            <div class="tree-list-item flex items-center justify-between p-4 rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
+                                <div class="flex items-center gap-3">
+                                    <span class="material-symbols-outlined text-primary text-xl">account_tree</span>
+                                    <span class="font-headline font-semibold text-on-surface">${t.name}</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <a href="/view/${t.id}" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded text-xs font-label hover:bg-surface-container-high transition-colors no-underline">
+                                        <span class="material-symbols-outlined text-sm">visibility</span>
+                                        View
+                                    </a>
+                                    <a href="/edit/${t.id}" class="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded text-xs font-label hover:bg-primary-dim transition-colors no-underline">
+                                        <span class="material-symbols-outlined text-sm">edit</span>
+                                        Edit
+                                    </a>
+                                </div>
+                            </div>
+                        `,
+                            )
+                            .join("")}
+                    </div>
+                `;
+            }
+
+            async function createTree() {
+                const res = await fetch("/api/new", { method: "POST" });
+                const data = await res.json();
+                window.location.href = "/edit/" + data.id;
+            }
+
+            loadList();
+        </script>
+    </body>
+</html>

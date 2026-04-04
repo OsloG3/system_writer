@@ -64,6 +64,31 @@
           ]
         },
         {
+          "id": "node-6ox2f0l59",
+          "name": "2♦",
+          "description": "4415 minus 1 card",
+          "children": []
+        },
+        {
+          "id": "node-m5eyvdlvz",
+          "name": "1♠",
+          "description": "5+♠ 11-15",
+          "children": []
+        },
+        {
+          "id": "node-gx52b2aqe",
+          "name": "1NT",
+          "description": "14-16 balanced",
+          "children": [
+            {
+              "id": "node-yv1m3zafp",
+              "name": "2♣",
+              "description": "Stayman; include 5♠ inv",
+              "children": []
+            }
+          ]
+        },
+        {
           "id": "node-yfwzbmbup",
           "name": "2♣",
           "description": "6+♣ 11-15",
@@ -112,6 +137,18 @@
                   ]
                 }
               ]
+            },
+            {
+              "id": "node-6nol9suin",
+              "name": "2♥",
+              "description": "5+♥ 10+ F1",
+              "children": []
+            },
+            {
+              "id": "node-2c1zoc78k",
+              "name": "2♠",
+              "description": "5+♠ 10+ F1",
+              "children": []
             }
           ]
         }

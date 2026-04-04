@@ -1,0 +1,542 @@
+<!doctype html>
+
+<html class="light" lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>Atheneum | Digital Workspace</title>
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+            rel="stylesheet"
+        />
+        <script id="tailwind-config">
+            tailwind.config = {
+                darkMode: "class",
+                theme: {
+                    extend: {
+                        colors: {
+                            "outline-variant": "#adb3b4",
+                            "primary-container": "#d8e2ff",
+                            "on-tertiary-fixed-variant": "#634900",
+                            "surface-variant": "#dde4e5",
+                            "surface-dim": "#d4dbdd",
+                            "on-surface": "#2d3435",
+                            "inverse-on-surface": "#9c9d9d",
+                            "on-background": "#2d3435",
+                            "primary-fixed-dim": "#c2d4ff",
+                            "on-secondary-fixed": "#264350",
+                            "tertiary-dim": "#6b4e00",
+                            "on-error-container": "#752121",
+                            "on-tertiary-fixed": "#402d00",
+                            primary: "#385da0",
+                            "secondary-fixed": "#c9e7f7",
+                            background: "#f9f9f9",
+                            "tertiary-container": "#fec330",
+                            "inverse-primary": "#93b6ff",
+                            "surface-container-highest": "#dde4e5",
+                            "error-container": "#fe8983",
+                            "on-error": "#fff7f6",
+                            "error-dim": "#4e0309",
+                            tertiary: "#7a5a00",
+                            "on-tertiary-container": "#584000",
+                            "on-secondary": "#f3faff",
+                            "surface-bright": "#f9f9f9",
+                            surface: "#f9f9f9",
+                            "primary-fixed": "#d8e2ff",
+                            "secondary-fixed-dim": "#bbd9e9",
+                            "surface-container": "#ebeeef",
+                            error: "#9f403d",
+                            "secondary-container": "#c9e7f7",
+                            "surface-container-high": "#e4e9ea",
+                            "inverse-surface": "#0c0f0f",
+                            "on-primary-container": "#2a5092",
+                            "on-secondary-fixed-variant": "#435f6d",
+                            "on-primary-fixed": "#103d7e",
+                            "tertiary-fixed": "#fec330",
+                            "surface-tint": "#385da0",
+                            "on-surface-variant": "#5a6061",
+                            "primary-dim": "#2a5193",
+                            secondary: "#466370",
+                            "on-secondary-container": "#395663",
+                            "surface-container-low": "#f2f4f4",
+                            outline: "#757c7d",
+                            "on-primary-fixed-variant": "#355a9d",
+                            "on-tertiary": "#fff8f1",
+                            "surface-container-lowest": "#ffffff",
+                            "secondary-dim": "#3a5764",
+                            "tertiary-fixed-dim": "#efb520",
+                            "on-primary": "#f7f7ff",
+                        },
+                        fontFamily: {
+                            headline: ["Manrope"],
+                            body: ["Work Sans"],
+                            label: ["Inter"],
+                        },
+                        borderRadius: {
+                            DEFAULT: "0.125rem",
+                            lg: "0.25rem",
+                            xl: "0.5rem",
+                            full: "0.75rem",
+                        },
+                    },
+                },
+            };
+        </script>
+        <style>
+            .material-symbols-outlined {
+                font-variation-settings:
+                    "FILL" 0,
+                    "wght" 300,
+                    "GRAD" 0,
+                    "opsz" 24;
+            }
+            .tree-line-vertical {
+                position: absolute;
+                left: -1rem;
+                top: 0;
+                bottom: 0;
+                width: 1px;
+                background-color: #adb3b440;
+            }
+            .tree-line-horizontal {
+                position: absolute;
+                left: -1rem;
+                top: 50%;
+                width: 1rem;
+                height: 1px;
+                background-color: #adb3b440;
+            }
+            .glass-panel {
+                background: rgba(221, 228, 229, 0.8);
+                backdrop-filter: blur(20px);
+            }
+        </style>
+    </head>
+    <body
+        class="bg-background text-on-surface font-body selection:bg-tertiary-container/30 overflow-hidden"
+    >
+        <!-- TopAppBar -->
+        <header
+            class="fixed top-0 z-50 bg-[#ffffff] dark:bg-slate-950 flex justify-between items-center px-6 h-16 w-full border-b-0"
+        >
+            <div class="flex items-center gap-8">
+                <h1
+                    class="font-manrope font-bold text-xl text-[#2d3435] dark:text-slate-100"
+                >
+                    Atheneum
+                </h1>
+                <nav
+                    class="hidden md:flex items-center gap-6 font-manrope tracking-tight text-sm"
+                >
+                    <a
+                        class="text-[#2F5597] font-bold border-b-2 border-[#2F5597] pb-1 cursor-pointer duration-200 ease-in-out"
+                        href="#"
+                        >Focus</a
+                    >
+                    <a
+                        class="text-[#adb3b4] hover:text-[#2d3435] cursor-pointer duration-200 ease-in-out hover:bg-[#ebeeef] dark:hover:bg-slate-800 transition-colors px-2 py-1 rounded"
+                        href="#"
+                        >Publish</a
+                    >
+                    <a
+                        class="text-[#adb3b4] hover:text-[#2d3435] cursor-pointer duration-200 ease-in-out hover:bg-[#ebeeef] dark:hover:bg-slate-800 transition-colors px-2 py-1 rounded"
+                        href="#"
+                        >Archive</a
+                    >
+                </nav>
+            </div>
+            <div class="flex items-center gap-4">
+                <div
+                    class="flex items-center bg-surface-container-low px-3 py-1 rounded-full text-xs font-label text-on-surface-variant"
+                >
+                    <span class="w-2 h-2 rounded-full bg-primary mr-2"></span>
+                    View Mode
+                </div>
+                <div class="h-6 w-[1px] bg-outline-variant/30"></div>
+                <button
+                    class="flex items-center gap-2 px-4 py-1.5 bg-surface-container-highest text-on-surface rounded font-label text-sm hover:bg-surface-container-high transition-colors"
+                >
+                    <span class="material-symbols-outlined text-sm">edit</span>
+                    Edit
+                </button>
+                <div class="flex items-center gap-3 ml-4">
+                    <span
+                        class="material-symbols-outlined text-[#2F5597] cursor-pointer hover:bg-[#ebeeef] p-1.5 rounded transition-all"
+                        >search</span
+                    >
+                    <span
+                        class="material-symbols-outlined text-[#2F5597] cursor-pointer hover:bg-[#ebeeef] p-1.5 rounded transition-all"
+                        >edit_note</span
+                    >
+                    <span
+                        class="material-symbols-outlined text-[#2F5597] cursor-pointer hover:bg-[#ebeeef] p-1.5 rounded transition-all"
+                        >visibility</span
+                    >
+                </div>
+            </div>
+        </header>
+        <div class="flex h-screen pt-16">
+            <!-- SideNavBar -->
+            <aside
+                class="w-64 bg-[#ebeeef] dark:bg-slate-900 flex flex-col h-full py-8 gap-y-2 border-r-0"
+            >
+                <div class="px-6 mb-8">
+                    <h2
+                        class="font-manrope font-semibold text-[#2d3435] dark:text-slate-200"
+                    >
+                        Library
+                    </h2>
+                    <p
+                        class="text-[10px] uppercase tracking-widest text-outline"
+                    >
+                        Personal Workspace
+                    </p>
+                    <button
+                        class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2"
+                    >
+                        <span class="material-symbols-outlined text-sm"
+                            >add</span
+                        >
+                        New Collection
+                    </button>
+                </div>
+                <nav class="flex-grow space-y-1">
+                    <div
+                        class="flex items-center text-[#2F5597] border-l-4 border-[#7a5a00] pl-4 bg-[#ffffff]/50 h-10 cursor-pointer transition-all duration-300 ease-out font-inter text-xs uppercase tracking-widest"
+                    >
+                        <span class="material-symbols-outlined mr-3 text-lg"
+                            >account_tree</span
+                        >
+                        Collections
+                    </div>
+                    <div
+                        class="flex items-center text-[#2d3435] opacity-70 hover:opacity-100 pl-5 h-10 cursor-pointer transition-all duration-300 ease-out hover:bg-[#e4e9ea] dark:hover:bg-slate-800 font-inter text-xs uppercase tracking-widest"
+                    >
+                        <span class="material-symbols-outlined mr-3 text-lg"
+                            >schedule</span
+                        >
+                        Recent
+                    </div>
+                    <div
+                        class="flex items-center text-[#2d3435] opacity-70 hover:opacity-100 pl-5 h-10 cursor-pointer transition-all duration-300 ease-out hover:bg-[#e4e9ea] dark:hover:bg-slate-800 font-inter text-xs uppercase tracking-widest"
+                    >
+                        <span class="material-symbols-outlined mr-3 text-lg"
+                            >grade</span
+                        >
+                        Favorites
+                    </div>
+                    <div
+                        class="flex items-center text-[#2d3435] opacity-70 hover:opacity-100 pl-5 h-10 cursor-pointer transition-all duration-300 ease-out hover:bg-[#e4e9ea] dark:hover:bg-slate-800 font-inter text-xs uppercase tracking-widest"
+                    >
+                        <span class="material-symbols-outlined mr-3 text-lg"
+                            >delete</span
+                        >
+                        Trash
+                    </div>
+                </nav>
+                <div
+                    class="mt-auto px-6 space-y-2 border-t border-outline-variant/10 pt-4"
+                >
+                    <div
+                        class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface cursor-pointer text-xs font-label"
+                    >
+                        <span class="material-symbols-outlined text-lg"
+                            >settings</span
+                        >
+                        Settings
+                    </div>
+                    <div
+                        class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface cursor-pointer text-xs font-label"
+                    >
+                        <span class="material-symbols-outlined text-lg"
+                            >help_outline</span
+                        >
+                        Help
+                    </div>
+                </div>
+            </aside>
+            <!-- Main Content Area -->
+            <main class="flex-grow overflow-y-auto bg-background p-12">
+                <div class="max-w-4xl mx-auto">
+                    <header class="mb-16">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span
+                                class="px-2 py-0.5 bg-tertiary-container text-on-tertiary-container text-[10px] font-bold rounded uppercase tracking-tighter"
+                                >Draft Alpha</span
+                            >
+                        </div>
+                        <h1
+                            class="text-5xl font-headline font-extrabold text-on-surface tracking-tight mb-4"
+                        >
+                            The Architectural Mind
+                        </h1>
+                        <p
+                            class="text-lg text-on-surface-variant leading-relaxed max-w-2xl font-body"
+                        >
+                            Exploring the intersection of tree-based knowledge
+                            management and editorial design aesthetics.
+                        </p>
+                    </header>
+                    <!-- Tree Structure -->
+                    <div class="relative space-y-8 pl-4">
+                        <!-- Root Node -->
+                        <div class="relative group">
+                            <div class="flex items-start gap-4">
+                                <span
+                                    class="material-symbols-outlined text-primary mt-1 text-xl"
+                                    >expand_more</span
+                                >
+                                <div>
+                                    <h3
+                                        class="text-xl font-headline font-bold text-on-surface flex items-center gap-3"
+                                    >
+                                        Strategic Framework ♠
+                                    </h3>
+                                    <p
+                                        class="text-on-surface-variant text-sm mt-1"
+                                    >
+                                        The foundational pillars of the Atheneum
+                                        methodology.
+                                    </p>
+                                </div>
+                            </div>
+                            <!-- Level 1 -->
+                            <div
+                                class="mt-8 ml-8 border-l border-outline-variant/20 pl-8 space-y-8 relative"
+                            >
+                                <!-- Node 1.1 -->
+                                <div class="relative">
+                                    <div
+                                        class="absolute -left-8 top-4 w-8 h-[1px] bg-outline-variant/20"
+                                    ></div>
+                                    <div class="flex items-start gap-4">
+                                        <span
+                                            class="material-symbols-outlined text-outline-variant mt-1 text-lg"
+                                            >chevron_right</span
+                                        >
+                                        <div>
+                                            <h4
+                                                class="text-base font-headline font-semibold text-on-surface flex items-center gap-2"
+                                            >
+                                                <span
+                                                    class="bg-tertiary-container/40 px-1 rounded"
+                                                    >Cognitive Load Theory</span
+                                                >
+                                                ♥
+                                            </h4>
+                                            <p
+                                                class="text-on-surface-variant text-sm mt-1"
+                                            >
+                                                Minimizing friction through
+                                                progressive disclosure of nodes.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Node 1.2 -->
+                                <div class="relative">
+                                    <div
+                                        class="absolute -left-8 top-4 w-8 h-[1px] bg-outline-variant/20"
+                                    ></div>
+                                    <div class="flex items-start gap-4">
+                                        <span
+                                            class="material-symbols-outlined text-primary mt-1 text-lg"
+                                            >expand_more</span
+                                        >
+                                        <div>
+                                            <h4
+                                                class="text-base font-headline font-semibold text-on-surface flex items-center gap-2"
+                                            >
+                                                Asymmetric Layouts ♣
+                                            </h4>
+                                            <p
+                                                class="text-on-surface-variant text-sm mt-1"
+                                            >
+                                                Utilizing whitespace as a
+                                                structural component for
+                                                hierarchy.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <!-- Level 2 -->
+                                    <div
+                                        class="mt-6 ml-8 border-l border-outline-variant/20 pl-8 space-y-6 relative"
+                                    >
+                                        <div class="relative">
+                                            <div
+                                                class="absolute -left-8 top-3 w-8 h-[1px] bg-outline-variant/20"
+                                            ></div>
+                                            <div
+                                                class="flex items-center gap-3"
+                                            >
+                                                <div
+                                                    class="w-1.5 h-1.5 rounded-full bg-tertiary"
+                                                ></div>
+                                                <span
+                                                    class="text-sm font-label font-medium text-on-surface bg-tertiary-container px-1"
+                                                    >Golden Ratio Grid</span
+                                                >
+                                            </div>
+                                        </div>
+                                        <div class="relative">
+                                            <div
+                                                class="absolute -left-8 top-3 w-8 h-[1px] bg-outline-variant/20"
+                                            ></div>
+                                            <div
+                                                class="flex items-center gap-3"
+                                            >
+                                                <div
+                                                    class="w-1.5 h-1.5 rounded-full bg-outline-variant/40"
+                                                ></div>
+                                                <span
+                                                    class="text-sm font-label text-on-surface-variant"
+                                                    >Optical Alignment
+                                                    Rules</span
+                                                >
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Node 1.3 -->
+                                <div class="relative">
+                                    <div
+                                        class="absolute -left-8 top-4 w-8 h-[1px] bg-outline-variant/20"
+                                    ></div>
+                                    <div class="flex items-start gap-4">
+                                        <span
+                                            class="material-symbols-outlined text-outline-variant mt-1 text-lg"
+                                            >chevron_right</span
+                                        >
+                                        <div>
+                                            <h4
+                                                class="text-base font-headline font-semibold text-on-surface flex items-center gap-2"
+                                            >
+                                                Vellum Stacking ♦
+                                            </h4>
+                                            <p
+                                                class="text-on-surface-variant text-sm mt-1"
+                                            >
+                                                Creating depth through tonal
+                                                background shifts instead of
+                                                borders.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Another Root Node -->
+                        <div
+                            class="relative group mt-12 pt-8 border-t border-outline-variant/10"
+                        >
+                            <div class="flex items-start gap-4">
+                                <span
+                                    class="material-symbols-outlined text-outline-variant mt-1 text-xl"
+                                    >chevron_right</span
+                                >
+                                <div>
+                                    <h3
+                                        class="text-xl font-headline font-bold text-on-surface opacity-60"
+                                    >
+                                        Resource Archival ♣
+                                    </h3>
+                                    <p
+                                        class="text-on-surface-variant text-sm mt-1"
+                                    >
+                                        External bibliography and raw data
+                                        collection points.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+            <!-- Right Side Panel (Command Palette Context) -->
+            <aside
+                class="hidden xl:flex w-80 bg-surface-container-lowest border-l border-outline-variant/10 flex-col p-8"
+            >
+                <h3 class="font-headline font-bold text-lg mb-6">
+                    Node Context
+                </h3>
+                <div class="space-y-8">
+                    <div>
+                        <span
+                            class="text-[10px] uppercase tracking-widest text-outline block mb-3"
+                            >Associations</span
+                        >
+                        <div class="flex flex-wrap gap-2">
+                            <span
+                                class="px-3 py-1 bg-surface-container-low text-xs font-label rounded-full"
+                                >#ux-design</span
+                            >
+                            <span
+                                class="px-3 py-1 bg-surface-container-low text-xs font-label rounded-full"
+                                >#mental-models</span
+                            >
+                            <span
+                                class="px-3 py-1 bg-surface-container-low text-xs font-label rounded-full"
+                                >#atheneum</span
+                            >
+                        </div>
+                    </div>
+                    <div>
+                        <span
+                            class="text-[10px] uppercase tracking-widest text-outline block mb-3"
+                            >Linked Nodes</span
+                        >
+                        <ul class="space-y-3">
+                            <li class="group cursor-pointer">
+                                <div
+                                    class="text-xs font-semibold text-on-surface group-hover:text-primary transition-colors"
+                                >
+                                    Cognitive Mapping
+                                </div>
+                                <div
+                                    class="text-[10px] text-on-surface-variant"
+                                >
+                                    Section: Framework &gt; Pillars
+                                </div>
+                            </li>
+                            <li class="group cursor-pointer">
+                                <div
+                                    class="text-xs font-semibold text-on-surface group-hover:text-primary transition-colors"
+                                >
+                                    Typography as Hierarchy
+                                </div>
+                                <div
+                                    class="text-[10px] text-on-surface-variant"
+                                >
+                                    Section: Editor &gt; Interface
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="pt-8 mt-auto">
+                        <div class="p-6 bg-surface-container-low rounded-lg">
+                            <span
+                                class="material-symbols-outlined text-primary text-3xl mb-4"
+                                >auto_awesome</span
+                            >
+                            <p
+                                class="text-xs font-body text-on-surface leading-relaxed italic"
+                            >
+                                "The structure of thought is the primary visual
+                                element."
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </body>
+</html>

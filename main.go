@@ -39,6 +39,7 @@ func main() {
 	// Static/HTML Pages
 	http.HandleFunc("/edit/", serveHTML("static/edit.html"))
 	http.HandleFunc("/view/", serveHTML("static/view.html"))
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
 	http.HandleFunc("/", serveHTML("static/index.html")) // Homepage to create new
 
 	fmt.Println("Server running on http://localhost:8080")
