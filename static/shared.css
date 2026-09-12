@@ -27,12 +27,14 @@
     background: transparent;
     padding: 2px 4px;
     outline: none;
-    width: 250px;
-    height: 20px;
+    width: 320px;
+    height: auto;
+    min-height: 20px;
     vertical-align: middle;
     white-space: pre-wrap;
     resize: none;
     display: inline-block;
+    overflow: hidden;
 }
 .node-desc-input:focus {
     background-color: rgba(56, 93, 160, 0.08);
@@ -81,4 +83,108 @@
 }
 .tree-list-item:hover {
     background-color: rgba(56, 93, 160, 0.06);
+}
+
+/* Toast notification */
+.app-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: #2d3435;
+    color: #f9f9f9;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    opacity: 0;
+    transition:
+        opacity 0.25s ease,
+        transform 0.25s ease;
+    z-index: 200;
+    pointer-events: none;
+}
+.app-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+.app-toast-error {
+    background: #9f403d;
+}
+
+/* System name field (edit page) */
+.system-name-input {
+    width: 100%;
+    border: none;
+    border-bottom: 2px solid rgba(173, 179, 180, 0.3);
+    background: transparent;
+    padding: 6px 4px;
+    outline: none;
+    font-size: 18px;
+    transition: border-color 0.15s ease;
+}
+.system-name-input:focus {
+    border-bottom-color: #385da0;
+}
+
+/* Passcode unlock dialog */
+.unlock-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(12, 15, 15, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 300;
+}
+.unlock-card {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 28px;
+    width: 360px;
+    max-width: calc(100vw - 32px);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    animation: answer-in 0.15s ease;
+}
+.unlock-card h2,
+.unlock-card p {
+    width: 100%;
+}
+.unlock-card form {
+    width: 100%;
+}
+.unlock-input {
+    width: 100%;
+    border: 1px solid #adb3b4;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    outline: none;
+    background: #f9f9f9;
+    color: #2d3435;
+}
+.unlock-input:focus {
+    border-color: #385da0;
+    background: #ffffff;
+}
+
+/* Practice (flashcard) page */
+.practice-answer {
+    display: none;
+}
+.practice-answer.revealed {
+    display: block;
+    animation: answer-in 0.2s ease;
+}
+@keyframes answer-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
 }

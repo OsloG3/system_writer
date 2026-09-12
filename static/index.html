@@ -4,7 +4,7 @@
     <head>
         <meta charset="utf-8" />
         <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-        <title>Atheneum | Digital Workspace</title>
+        <title>Atheneum | Bidding Systems</title>
         <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
         <link
             href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
@@ -26,21 +26,32 @@
             document.getElementById("app").innerHTML = renderLayout({
                 mode: "index",
                 badge: "Home",
-                title: "My Tree Notes",
-                subtitle: "Create and manage your knowledge tree collections.",
+                title: "My Bidding Systems",
+                subtitle:
+                    "Create, view and practice your bidding system collections.",
             });
+
+            let treesCache = [];
+
+            document.addEventListener("authchange", loadList);
 
             async function loadList() {
                 const res = await fetch("/api/list");
-                const trees = await res.json();
+                const trees = (await res.json()) || [];
+                treesCache = trees;
                 const content = document.getElementById("main-content");
+                const unlocked = window.appUnlocked;
 
                 if (trees.length === 0) {
                     content.innerHTML = `
                         <div class="text-center py-16">
                             <span class="material-symbols-outlined text-outline-variant text-6xl mb-4">account_tree</span>
                             <p class="text-on-surface-variant text-lg font-body">No collections yet.</p>
-                            <p class="text-on-surface-variant text-sm font-body mt-2">Click "New Collection" to get started.</p>
+                            <p class="text-on-surface-variant text-sm font-body mt-2">${
+                                unlocked
+                                    ? 'Click "New Collection" to get started.'
+                                    : 'Unlock editing to create your first system.'
+                            }</p>
                         </div>
                     `;
                     return;
@@ -51,20 +62,32 @@
                         ${trees
                             .map(
                                 (t) => `
-                            <div class="tree-list-item flex items-center justify-between p-4 rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
-                                <div class="flex items-center gap-3">
+                            <div class="tree-list-item flex items-center justify-between gap-4 p-4 rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
+                                <div class="flex items-center gap-3 min-w-0">
                                     <span class="material-symbols-outlined text-primary text-xl">account_tree</span>
-                                    <span class="font-headline font-semibold text-on-surface">${t.name}</span>
+                                    <span class="font-headline font-semibold text-on-surface truncate">${colorSuits(t.name)}</span>
                                 </div>
-                                <div class="flex items-center gap-2">
-                                    <a href="/view/${t.id}" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded text-xs font-label hover:bg-surface-container-high transition-colors no-underline">
+                                <div class="flex items-center gap-2 shrink-0">
+                                    <a href="/practice/${t.id}" title="Practice" class="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded text-xs font-label hover:bg-primary-dim transition-colors no-underline">
+                                        <span class="material-symbols-outlined text-sm">school</span>
+                                        Practice
+                                    </a>
+                                    <a href="/view/${t.id}" title="View" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded text-xs font-label hover:bg-surface-container-high transition-colors no-underline">
                                         <span class="material-symbols-outlined text-sm">visibility</span>
                                         View
                                     </a>
-                                    <a href="/edit/${t.id}" class="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded text-xs font-label hover:bg-primary-dim transition-colors no-underline">
+                                    ${
+                                        unlocked
+                                            ? `
+                                    <a href="/edit/${t.id}" title="Edit" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded text-xs font-label hover:bg-surface-container-high transition-colors no-underline">
                                         <span class="material-symbols-outlined text-sm">edit</span>
                                         Edit
                                     </a>
+                                    <button onclick="deleteTree('${t.id}')" title="Delete" class="flex items-center gap-1 px-2 py-1.5 bg-error-container/40 text-on-error-container rounded text-xs font-label hover:bg-error-container transition-colors">
+                                        <span class="material-symbols-outlined text-sm">delete</span>
+                                    </button>`
+                                            : ""
+                                    }
                                 </div>
                             </div>
                         `,
@@ -74,12 +97,82 @@
                 `;
             }
 
-            async function createTree() {
-                const res = await fetch("/api/new", { method: "POST" });
-                const data = await res.json();
-                window.location.href = "/edit/" + data.id;
+            function createTree() {
+                if (!window.appUnlocked) {
+                    showUnlockDialog();
+                    return;
+                }
+                showCreateDialog();
             }
 
+            function showCreateDialog() {
+                if (document.getElementById("createOverlay")) return;
+                const overlay = document.createElement("div");
+                overlay.id = "createOverlay";
+                overlay.className = "unlock-overlay";
+                overlay.innerHTML = `
+                    <div class="unlock-card">
+                        <span class="material-symbols-outlined text-primary text-3xl mb-2">account_tree</span>
+                        <h2 class="font-headline font-bold text-on-surface text-lg mb-1">New system</h2>
+                        <p class="text-sm text-on-surface-variant mb-4">Give your bidding system a name.</p>
+                        <form id="createForm">
+                            <input id="createName" type="text" placeholder="System name" autocomplete="off" class="unlock-input" />
+                            <div class="flex justify-end gap-2 mt-4">
+                                <button type="button" id="createCancel" class="px-4 py-2 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">Cancel</button>
+                                <button type="submit" class="px-4 py-2 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">Create</button>
+                            </div>
+                        </form>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+                const input = overlay.querySelector("#createName");
+                input.focus();
+                overlay.querySelector("#createCancel").onclick = () =>
+                    overlay.remove();
+                overlay.addEventListener("click", (e) => {
+                    if (e.target === overlay) overlay.remove();
+                });
+                overlay.querySelector("#createForm").onsubmit = async (e) => {
+                    e.preventDefault();
+                    const res = await fetch("/api/new", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name: input.value.trim() }),
+                    });
+                    if (res.status === 401) {
+                        overlay.remove();
+                        showUnlockDialog();
+                        return;
+                    }
+                    if (!res.ok) {
+                        showToast("Could not create system", true);
+                        return;
+                    }
+                    const data = await res.json();
+                    window.location.href = "/edit/" + data.id;
+                };
+            }
+
+            async function deleteTree(treeId) {
+                const t = treesCache.find((x) => x.id === treeId);
+                const name = t ? t.name : treeId;
+                if (!confirm(`Delete "${name}"? This cannot be undone.`))
+                    return;
+                const res = await fetch("/api/tree/" + treeId, {
+                    method: "DELETE",
+                });
+                if (res.ok) {
+                    showToast("System deleted");
+                    loadList();
+                } else if (res.status === 401) {
+                    showToast("Passcode required", true);
+                    showUnlockDialog();
+                } else {
+                    showToast("Delete failed", true);
+                }
+            }
+
+            refreshAuthState();
             loadList();
         </script>
     </body>

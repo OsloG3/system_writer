@@ -4,7 +4,7 @@
     <head>
         <meta charset="utf-8" />
         <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-        <title>Atheneum | Digital Workspace</title>
+        <title>Atheneum | Edit System</title>
         <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
         <link
             href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
@@ -29,10 +29,12 @@
                 title: "Loading...",
                 titleId: "treeNameDisplay",
                 subtitle:
-                    "Edit the knowledge tree structure. Drag nodes to reorder.",
+                    "Edit the bidding system structure. Drag nodes to reorder.",
             });
             document.getElementById("viewLink").href =
                 "/view/" + window.location.pathname.split("/").pop();
+            document.getElementById("practiceLink").href =
+                "/practice/" + window.location.pathname.split("/").pop();
 
             const id = window.location.pathname.split("/").pop();
 
@@ -40,17 +42,32 @@
             let draggedNodeId = null;
             let dropPosition = null;
             let expandedNodes = new Set();
+            let dirty = false;
+
+            function markDirty() {
+                dirty = true;
+            }
 
             async function loadTree() {
                 const res = await fetch("/api/tree/" + id);
+                if (!res.ok) {
+                    document.getElementById("main-content").innerHTML =
+                        '<p class="text-on-surface-variant">System not found. <a class="text-primary" href="/">Back to collections</a></p>';
+                    return;
+                }
                 treeData = await res.json();
                 if (treeData.root && !treeData.roots) {
                     treeData.roots = [treeData.root];
                 }
-                if (treeData.roots && treeData.roots.length > 0) {
-                    document.getElementById("treeNameDisplay").innerText =
-                        treeData.roots[0].name || id;
+                treeData.roots = treeData.roots || [];
+                if (!treeData.name) {
+                    // migrate legacy files that used the first root as the name
+                    treeData.name =
+                        (treeData.roots[0] && treeData.roots[0].name) || "";
                 }
+                document.getElementById("treeNameDisplay").innerText =
+                    treeData.name || "Untitled System";
+                dirty = false;
                 renderTree();
             }
 
@@ -61,6 +78,7 @@
                     description: "",
                     children: [],
                 });
+                markDirty();
                 renderTree();
             }
 
@@ -83,22 +101,20 @@
                 }
 
                 // D&D Logic
-                if (!isTopLevel) {
-                    nodeWrapper.draggable = true;
-                    nodeWrapper.addEventListener("dragstart", (e) => {
-                        draggedNodeId = node.id;
-                        e.stopPropagation();
-                        setTimeout(
-                            () => nodeWrapper.classList.add("dragging"),
-                            0,
-                        );
-                    });
-                    nodeWrapper.addEventListener("dragend", (e) => {
-                        e.stopPropagation();
-                        nodeWrapper.classList.remove("dragging");
-                        draggedNodeId = null;
-                    });
-                }
+                nodeWrapper.draggable = true;
+                nodeWrapper.addEventListener("dragstart", (e) => {
+                    draggedNodeId = node.id;
+                    e.stopPropagation();
+                    setTimeout(
+                        () => nodeWrapper.classList.add("dragging"),
+                        0,
+                    );
+                });
+                nodeWrapper.addEventListener("dragend", (e) => {
+                    e.stopPropagation();
+                    nodeWrapper.classList.remove("dragging");
+                    draggedNodeId = null;
+                });
 
                 nodeWrapper.addEventListener("dragover", (e) => {
                     e.preventDefault();
@@ -196,11 +212,9 @@
                         el.value = transformed;
                         el.setSelectionRange(start, start);
                     }
+                    autoWidth(el);
                     node.name = el.value;
-                    if (isTopLevel && treeData.roots[0] === node) {
-                        document.getElementById("treeNameDisplay").innerText =
-                            node.name;
-                    }
+                    markDirty();
                 };
                 nameInput.onfocus = () =>
                     nodeWrapper.classList.add("node-focused");
@@ -226,7 +240,9 @@
                         el.value = transformed;
                         el.setSelectionRange(start, start);
                     }
+                    autoGrow(el);
                     node.description = el.value;
+                    markDirty();
                 };
                 descInput.onfocus = () =>
                     nodeWrapper.classList.add("node-focused");
@@ -262,6 +278,7 @@
                     };
                     node.children.push(newChild);
                     expandedNodes.add(node.id);
+                    markDirty();
                     renderTree();
                     setTimeout(() => {
                         const input = document.querySelector(
@@ -278,7 +295,8 @@
                     '<span class="material-symbols-outlined text-sm align-middle">delete</span>';
                 deleteBtn.title = "Delete";
                 deleteBtn.onclick = () => {
-                    if (confirm("Delete?")) deleteNode(node.id);
+                    if (confirm("Delete this node and all its children?"))
+                        deleteNode(node.id);
                 };
 
                 if (!hasChildren) expandedNodes.delete(node.id);
@@ -299,10 +317,8 @@
                 downBtn.title = "Move Down";
                 downBtn.onclick = () => moveNodeDown(node.id);
 
-                if (!isTopLevel) {
-                    actionButtons.appendChild(upBtn);
-                    actionButtons.appendChild(downBtn);
-                }
+                actionButtons.appendChild(upBtn);
+                actionButtons.appendChild(downBtn);
                 actionButtons.appendChild(addBtn);
                 actionButtons.appendChild(deleteBtn);
                 flexRow.appendChild(actionButtons);
@@ -338,6 +354,7 @@
                         collection[index - 1],
                         collection[index],
                     ];
+                    markDirty();
                 } else if (res.parent) {
                     const parentRes = findNodeAndParentGlobal(res.parent.id);
                     if (parentRes) {
@@ -351,12 +368,8 @@
                             (n) => n.id !== nodeId,
                         );
                         parentCollection.splice(parentIndex + 1, 0, res.node);
+                        markDirty();
                     }
-                } else if (index === 0 && treeData.roots.length > 1) {
-                    [collection[index], collection[index - 1]] = [
-                        collection[index - 1],
-                        collection[index],
-                    ];
                 }
                 renderTree();
             }
@@ -373,6 +386,7 @@
                         collection[index + 1],
                         collection[index],
                     ];
+                    markDirty();
                 } else if (res.parent) {
                     const parentRes = findNodeAndParentGlobal(res.parent.id);
                     if (parentRes) {
@@ -386,27 +400,66 @@
                             (n) => n.id !== nodeId,
                         );
                         parentCollection.splice(parentIndex + 1, 0, res.node);
+                        markDirty();
                     }
-                } else if (
-                    index === treeData.roots.length - 1 &&
-                    treeData.roots.length > 1
-                ) {
-                    [collection[index], collection[index + 1]] = [
-                        collection[index + 1],
-                        collection[index],
-                    ];
                 }
                 renderTree();
+            }
+
+            function buildSystemNameField() {
+                const wrap = document.createElement("div");
+                wrap.className =
+                    "mb-8 p-4 rounded-lg bg-surface-container-lowest border border-outline-variant/10";
+                const label = document.createElement("label");
+                label.className =
+                    "text-xs uppercase tracking-widest text-outline font-label block mb-2";
+                label.textContent = "System name";
+                const input = document.createElement("input");
+                input.type = "text";
+                input.id = "systemNameInput";
+                input.className =
+                    "system-name-input font-headline font-bold text-on-surface";
+                input.placeholder = "Untitled System";
+                input.value = treeData.name || "";
+                input.oninput = () => {
+                    treeData.name = input.value;
+                    document.getElementById(
+                        "treeNameDisplay",
+                    ).innerText =
+                        input.value || "Untitled System";
+                    markDirty();
+                };
+                wrap.appendChild(label);
+                wrap.appendChild(input);
+                return wrap;
             }
 
             function renderTree() {
                 const container = document.getElementById("main-content");
                 container.innerHTML = "";
+                container.appendChild(buildSystemNameField());
                 if (treeData.roots && treeData.roots.length > 0) {
                     treeData.roots.forEach((root) => {
                         renderNode(root, container, true);
                     });
+                } else {
+                    const empty = document.createElement("div");
+                    empty.className = "text-center py-16";
+                    empty.innerHTML = `
+                        <span class="material-symbols-outlined text-outline-variant text-6xl mb-4">account_tree</span>
+                        <p class="text-on-surface-variant text-lg font-body">No root nodes yet.</p>
+                        <p class="text-on-surface-variant text-sm font-body mt-2">Click "New Root Node" in the sidebar to get started.</p>
+                    `;
+                    container.appendChild(empty);
                 }
+                requestAnimationFrame(() => {
+                    document
+                        .querySelectorAll(".node-desc-input")
+                        .forEach(autoGrow);
+                    document
+                        .querySelectorAll(".node-name-input")
+                        .forEach(autoWidth);
+                });
             }
 
             function findNodeAndParentGlobal(searchId) {
@@ -464,6 +517,7 @@
                     if (!target.node.children) target.node.children = [];
                     target.node.children.push(source.node);
                 }
+                markDirty();
                 renderTree();
             }
 
@@ -477,6 +531,7 @@
                 } else {
                     treeData.roots.splice(res.rootIndex, 1);
                 }
+                markDirty();
                 renderTree();
             }
 
@@ -488,16 +543,79 @@
                     .replace(/!s/g, "♠");
             }
 
-            async function saveTree() {
-                await fetch("/api/tree/" + id, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(treeData),
-                });
-                alert("Saved!");
+            function autoGrow(el) {
+                el.style.height = "auto";
+                el.style.height = el.scrollHeight + "px";
             }
 
-            loadTree();
+            function autoWidth(el) {
+                el.style.width = Math.max(70, el.value.length * 9 + 16) + "px";
+            }
+
+            async function saveTree() {
+                try {
+                    const res = await fetch("/api/tree/" + id, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(treeData),
+                    });
+                    if (res.status === 401) {
+                        showToast("Passcode required", true);
+                        showUnlockDialog();
+                        return;
+                    }
+                    if (!res.ok) throw new Error(res.statusText);
+                    dirty = false;
+                    showToast("System saved");
+                } catch (err) {
+                    showToast("Save failed", true);
+                }
+            }
+
+            function showLockScreen() {
+                const content = document.getElementById("main-content");
+                content.innerHTML = `
+                    <div class="text-center py-16 bg-surface-container-lowest rounded-xl border border-outline-variant/10 max-w-md mx-auto">
+                        <span class="material-symbols-outlined text-primary text-5xl mb-4">lock</span>
+                        <p class="text-on-surface text-lg font-headline font-bold">Editing is protected</p>
+                        <p class="text-on-surface-variant text-sm mt-2 mb-6">Enter the passcode to edit this system.</p>
+                        <button onclick="showUnlockDialog()" class="px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                            Enter passcode
+                        </button>
+                    </div>
+                `;
+            }
+
+            let treeLoaded = false;
+
+            document.addEventListener("authchange", () => {
+                if (window.appUnlocked) {
+                    if (!treeLoaded) {
+                        treeLoaded = true;
+                        loadTree();
+                    } else {
+                        renderTree();
+                    }
+                } else {
+                    showLockScreen();
+                }
+            });
+
+            document.addEventListener("keydown", (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+                    e.preventDefault();
+                    saveTree();
+                }
+            });
+
+            window.addEventListener("beforeunload", (e) => {
+                if (dirty && !window.treeDeleted) {
+                    e.preventDefault();
+                    e.returnValue = "";
+                }
+            });
+
+            refreshAuthState();
         </script>
     </body>
 </html>

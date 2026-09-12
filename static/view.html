@@ -4,7 +4,7 @@
     <head>
         <meta charset="utf-8" />
         <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-        <title>Atheneum | Digital Workspace</title>
+        <title>Atheneum | System View</title>
         <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
         <link
             href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
@@ -28,21 +28,22 @@
                 badge: "Tree View",
                 title: "Loading...",
                 titleId: "treeId",
-                subtitle: "Read-only view of the knowledge tree structure.",
+                subtitle: "Read-only view of the bidding system structure.",
             });
-            document.getElementById("treeId").innerText =
-                window.location.pathname.split("/").pop();
-            document.getElementById("editLink").href =
-                "/edit/" + window.location.pathname.split("/").pop();
 
             const id = window.location.pathname.split("/").pop();
+            document.getElementById("treeId").innerText = id;
+            document.getElementById("editLink").href = "/edit/" + id;
+            document.getElementById("practiceLink").href = "/practice/" + id;
 
             let treeData = { roots: [] };
+            let toggles = [];
 
             async function loadTree() {
                 const res = await fetch("/api/tree/" + id);
                 if (!res.ok) {
-                    console.error("Failed to fetch tree data:", res.statusText);
+                    document.getElementById("main-content").innerHTML =
+                        '<p class="text-on-surface-variant">System not found. <a class="text-primary" href="/">Back to collections</a></p>';
                     return;
                 }
                 treeData = await res.json();
@@ -50,38 +51,59 @@
                 if (treeData.root && !treeData.roots) {
                     treeData.roots = [treeData.root];
                 }
-                if (treeData.roots && treeData.roots.length > 0) {
-                    document.getElementById("treeId").innerText =
-                        treeData.roots[0].name || id;
-                }
+                treeData.roots = treeData.roots || [];
+                document.getElementById("treeId").innerText =
+                    treeData.name ||
+                    (treeData.roots[0] && treeData.roots[0].name) ||
+                    id;
                 renderTree();
             }
 
             function renderTree() {
                 const container = document.getElementById("main-content");
                 container.innerHTML = "";
-                if (treeData.roots && treeData.roots.length > 0) {
-                    treeData.roots.forEach((root) => {
-                        renderNode(root, container, 0);
-                    });
+                toggles = [];
+
+                if (treeData.roots.length === 0) {
+                    container.innerHTML = `<p class="text-on-surface-variant">This system is empty. <a class="text-primary" href="/edit/${id}">Edit it</a> to add nodes.</p>`;
+                    return;
                 }
+
+                const bar = document.createElement("div");
+                bar.className = "flex items-center gap-2 mb-8";
+                bar.innerHTML = `
+                    <button id="expandAllBtn" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded text-xs font-label hover:bg-surface-container-high transition-colors">
+                        <span class="material-symbols-outlined text-sm">unfold_more</span>
+                        Expand all
+                    </button>
+                    <button id="collapseAllBtn" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded text-xs font-label hover:bg-surface-container-high transition-colors">
+                        <span class="material-symbols-outlined text-sm">unfold_less</span>
+                        Collapse all
+                    </button>
+                `;
+                container.appendChild(bar);
+
+                const treeContainer = document.createElement("div");
+                container.appendChild(treeContainer);
+                treeData.roots.forEach((root) => {
+                    renderNode(root, treeContainer, 0);
+                });
+
+                bar.querySelector("#expandAllBtn").onclick = () =>
+                    setAllExpanded(true);
+                bar.querySelector("#collapseAllBtn").onclick = () =>
+                    setAllExpanded(false);
+            }
+
+            function setAllExpanded(expand) {
+                toggles.forEach(({ wrapper, icon }) => {
+                    wrapper.style.display = expand ? "block" : "none";
+                    icon.innerHTML = expand ? "expand_more" : "chevron_right";
+                });
             }
 
             function renderNode(node, container, depth) {
                 const hasChildren = node.children && node.children.length > 0;
-
-                const coloredName = node.name
-                    .replace(/♣/g, '<span style="color:green;">♣</span>')
-                    .replace(/♦/g, '<span style="color:red;">♦</span>')
-                    .replace(/♥/g, '<span style="color:red;">♥</span>')
-                    .replace(/♠/g, '<span style="color:green;">♠</span>');
-
-                const coloredDescription = node.description
-                    .replace(/♣/g, '<span style="color:green;">♣</span>')
-                    .replace(/♦/g, '<span style="color:red;">♦</span>')
-                    .replace(/♥/g, '<span style="color:red;">♥</span>')
-                    .replace(/♠/g, '<span style="color:green;">♠</span>');
-
                 const isRoot = depth === 0;
 
                 const nodeWrapper = document.createElement("div");
@@ -98,7 +120,7 @@
                 }
 
                 const flexRow = document.createElement("div");
-                flexRow.className = "flex items-center gap-2";
+                flexRow.className = "flex items-center gap-2 flex-wrap";
 
                 // Toggle button
                 const toggleIcon = document.createElement("span");
@@ -119,34 +141,40 @@
                           ? "text-sm font-semibold"
                           : "text-sm"
                 }`;
-                nameEl.innerHTML = coloredName;
+                nameEl.innerHTML = colorSuits(node.name);
 
                 // Description inline with name
-                const descEl = document.createElement("span");
-                descEl.className = "text-on-surface-variant text-sm";
-                descEl.innerHTML = coloredDescription;
-
                 contentDiv.appendChild(nameEl);
-                if (coloredDescription) {
+                if (node.description) {
+                    const descEl = document.createElement("span");
+                    descEl.className =
+                        "text-on-surface-variant text-sm";
+                    descEl.innerHTML = colorSuits(node.description);
                     contentDiv.appendChild(descEl);
                 }
 
                 flexRow.appendChild(toggleIcon);
                 flexRow.appendChild(contentDiv);
 
+                // Practice link for root nodes (scopes practice to that section)
+                if (isRoot) {
+                    const practiceLink = document.createElement("a");
+                    practiceLink.href = `/practice/${id}?root=${node.id}`;
+                    practiceLink.title = "Practice this section";
+                    practiceLink.className =
+                        "flex items-center gap-1 px-2 py-0.5 bg-tertiary-container/40 text-on-tertiary-container rounded text-xs font-label hover:bg-tertiary-container transition-colors no-underline";
+                    practiceLink.innerHTML =
+                        '<span class="material-symbols-outlined text-sm">school</span>Practice';
+                    flexRow.appendChild(practiceLink);
+                }
+
                 nodeWrapper.appendChild(flexRow);
 
                 // Children container
                 if (hasChildren) {
                     const childrenWrapper = document.createElement("div");
-                    childrenWrapper.className = `relative`;
-                    if (isRoot) {
-                        childrenWrapper.className +=
-                            " ml-5 border-l border-outline-variant/20 pl-5 space-y-4 relative mt-4";
-                    } else {
-                        childrenWrapper.className +=
-                            " ml-5 border-l border-outline-variant/20 pl-5 space-y-4 relative mt-4";
-                    }
+                    childrenWrapper.className =
+                        "relative ml-5 border-l border-outline-variant/20 pl-5 space-y-4 mt-4";
 
                     node.children.forEach((child) =>
                         renderNode(child, childrenWrapper, depth + 1),
@@ -166,12 +194,14 @@
                             : "chevron_right";
                     };
 
+                    toggles.push({ wrapper: childrenWrapper, icon: toggleIcon });
                     nodeWrapper.appendChild(childrenWrapper);
                 }
 
                 container.appendChild(nodeWrapper);
             }
 
+            refreshAuthState();
             loadTree();
         </script>
     </body>

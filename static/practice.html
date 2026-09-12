@@ -1,0 +1,322 @@
+<!doctype html>
+
+<html class="light" lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>Atheneum | Practice</title>
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+            rel="stylesheet"
+        />
+        <script src="/static/shared.js"></script>
+        <link rel="stylesheet" href="/static/shared.css" />
+    </head>
+    <body
+        class="bg-background text-on-surface font-body selection:bg-tertiary-container/30 overflow-hidden"
+    >
+        <div id="app"></div>
+
+        <script>
+            document.getElementById("app").innerHTML = renderLayout({
+                mode: "practice",
+                badge: "Practice",
+                title: "Loading...",
+                titleId: "practiceTitle",
+                subtitle:
+                    "A random sequence from the root down to a leaf is picked flashcard style. Recall what each bid shows, then reveal the answer.",
+            });
+
+            const id = window.location.pathname.split("/").pop();
+            document.getElementById("viewLink").href = "/view/" + id;
+            document.getElementById("editLink").href = "/edit/" + id;
+
+            let treeData = { roots: [] };
+            let scopeRootId =
+                new URLSearchParams(window.location.search).get("root") || "";
+            let deck = [];
+            let deckPos = 0;
+            let currentCard = null;
+            let revealed = false;
+            let stats = { good: 0, again: 0 };
+
+            async function init() {
+                const res = await fetch("/api/tree/" + id);
+                if (!res.ok) {
+                    document.getElementById("main-content").innerHTML =
+                        '<p class="text-on-surface-variant">System not found. <a class="text-primary" href="/">Back to collections</a></p>';
+                    return;
+                }
+                treeData = await res.json();
+                if (treeData.root && !treeData.roots) {
+                    treeData.roots = [treeData.root];
+                }
+                treeData.roots = treeData.roots || [];
+                document.getElementById("practiceTitle").innerText =
+                    treeData.name ||
+                    (treeData.roots[0] && treeData.roots[0].name) ||
+                    id;
+                if (
+                    scopeRootId &&
+                    !treeData.roots.some((r) => r.id === scopeRootId)
+                ) {
+                    scopeRootId = "";
+                }
+                renderControls();
+                rebuildDeck();
+            }
+
+            function renderControls() {
+                const content = document.getElementById("main-content");
+                content.innerHTML = `
+                    <div class="flex flex-wrap items-center gap-3 mb-6">
+                        <label for="scopeSelect" class="text-xs uppercase tracking-widest text-outline font-label">Scope</label>
+                        <select id="scopeSelect" class="text-sm rounded-lg border-outline-variant/30 bg-surface-container-lowest text-on-surface"></select>
+                    </div>
+                    <div id="card-area"></div>
+                `;
+
+                const scopeSelect = document.getElementById("scopeSelect");
+                const opts = [{ id: "", name: "Whole system" }].concat(
+                    treeData.roots.map((r) => ({
+                        id: r.id,
+                        name: r.name || "Untitled",
+                    })),
+                );
+                scopeSelect.innerHTML = opts
+                    .map(
+                        (o) =>
+                            `<option value="${escapeHtml(o.id)}" ${
+                                o.id === scopeRootId ? "selected" : ""
+                            }>${colorSuits(o.name)}</option>`,
+                    )
+                    .join("");
+                scopeSelect.onchange = () => {
+                    scopeRootId = scopeSelect.value;
+                    const url = new URL(window.location);
+                    if (scopeRootId) url.searchParams.set("root", scopeRootId);
+                    else url.searchParams.delete("root");
+                    history.replaceState({}, "", url);
+                    rebuildDeck();
+                };
+            }
+
+            function scopedRoots() {
+                if (scopeRootId)
+                    return treeData.roots.filter((r) => r.id === scopeRootId);
+                return treeData.roots;
+            }
+
+            function meaningfulChildren(node) {
+                return (node.children || []).filter(
+                    (c) => c && (c.name || c.description),
+                );
+            }
+
+            // One card per root-to-leaf sequence; question is the names,
+            // answer is the description of every node in the sequence.
+            function collectCards() {
+                const cards = [];
+                function walk(node, path) {
+                    const children = meaningfulChildren(node);
+                    if (children.length === 0) {
+                        if (
+                            path.some(
+                                (n) => n.description && n.description.trim(),
+                            )
+                        ) {
+                            cards.push({ path: path });
+                        }
+                        return;
+                    }
+                    children.forEach((c) => walk(c, path.concat([c])));
+                }
+                scopedRoots().forEach((root) => walk(root, [root]));
+                return cards;
+            }
+
+            function shuffle(arr) {
+                for (let i = arr.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [arr[i], arr[j]] = [arr[j], arr[i]];
+                }
+                return arr;
+            }
+
+            function rebuildDeck() {
+                deck = shuffle(collectCards());
+                deckPos = 0;
+                stats = { good: 0, again: 0 };
+                nextCard();
+            }
+
+            function nextCard() {
+                if (deck.length === 0) {
+                    currentCard = null;
+                    renderEmptyDeck();
+                    return;
+                }
+                if (deckPos >= deck.length) {
+                    shuffle(deck);
+                    deckPos = 0;
+                }
+                currentCard = deck[deckPos];
+                deckPos++;
+                revealed = false;
+                renderCard();
+            }
+
+            function renderEmptyDeck() {
+                document.getElementById("card-area").innerHTML = `
+                    <div class="text-center py-16 bg-surface-container-lowest rounded-xl border border-outline-variant/10">
+                        <span class="material-symbols-outlined text-outline-variant text-5xl mb-4">style</span>
+                        <p class="text-on-surface-variant text-lg">No cards to practice in this scope.</p>
+                        <p class="text-sm text-on-surface-variant mt-2">
+                            Cards are root-to-leaf sequences whose nodes have descriptions. Add some in the <a href="/edit/${id}" class="text-primary">editor</a>.
+                        </p>
+                    </div>
+                `;
+            }
+
+            function renderCard() {
+                const area = document.getElementById("card-area");
+
+                const sequence = currentCard.path
+                    .map(
+                        (n) => `
+                        <div class="px-3 py-1.5 bg-surface-container rounded-lg">
+                            <span class="font-headline font-bold text-on-surface text-sm">${colorSuits(
+                                n.name,
+                            )}</span>
+                        </div>`,
+                    )
+                    .join('<span class="text-outline-variant px-0.5">–</span>');
+
+                area.innerHTML = `
+                    <div class="bg-surface-container-lowest rounded-xl border border-outline-variant/10 shadow-sm p-8 min-h-[260px]">
+                        <div class="text-[10px] uppercase tracking-widest text-outline font-label mb-3">
+                            Sequence — what does each bid show?
+                        </div>
+                        <div class="flex flex-wrap items-center gap-y-2 mb-4">
+                            ${sequence}
+                        </div>
+                        <div id="answer" class="practice-answer"></div>
+                    </div>
+                    <div class="flex items-center justify-center gap-3 mt-6" id="card-buttons"></div>
+                    <div class="text-center text-xs text-on-surface-variant mt-4" id="card-meta"></div>
+                `;
+                renderButtons();
+                renderMeta();
+            }
+
+            function reveal() {
+                if (!currentCard || revealed) return;
+                revealed = true;
+                const answer = document.getElementById("answer");
+
+                answer.innerHTML =
+                    `<div class="text-[10px] uppercase tracking-widest text-outline font-label mb-2 mt-4 pt-4 border-t border-outline-variant/10">Answer</div>` +
+                    currentCard.path
+                        .map(
+                            (n) => `
+                        <div class="flex items-baseline gap-4 py-2 border-b border-outline-variant/10 last:border-b-0">
+                            <span class="font-headline font-bold text-on-surface min-w-[70px]">${colorSuits(
+                                n.name,
+                            )}</span>
+                            <span class="text-sm text-on-surface-variant">${
+                                n.description && n.description.trim()
+                                    ? colorSuits(n.description)
+                                    : '<em class="text-outline-variant">no description</em>'
+                            }</span>
+                        </div>`,
+                        )
+                        .join("");
+                answer.classList.add("revealed");
+                renderButtons();
+                renderMeta();
+            }
+
+            function grade(good) {
+                if (!currentCard || !revealed) return;
+                if (good) {
+                    stats.good++;
+                } else {
+                    stats.again++;
+                    const insertAt = Math.min(deckPos + 2, deck.length);
+                    deck.splice(insertAt, 0, currentCard);
+                }
+                nextCard();
+            }
+
+            function renderButtons() {
+                const bar = document.getElementById("card-buttons");
+                if (!bar) return;
+                if (!revealed) {
+                    bar.innerHTML = `
+                        <button id="revealBtn" class="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                            <span class="material-symbols-outlined text-sm">visibility</span>
+                            Show answer
+                        </button>
+                        <button id="skipBtn" class="px-4 py-2.5 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">
+                            Skip
+                        </button>
+                    `;
+                    document.getElementById("revealBtn").onclick = reveal;
+                    document.getElementById("skipBtn").onclick = nextCard;
+                } else {
+                    bar.innerHTML = `
+                        <button id="againBtn" class="flex items-center gap-2 px-5 py-2.5 bg-error-container text-on-error-container rounded font-label text-sm hover:brightness-95 transition-all">
+                            <span class="material-symbols-outlined text-sm">close</span>
+                            Again
+                        </button>
+                        <button id="goodBtn" class="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                            <span class="material-symbols-outlined text-sm">check</span>
+                            Got it
+                        </button>
+                    `;
+                    document.getElementById("againBtn").onclick = () =>
+                        grade(false);
+                    document.getElementById("goodBtn").onclick = () =>
+                        grade(true);
+                }
+            }
+
+            function renderMeta() {
+                const meta = document.getElementById("card-meta");
+                if (!meta) return;
+                const seen = stats.good + stats.again;
+                const pct =
+                    seen > 0 ? Math.round((stats.good / seen) * 100) : null;
+                meta.innerHTML = `Card ${deckPos} of ${deck.length} · Reviewed ${seen}${
+                    pct !== null ? ` · ${pct}% recalled` : ""
+                } <span class="text-outline-variant ml-3">Space: reveal / got it · M: again · S: skip</span>`;
+            }
+
+            document.addEventListener("keydown", (e) => {
+                const tag = (e.target.tagName || "").toLowerCase();
+                if (tag === "input" || tag === "textarea" || tag === "select")
+                    return;
+                if (!currentCard) return;
+                if (e.code === "Space" || e.code === "Enter") {
+                    e.preventDefault();
+                    if (!revealed) reveal();
+                    else grade(true);
+                } else if (e.key === "g" || e.key === "G") {
+                    if (revealed) grade(true);
+                } else if (e.key === "m" || e.key === "M") {
+                    if (revealed) grade(false);
+                } else if (e.key === "s" || e.key === "S") {
+                    if (!revealed) nextCard();
+                }
+            });
+
+            refreshAuthState();
+            init();
+        </script>
+    </body>
+</html>

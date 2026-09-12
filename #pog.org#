@@ -1,0 +1,72 @@
+Prec con rele GP
+
+Aperturas
+1!c cualquier 16+
+1!d 4+!d
+1!h 5+!h
+1!s 5+!s
+1NT 12-15
+2!c :: 5+!c
+2!d :: 4=4 Mayores 11-15
+2M :: debil
+
+1!c Respuestas
+- 1!d :: cualquier 0-7
+  - 1M :: 3+M NF
+  - 1ST :: 18-20 stayman y transfer
+  - 2m :: 5+m sin 4M
+  - 2!h :: Kokish
+  - 2ST :: 21-23
+- 1!h :: 5+!s GF o bal 11+
+  - 1!s :: rele
+    - 1NT :: 11+
+    - 2x igual que apertura de 1!s
+- 1!s :: 5+!h GF
+  - 1ST :: rele igual que paertura de 1!h
+- 1NT :: 5+!c GF ==> 2!c rele
+  - 2!d :: 4+!h o 5(440) o 64 ==> sigue mismo esquema que 1M-1ST
+  - 2!h :: monocolor
+  - 2!s :: menores
+  - 2NT+ :: 4+!s rele de bicolores
+- 2!c :: 8-10 equilibrada o GF (4441)
+  - 2!h :: (4441)
+  - 2!s+ :: esquema de equilibradas
+- 2!d+ :: 5+!d siguiendo el esquema de arriba
+
+Si el respondedor tiene 2 range marca 8-11/12+ si tiene 3 range 8-10/11-13/14+
+
+Apertura de 1!h
+- 1!s :: ST foring 0-4!s
+- 1NT :: rele GF
+ - 2!c :: 4+!d o cualquier 5(440) o cualquier 65
+  - 2!h :: 5(440) o (65) ==> 2!s rele
+    - 2NT :: 5(440) ==> 3!c pregunta corto
+      - 3!c+ :: 65 con !c/!d/!s
+    - 2!s+ :: 4+!d como 2!h rele de bicolores
+ - 2!d :: monocolor ==> rele de monocolr
+ - 2!h :: Mayores ==> rele de bicolores
+ - 2!s+ :: 4+!c como 2!h rele de bicolores
+2!c :: 5+!s
+2!d :: 3!s 9
+
+Apertura de 1!s
+- 1NT :: rele GF ==> mismo esquema que 1!h-1ST
+- 2!c :: ST forcing
+- 2!d :: 5+!h
+- 2!h :: 3!s 9+
+
+ weak jump shifts
+
+Apertura de 1!d
+- 1!h :: 3+!h --> XYZ
+- 1!s :: 4+!s --> XYZ
+- 1ST :: rele gf
+ - 2!c :: equi 11/12 con 4!d o 4!d(441) o 4!d-5+!c
+   - 2!h :: equi 11/12 4!d
+   - 2!s :: 4!d-5!c
+   - 2ST+ :: 4!d(441)
+ - 2!d+ sigue esquema 1!c-1ST-2!c 
+- 2m :: 5+m NF
+ 
+si el rele de bicolor/monocolor es 2!h o por debajo, siegue el esquema del 2!s rele pero un step mas abajo.
+si un rele acaba a 3ST y puede tener mano ilimitada, 4!c es distribucion de 3ST pero mas fuerte

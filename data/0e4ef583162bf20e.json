@@ -1,11 +1,296 @@
 {
   "id": "0e4ef583162bf20e",
+  "name": "Gardenghi Puerto V5",
   "roots": [
     {
       "id": "root-c4908b6bf62a30b3",
-      "name": "New Root Node",
-      "description": "Enter description here...",
-      "children": []
+      "name": "1♣",
+      "description": "14-21 (15-21 VUL/4th) 2+♣",
+      "children": [
+        {
+          "id": "node-b7eozhz94",
+          "name": "1♦",
+          "description": "4+♥ 4+HCP",
+          "children": [
+            {
+              "id": "node-bfo0sq385",
+              "name": "1♥",
+              "description": "2-3♥ bal min or 3♥ unbal min",
+              "children": [
+                {
+                  "id": "node-fpvv9nshc",
+                  "name": "1♠",
+                  "description": "xfer to 1NT",
+                  "children": [
+                    {
+                      "id": "node-byxim6790",
+                      "name": "1NT",
+                      "description": "ball",
+                      "children": [
+                        {
+                          "id": "node-rrl5y6p6p",
+                          "name": "2♣",
+                          "description": "5♣ - 4♥ s.o.",
+                          "children": []
+                        },
+                        {
+                          "id": "node-dl5c5kd4m",
+                          "name": "2♦ ",
+                          "description": "5♥ - 4♦ s.o.",
+                          "children": []
+                        },
+                        {
+                          "id": "node-qm5drdi45",
+                          "name": "2♥",
+                          "description": "5♥ to pay",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "id": "node-esjmfrlye",
+                      "name": "2♣",
+                      "description": "3♥ unbal min",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "id": "node-7haboupky",
+                  "name": "1NT",
+                  "description": "4♥ - 4♠ NF",
+                  "children": []
+                },
+                {
+                  "id": "node-9blymbmhl",
+                  "name": "2♣",
+                  "description": "XYZ",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-bch051x2z",
+              "name": "1♠",
+              "description": "4♠ unbal up to 19",
+              "children": []
+            },
+            {
+              "id": "node-96okpgck0",
+              "name": "1NT",
+              "description": "(17 NV)18-19bal 2-3♥",
+              "children": []
+            },
+            {
+              "id": "node-4k3mhsdo2",
+              "name": "2♣",
+              "description": "(14)15-17(18)",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-9dh2yzz7n",
+          "name": "1♥",
+          "description": "4+♠ 4+HCP",
+          "children": []
+        },
+        {
+          "id": "node-xuwjzjj5j",
+          "name": "1♠",
+          "description": "no 4M, 4+♦ or 4♣333 (ball if GF)",
+          "children": []
+        },
+        {
+          "id": "node-b2m36g3cc",
+          "name": "1NT",
+          "description": "5+♣ WK or GF",
+          "children": []
+        },
+        {
+          "id": "node-pv2j6wp8x",
+          "name": "2♣",
+          "description": "5+♦ GF",
+          "children": []
+        },
+        {
+          "id": "node-um134cj5o",
+          "name": "2♦",
+          "description": "5+♣ inv opposit min balanced",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "node-nalro5s57",
+      "name": "1♦",
+      "description": "unbalanced 4(441) or 5+ 11-22",
+      "children": [
+        {
+          "id": "node-opt1tc4ec",
+          "name": "1♥",
+          "description": "4+♥ F1",
+          "children": [
+            {
+              "id": "node-0hw6u8eby",
+              "name": "1♠",
+              "description": "4+♠ ==\u003e XYZ",
+              "children": []
+            },
+            {
+              "id": "node-m2tzxeeis",
+              "name": "1NT",
+              "description": "5+♦ 4+♣ F1",
+              "children": []
+            },
+            {
+              "id": "node-xicwiaulo",
+              "name": "2♣",
+              "description": "6+♦ F1",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "root-oac435a41",
+      "name": "1♥",
+      "description": "5+♥ 11-22",
+      "children": [
+        {
+          "id": "node-q11e6r3a5",
+          "name": "1♠",
+          "description": "0-4♠ GF bal or FNT type hand",
+          "children": []
+        },
+        {
+          "id": "node-99799cq2x",
+          "name": "1NT",
+          "description": "5+♠ F1",
+          "children": [
+            {
+              "id": "node-l77d3fu4k",
+              "name": "2♣",
+              "description": "Gazzilli",
+              "children": [
+                {
+                  "id": "node-0rrrzngpz",
+                  "name": "2♦",
+                  "description": "8+ any",
+                  "children": []
+                },
+                {
+                  "id": "node-tonp98r8f",
+                  "name": "2M",
+                  "description": "s.o. 4-7",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-doq5xrkc4",
+              "name": "2♦",
+              "description": "11-15 4+♦ or 2533",
+              "children": [
+                {
+                  "id": "node-boo3a1b0b",
+                  "name": "3♣",
+                  "description": "4SF",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-aieii99k8",
+              "name": "2♥",
+              "description": "6+♥ 11-14",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "root-yaexzj14a",
+      "name": "Steenberg 2NT",
+      "description": "",
+      "children": [
+        {
+          "id": "node-c1nicvy3l",
+          "name": "3♣",
+          "description": "any minimum 11-14 after 1M-2NT",
+          "children": [
+            {
+              "id": "node-agudzeyo9",
+              "name": "3♦",
+              "description": "ask short",
+              "children": [
+                {
+                  "id": "node-c8135mmvc",
+                  "name": "3♥",
+                  "description": "no short",
+                  "children": []
+                },
+                {
+                  "id": "node-oz5jsb9mu",
+                  "name": "3♠",
+                  "description": "low short",
+                  "children": []
+                },
+                {
+                  "id": "node-3dx6cg8ak",
+                  "name": "3NT",
+                  "description": "middle short",
+                  "children": []
+                },
+                {
+                  "id": "node-mnlr8rjhb",
+                  "name": "4♣+",
+                  "description": "high short + cuebid",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-go8ncj57g",
+              "name": "3M",
+              "description": "NF",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-odn4bpa6i",
+          "name": "3♦",
+          "description": "max no short",
+          "children": []
+        },
+        {
+          "id": "node-moxwo1x2d",
+          "name": "3♥",
+          "description": "max low short",
+          "children": []
+        },
+        {
+          "id": "node-pf7tloq44",
+          "name": "3♠",
+          "description": "max middle short",
+          "children": []
+        },
+        {
+          "id": "node-ximbm4gu5",
+          "name": "3NT",
+          "description": "max high short",
+          "children": []
+        },
+        {
+          "id": "node-7qemnnt1g",
+          "name": "4m",
+          "description": "5-5 HHxxx or better in the second suit.",
+          "children": []
+        }
+      ]
     }
   ]
 }
