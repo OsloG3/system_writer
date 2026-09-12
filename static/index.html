@@ -62,12 +62,12 @@
                         ${trees
                             .map(
                                 (t) => `
-                            <div class="tree-list-item flex items-center justify-between gap-4 p-4 rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
+                            <div class="tree-list-item flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
                                 <div class="flex items-center gap-3 min-w-0">
                                     <span class="material-symbols-outlined text-primary text-xl">account_tree</span>
                                     <span class="font-headline font-semibold text-on-surface truncate">${colorSuits(t.name)}</span>
                                 </div>
-                                <div class="flex items-center gap-2 shrink-0">
+                                <div class="flex items-center gap-2 flex-wrap shrink-0">
                                     <a href="/practice/${t.id}" title="Practice" class="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded text-xs font-label hover:bg-primary-dim transition-colors no-underline">
                                         <span class="material-symbols-outlined text-sm">school</span>
                                         Practice

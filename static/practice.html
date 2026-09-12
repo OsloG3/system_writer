@@ -198,7 +198,7 @@
                     .join('<span class="text-outline-variant px-0.5">–</span>');
 
                 area.innerHTML = `
-                    <div class="bg-surface-container-lowest rounded-xl border border-outline-variant/10 shadow-sm p-8 min-h-[260px]">
+                    <div class="bg-surface-container-lowest rounded-xl border border-outline-variant/10 shadow-sm p-5 sm:p-8 min-h-[260px]">
                         <div class="text-[10px] uppercase tracking-widest text-outline font-label mb-3">
                             Sequence — what does each bid show?
                         </div>
@@ -207,7 +207,7 @@
                         </div>
                         <div id="answer" class="practice-answer"></div>
                     </div>
-                    <div class="flex items-center justify-center gap-3 mt-6" id="card-buttons"></div>
+                    <div class="flex flex-wrap items-center justify-center gap-3 mt-6" id="card-buttons"></div>
                     <div class="text-center text-xs text-on-surface-variant mt-4" id="card-meta"></div>
                 `;
                 renderButtons();
@@ -224,8 +224,8 @@
                     currentCard.path
                         .map(
                             (n) => `
-                        <div class="flex items-baseline gap-4 py-2 border-b border-outline-variant/10 last:border-b-0">
-                            <span class="font-headline font-bold text-on-surface min-w-[70px]">${colorSuits(
+                        <div class="flex items-baseline gap-2 sm:gap-4 py-2 border-b border-outline-variant/10 last:border-b-0">
+                            <span class="font-headline font-bold text-on-surface min-w-[60px] sm:min-w-[70px]">${colorSuits(
                                 n.name,
                             )}</span>
                             <span class="text-sm text-on-surface-variant">${
@@ -294,7 +294,7 @@
                     seen > 0 ? Math.round((stats.good / seen) * 100) : null;
                 meta.innerHTML = `Card ${deckPos} of ${deck.length} · Reviewed ${seen}${
                     pct !== null ? ` · ${pct}% recalled` : ""
-                } <span class="text-outline-variant ml-3">Space: reveal / got it · M: again · S: skip</span>`;
+                } <span class="text-outline-variant ml-3 hidden md:inline">Space: reveal / got it · M: again · S: skip</span>`;
             }
 
             document.addEventListener("keydown", (e) => {

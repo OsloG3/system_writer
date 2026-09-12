@@ -96,7 +96,7 @@
                 if (!isRoot) {
                     const lineH = document.createElement("div");
                     lineH.className =
-                        "absolute -left-5 top-1/2 w-5 h-[1px] bg-outline-variant/20";
+                        "absolute -left-3 md:-left-5 top-1/2 w-3 md:w-5 h-[1px] bg-outline-variant/20";
                     nodeWrapper.appendChild(lineH);
                 }
 
@@ -163,13 +163,13 @@
                 });
 
                 const flexRow = document.createElement("div");
-                flexRow.className = "flex items-center gap-2";
+                flexRow.className = "node-row flex flex-wrap items-center gap-2";
 
                 // Toggle button or spacer
                 if (hasChildren) {
                     const toggleBtn = document.createElement("span");
                     toggleBtn.className =
-                        "material-symbols-outlined text-primary cursor-pointer select-none text-base";
+                        "node-toggle material-symbols-outlined text-primary cursor-pointer select-none text-base";
                     const isExpanded = expandedNodes.has(node.id);
                     toggleBtn.innerHTML = isExpanded
                         ? "expand_more"
@@ -192,7 +192,7 @@
                 } else {
                     const spacer = document.createElement("span");
                     spacer.className =
-                        "material-symbols-outlined text-outline-variant text-base select-none";
+                        "node-toggle material-symbols-outlined text-outline-variant text-base select-none";
                     spacer.innerHTML = "chevron_right";
                     flexRow.appendChild(spacer);
                 }
@@ -331,7 +331,7 @@
                     "node-content" +
                     (expandedNodes.has(node.id) ? "" : " collapsed");
                 contentDiv.className +=
-                    " ml-5 border-l border-outline-variant/20 pl-5 space-y-4 relative mt-4";
+                    " ml-3 md:ml-5 border-l border-outline-variant/20 pl-3 md:pl-5 space-y-4 relative mt-4";
                 nodeWrapper.appendChild(contentDiv);
 
                 if (hasChildren) {

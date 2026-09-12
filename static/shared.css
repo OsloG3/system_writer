@@ -188,3 +188,93 @@
         transform: none;
     }
 }
+
+/* ---- Mobile / small screens ---- */
+
+/* Use dynamic viewport height so mobile browser UI doesn't clip content */
+.app-shell {
+    height: 100vh;
+    height: 100dvh;
+}
+
+/* Sidebar becomes a slide-in drawer below the header */
+#sidebarBackdrop {
+    display: none;
+    position: fixed;
+    top: 4rem;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(12, 15, 15, 0.4);
+    z-index: 30;
+}
+#sidebarBackdrop.show {
+    display: block;
+}
+
+@media (max-width: 767px) {
+    #sidebar {
+        position: fixed;
+        top: 4rem;
+        left: 0;
+        bottom: 0;
+        height: auto;
+        z-index: 40;
+        overflow-y: auto;
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+        -webkit-overflow-scrolling: touch;
+    }
+    #sidebar.open {
+        transform: translateX(0);
+        box-shadow: 8px 0 30px rgba(0, 0, 0, 0.15);
+    }
+}
+
+/* On touch devices there is no hover/focus, so keep node action buttons visible */
+@media (hover: none), (pointer: coarse) {
+    .action-buttons {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    .action-buttons button {
+        padding-top: 6px;
+        padding-bottom: 6px;
+    }
+}
+
+/* Stack editor node rows: [toggle, name, actions] then description below */
+@media (max-width: 767px) {
+    .node-row .node-toggle {
+        order: 1;
+    }
+    .node-row .node-name-input {
+        order: 2;
+        flex: 1 1 60px;
+        width: auto !important;
+        min-width: 0;
+    }
+    .node-row .action-buttons {
+        order: 3;
+    }
+    .node-row .node-desc-input {
+        order: 4;
+        flex-basis: 100%;
+        width: 100% !important;
+    }
+
+    /* 16px prevents iOS Safari from zooming in when focusing inputs */
+    .node-name-input,
+    .node-desc-input,
+    .unlock-input,
+    select,
+    input[type="text"],
+    input[type="password"] {
+        font-size: 16px !important;
+    }
+
+    .app-toast {
+        max-width: calc(100vw - 32px);
+        text-align: center;
+    }
+}

@@ -115,7 +115,7 @@
                 if (!isRoot) {
                     const lineH = document.createElement("div");
                     lineH.className =
-                        "absolute -left-5 top-1/2 w-5 h-[1px] bg-outline-variant/20";
+                        "absolute -left-3 md:-left-5 top-1/2 w-3 md:w-5 h-[1px] bg-outline-variant/20";
                     nodeWrapper.appendChild(lineH);
                 }
 
@@ -174,7 +174,7 @@
                 if (hasChildren) {
                     const childrenWrapper = document.createElement("div");
                     childrenWrapper.className =
-                        "relative ml-5 border-l border-outline-variant/20 pl-5 space-y-4 mt-4";
+                        "relative ml-3 md:ml-5 border-l border-outline-variant/20 pl-3 md:pl-5 space-y-4 mt-4";
 
                     node.children.forEach((child) =>
                         renderNode(child, childrenWrapper, depth + 1),

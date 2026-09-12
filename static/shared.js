@@ -130,13 +130,13 @@ function applyAuthUI() {
     const authArea = document.getElementById("authArea");
     if (authArea) {
         authArea.innerHTML = window.appUnlocked
-            ? `<button onclick="lockNow()" title="Lock editing" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">
+            ? `<button onclick="lockNow()" title="Lock editing" class="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">
                     <span class="material-symbols-outlined text-sm">lock</span>
-                    Lock
+                    <span class="hidden sm:inline">Lock</span>
                </button>`
-            : `<button onclick="showUnlockDialog()" title="Unlock editing" class="flex items-center gap-1 px-3 py-1.5 bg-tertiary-container/40 text-on-tertiary-container rounded font-label text-sm hover:bg-tertiary-container/70 transition-colors">
+            : `<button onclick="showUnlockDialog()" title="Unlock editing" class="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-tertiary-container/40 text-on-tertiary-container rounded font-label text-sm hover:bg-tertiary-container/70 transition-colors">
                     <span class="material-symbols-outlined text-sm">lock_open</span>
-                    Unlock
+                    <span class="hidden sm:inline">Unlock</span>
                </button>`;
     }
     document.querySelectorAll("[data-auth-required]").forEach((el) => {
@@ -224,13 +224,13 @@ function renderLayout(options) {
     const badgeColor = options.badgeColor || (mode === 'edit' ? 'bg-primary-container text-on-primary-container' : 'bg-tertiary-container text-on-tertiary-container');
     const modeLabel = mode === 'edit' ? 'Edit Mode' : mode === 'view' ? 'View Mode' : mode === 'practice' ? 'Practice Mode' : 'Home';
 
-    const btnGhost = "flex items-center gap-2 px-4 py-1.5 bg-surface-container-highest text-on-surface rounded font-label text-sm hover:bg-surface-container-high transition-colors no-underline";
-    const btnPrimary = "flex items-center gap-2 px-4 py-1.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors no-underline";
-    const btnDanger = "flex items-center gap-2 px-3 py-1.5 bg-error-container/30 text-on-error-container rounded font-label text-sm hover:bg-error-container/60 transition-colors";
+    const btnGhost = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-surface-container-highest text-on-surface rounded font-label text-sm hover:bg-surface-container-high transition-colors no-underline";
+    const btnPrimary = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors no-underline";
+    const btnDanger = "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-error-container/30 text-on-error-container rounded font-label text-sm hover:bg-error-container/60 transition-colors";
     const deleteBtn = `
         <button onclick="deleteCurrentTree()" title="Delete system" data-auth-required style="display:none;" class="${btnDanger}">
             <span class="material-symbols-outlined text-sm">delete</span>
-            Delete
+            <span class="hidden sm:inline">Delete</span>
         </button>
     `;
 
@@ -239,15 +239,15 @@ function renderLayout(options) {
         headerActions = `
             <button onclick="saveTree()" data-auth-required style="display:none;" class="${btnGhost}">
                 <span class="material-symbols-outlined text-sm">save</span>
-                Save
+                <span class="hidden sm:inline">Save</span>
             </button>
             <a id="viewLink" href="#" class="${btnGhost}">
                 <span class="material-symbols-outlined text-sm">visibility</span>
-                View
+                <span class="hidden sm:inline">View</span>
             </a>
             <a id="practiceLink" href="#" class="${btnPrimary}">
                 <span class="material-symbols-outlined text-sm">school</span>
-                Practice
+                <span class="hidden sm:inline">Practice</span>
             </a>
             ${deleteBtn}
         `;
@@ -255,11 +255,11 @@ function renderLayout(options) {
         headerActions = `
             <a id="practiceLink" href="#" class="${btnPrimary}">
                 <span class="material-symbols-outlined text-sm">school</span>
-                Practice
+                <span class="hidden sm:inline">Practice</span>
             </a>
             <a id="editLink" href="#" data-auth-required style="display:none;" class="${btnGhost}">
                 <span class="material-symbols-outlined text-sm">edit</span>
-                Edit
+                <span class="hidden sm:inline">Edit</span>
             </a>
             ${deleteBtn}
         `;
@@ -267,11 +267,11 @@ function renderLayout(options) {
         headerActions = `
             <a id="viewLink" href="#" class="${btnGhost}">
                 <span class="material-symbols-outlined text-sm">visibility</span>
-                View
+                <span class="hidden sm:inline">View</span>
             </a>
             <a id="editLink" href="#" data-auth-required style="display:none;" class="${btnGhost}">
                 <span class="material-symbols-outlined text-sm">edit</span>
-                Edit
+                <span class="hidden sm:inline">Edit</span>
             </a>
             ${deleteBtn}
         `;
@@ -279,67 +279,72 @@ function renderLayout(options) {
 
     return `
         <!-- TopAppBar -->
-        <header class="fixed top-0 z-50 bg-[#ffffff] dark:bg-slate-950 flex justify-between items-center px-6 h-16 w-full border-b border-outline-variant/10">
-            <div class="flex items-center gap-8">
-                <a href="/" class="font-manrope font-bold text-xl text-[#2d3435] dark:text-slate-100 no-underline">
+        <header class="fixed top-0 z-50 bg-[#ffffff] dark:bg-slate-950 flex justify-between items-center px-3 sm:px-6 h-16 w-full border-b border-outline-variant/10">
+            <div class="flex items-center gap-2 sm:gap-8 min-w-0">
+                <button id="menuBtn" onclick="toggleSidebar()" aria-label="Open menu" title="Menu" class="md:hidden flex items-center justify-center w-9 h-9 shrink-0 rounded text-on-surface-variant hover:bg-surface-container transition-colors">
+                    <span class="material-symbols-outlined">menu</span>
+                </button>
+                <a href="/" class="font-manrope font-bold text-lg sm:text-xl text-[#2d3435] dark:text-slate-100 no-underline truncate">
                     Atheneum
                 </a>
                 <nav class="hidden md:flex items-center gap-6 font-manrope tracking-tight text-sm">
                     <a class="text-[#2F5597] font-bold border-b-2 border-[#2F5597] pb-1 cursor-pointer duration-200 ease-in-out" href="/">Collections</a>
                 </nav>
             </div>
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-1.5 sm:gap-4 shrink-0">
                 <div id="authArea" class="flex items-center"></div>
-                <div class="h-6 w-[1px] bg-outline-variant/30"></div>
-                <div class="flex items-center bg-surface-container-low px-3 py-1 rounded-full text-xs font-label text-on-surface-variant">
+                <div class="hidden lg:flex items-center bg-surface-container-low px-3 py-1 rounded-full text-xs font-label text-on-surface-variant">
                     <span class="w-2 h-2 rounded-full ${mode === 'edit' ? 'bg-tertiary' : 'bg-primary'} mr-2"></span>
                     ${modeLabel}
                 </div>
                 ${headerActions ? `
-                    <div class="h-6 w-[1px] bg-outline-variant/30"></div>
-                    ${headerActions}
+                    <div class="hidden sm:block h-6 w-[1px] bg-outline-variant/30"></div>
+                    <div class="flex items-center gap-1.5 sm:gap-3">
+                        ${headerActions}
+                    </div>
                 ` : ''}
             </div>
         </header>
-        <div class="flex h-screen pt-16">
-            <!-- SideNavBar -->
-            <aside class="w-64 bg-[#ebeeef] dark:bg-slate-900 flex flex-col h-full py-8 gap-y-2 border-r-0">
+        <div class="app-shell flex pt-16">
+            <!-- SideNavBar (slide-in drawer on small screens) -->
+            <div id="sidebarBackdrop" onclick="closeSidebar()"></div>
+            <aside id="sidebar" class="w-64 bg-[#ebeeef] dark:bg-slate-900 flex flex-col h-full py-8 gap-y-2 border-r-0">
                 <div class="px-6 mb-8">
                     <h2 class="font-manrope font-semibold text-[#2d3435] dark:text-slate-200">Library</h2>
                     <p class="text-[10px] uppercase tracking-widest text-outline-variant">Personal Workspace</p>
                     ${mode === 'edit' ? `
-                        <button onclick="addNewRoot()" data-auth-required style="display:none;" class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2">
+                        <button onclick="addNewRoot(); closeSidebar();" data-auth-required style="display:none;" class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2">
                             <span class="material-symbols-outlined text-sm">add</span>
                             New Root Node
                         </button>
                     ` : mode === 'index' ? `
-                        <button onclick="createTree()" data-auth-required style="display:none;" class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2">
+                        <button onclick="createTree(); closeSidebar();" data-auth-required style="display:none;" class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2">
                             <span class="material-symbols-outlined text-sm">add</span>
                             New Collection
                         </button>
                     ` : ''}
                 </div>
                 <nav class="flex-grow space-y-1">
-                    <a href="/" class="flex items-center ${mode === 'index' ? 'text-[#2F5597] border-l-4 border-[#7a5a00] pl-4 bg-[#ffffff]/50' : 'text-[#2d3435] opacity-70 hover:opacity-100 pl-5 hover:bg-[#e4e9ea] dark:hover:bg-slate-800'} h-10 cursor-pointer transition-all duration-300 ease-out font-inter text-xs uppercase tracking-widest no-underline">
+                    <a href="/" onclick="closeSidebar()" class="flex items-center ${mode === 'index' ? 'text-[#2F5597] border-l-4 border-[#7a5a00] pl-4 bg-[#ffffff]/50' : 'text-[#2d3435] opacity-70 hover:opacity-100 pl-5 hover:bg-[#e4e9ea] dark:hover:bg-slate-800'} h-10 cursor-pointer transition-all duration-300 ease-out font-inter text-xs uppercase tracking-widest no-underline">
                         <span class="material-symbols-outlined mr-3 text-lg">account_tree</span>
                         Collections
                     </a>
                 </nav>
             </aside>
             <!-- Main Content Area -->
-            <main class="flex-grow overflow-y-auto bg-background">
-                <div class="max-w-4xl mx-auto p-12">
-                    <header class="mb-12">
+            <main class="flex-grow overflow-y-auto bg-background min-w-0">
+                <div class="max-w-4xl mx-auto p-4 sm:p-6 md:p-12">
+                    <header class="mb-8 md:mb-12">
                         ${options.badge ? `
                             <div class="flex items-center gap-3 mb-4">
                                 <span class="px-2 py-0.5 ${badgeColor} text-[10px] font-bold rounded uppercase tracking-tighter">${options.badge}</span>
                             </div>
                         ` : ''}
                         ${options.title ? `
-                            <h1 id="${options.titleId || 'pageTitle'}" class="text-5xl font-headline font-extrabold text-on-surface tracking-tight mb-4">${options.title}</h1>
+                            <h1 id="${options.titleId || 'pageTitle'}" class="text-3xl sm:text-4xl md:text-5xl font-headline font-extrabold text-on-surface tracking-tight mb-4">${options.title}</h1>
                         ` : ''}
                         ${options.subtitle ? `
-                            <p class="text-lg text-on-surface-variant leading-relaxed max-w-2xl font-body">${options.subtitle}</p>
+                            <p class="text-base md:text-lg text-on-surface-variant leading-relaxed max-w-2xl font-body">${options.subtitle}</p>
                         ` : ''}
                     </header>
                     <div id="main-content"></div>
@@ -348,3 +353,28 @@ function renderLayout(options) {
         </div>
     `;
 }
+
+// ---- Mobile sidebar drawer ----
+
+function toggleSidebar(force) {
+    const sidebar = document.getElementById("sidebar");
+    if (!sidebar) return;
+    const open = typeof force === "boolean" ? force : !sidebar.classList.contains("open");
+    sidebar.classList.toggle("open", open);
+    const backdrop = document.getElementById("sidebarBackdrop");
+    if (backdrop) backdrop.classList.toggle("show", open);
+    const btn = document.getElementById("menuBtn");
+    if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function closeSidebar() {
+    toggleSidebar(false);
+}
+
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeSidebar();
+});
+
+window.addEventListener("resize", () => {
+    if (window.innerWidth >= 768) closeSidebar();
+});
