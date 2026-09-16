@@ -49,7 +49,11 @@ type Session struct {
 	Expires  time.Time `json:"expires"`
 }
 
-const dataDir = "./data"
+// dataDir holds all persisted state (accounts, sessions, trees). It defaults
+// to ./data but can be pointed outside the repo with ATHENEUM_DATA_DIR so
+// that git operations / redeploys never touch user accounts.
+var dataDir = "./data"
+
 const sessionCookie = "atheneum_session"
 const sessionTTL = 7 * 24 * time.Hour
 
@@ -78,10 +82,16 @@ var (
 var dummySalt = []byte("0123456789abcdef")
 
 func main() {
+	// Allow the data directory to live outside the repo (recommended on servers)
+	if d := strings.TrimSpace(os.Getenv("ATHENEUM_DATA_DIR")); d != "" {
+		dataDir = d
+	}
+
 	// Ensure data directory exists
 	if err := os.MkdirAll(dataDir, os.ModePerm); err != nil {
 		log.Fatalf("Could not create data directory: %v", err)
 	}
+	log.Printf("Data directory: %s", dataDir)
 
 	loadUsers()
 	loadSessions()
