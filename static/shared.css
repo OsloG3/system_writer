@@ -126,7 +126,7 @@
     border-bottom-color: #385da0;
 }
 
-/* Passcode unlock dialog */
+/* Login / register / share dialogs */
 .unlock-overlay {
     position: fixed;
     inset: 0;

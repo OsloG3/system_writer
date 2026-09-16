@@ -1,3 +1,12 @@
 passcode.txt
 system_writer
 sw
+data/users.json
+data/sessions.json
+data/*.tmp
+
+# editor/backup artifacts
+\#*#
+*~
+backup_*/
+.#*

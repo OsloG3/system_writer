@@ -52,10 +52,13 @@
                     treeData.roots = [treeData.root];
                 }
                 treeData.roots = treeData.roots || [];
+                treeData.editors = treeData.editors || [];
+                window.currentTree = treeData;
                 document.getElementById("treeId").innerText =
                     treeData.name ||
                     (treeData.roots[0] && treeData.roots[0].name) ||
                     id;
+                applyTreePerms(treeData);
                 renderTree();
             }
 
@@ -200,6 +203,10 @@
 
                 container.appendChild(nodeWrapper);
             }
+
+            document.addEventListener("authchange", () => {
+                if (window.currentTree) applyTreePerms(window.currentTree);
+            });
 
             refreshAuthState();
             loadTree();

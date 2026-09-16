@@ -57,6 +57,9 @@
                     treeData.roots = [treeData.root];
                 }
                 treeData.roots = treeData.roots || [];
+                treeData.editors = treeData.editors || [];
+                window.currentTree = treeData;
+                applyTreePerms(treeData);
                 document.getElementById("practiceTitle").innerText =
                     treeData.name ||
                     (treeData.roots[0] && treeData.roots[0].name) ||
@@ -313,6 +316,10 @@
                 } else if (e.key === "s" || e.key === "S") {
                     if (!revealed) nextCard();
                 }
+            });
+
+            document.addEventListener("authchange", () => {
+                if (window.currentTree) applyTreePerms(window.currentTree);
             });
 
             refreshAuthState();

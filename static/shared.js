@@ -108,97 +108,348 @@ function showToast(message, isError) {
     }, 2200);
 }
 
-// ---- Edit protection (passcode) ----
+// ---- Accounts and permissions ----
 
-window.appUnlocked = false;
+window.currentUser = null; // username of the logged-in user, or null
+window.appUnlocked = false; // legacy alias for "logged in"
+window.currentTree = null; // tree loaded by the current page (set by pages)
 
 // Query the server for the current auth state, update UI and notify pages
 async function refreshAuthState() {
     try {
         const res = await fetch("/api/auth");
         const data = await res.json();
-        window.appUnlocked = !!data.unlocked;
+        window.currentUser = data.loggedIn ? data.username : null;
     } catch (e) {
-        window.appUnlocked = false;
+        window.currentUser = null;
     }
+    window.appUnlocked = !!window.currentUser;
     applyAuthUI();
     document.dispatchEvent(new CustomEvent("authchange"));
 }
 
-// Show/hide elements that require an unlocked session
+// Render the login button or the user chip + logout in the header
 function applyAuthUI() {
     const authArea = document.getElementById("authArea");
     if (authArea) {
-        authArea.innerHTML = window.appUnlocked
-            ? `<button onclick="lockNow()" title="Lock editing" class="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">
-                    <span class="material-symbols-outlined text-sm">lock</span>
-                    <span class="hidden sm:inline">Lock</span>
-               </button>`
-            : `<button onclick="showUnlockDialog()" title="Unlock editing" class="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-tertiary-container/40 text-on-tertiary-container rounded font-label text-sm hover:bg-tertiary-container/70 transition-colors">
-                    <span class="material-symbols-outlined text-sm">lock_open</span>
-                    <span class="hidden sm:inline">Unlock</span>
+        authArea.innerHTML = window.currentUser
+            ? `<div class="flex items-center gap-1.5 sm:gap-2">
+                    <span class="hidden md:flex items-center gap-1 px-2 py-1 bg-surface-container-low rounded-full text-xs font-label text-on-surface-variant">
+                        <span class="material-symbols-outlined text-sm">person</span>
+                        ${escapeHtml(window.currentUser)}
+                    </span>
+                    <button onclick="logoutNow()" title="Log out" class="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">
+                        <span class="material-symbols-outlined text-sm">logout</span>
+                        <span class="hidden sm:inline">Log out</span>
+                    </button>
+               </div>`
+            : `<button onclick="showAuthDialog('login')" title="Log in" class="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-tertiary-container/40 text-on-tertiary-container rounded font-label text-sm hover:bg-tertiary-container/70 transition-colors">
+                    <span class="material-symbols-outlined text-sm">login</span>
+                    <span class="hidden sm:inline">Log in</span>
                </button>`;
     }
-    document.querySelectorAll("[data-auth-required]").forEach((el) => {
-        el.style.display = window.appUnlocked ? "" : "none";
+}
+
+// Show/hide per-tree action buttons once the tree and user are known
+function applyTreePerms(tree) {
+    const canEdit = treeCanEdit(tree);
+    const owner = treeIsOwner(tree);
+    document.querySelectorAll("[data-edit-required]").forEach((el) => {
+        el.style.display = canEdit ? "" : "none";
+    });
+    document.querySelectorAll("[data-owner-required]").forEach((el) => {
+        el.style.display = owner ? "" : "none";
     });
 }
 
-function showUnlockDialog() {
-    if (document.getElementById("unlockOverlay")) return;
+// The owner and the editors they added may edit; legacy trees with no
+// owner may be edited by any logged-in user
+function treeCanEdit(tree) {
+    if (!tree || !window.currentUser) return false;
+    if (!tree.owner) return true;
+    if (tree.owner === window.currentUser) return true;
+    return (tree.editors || []).includes(window.currentUser);
+}
+
+function treeIsOwner(tree) {
+    if (!tree || !window.currentUser) return false;
+    return !tree.owner || tree.owner === window.currentUser;
+}
+
+// ---- Login / register dialog ----
+
+function showAuthDialog(tab) {
+    closeAuthDialog();
+    const mode = tab === "register" ? "register" : "login";
     const overlay = document.createElement("div");
-    overlay.id = "unlockOverlay";
+    overlay.id = "authOverlay";
     overlay.className = "unlock-overlay";
     overlay.innerHTML = `
         <div class="unlock-card">
-            <span class="material-symbols-outlined text-primary text-3xl mb-2">lock</span>
-            <h2 class="font-headline font-bold text-on-surface text-lg mb-1">Editing is protected</h2>
-            <p class="text-sm text-on-surface-variant mb-4">Enter the passcode to create, edit or delete systems.</p>
-            <form id="unlockForm">
-                <input id="unlockPass" type="password" autocomplete="current-password" placeholder="Passcode" class="unlock-input" />
-                <div id="unlockError" class="text-xs mt-2" style="color:#9f403d; display:none;">Incorrect passcode</div>
+            <span class="material-symbols-outlined text-primary text-3xl mb-2">person</span>
+            <div class="flex gap-2 mb-3 w-full">
+                <button type="button" id="tabLogin" class="flex-1 py-1.5 rounded font-label text-sm transition-colors">Log in</button>
+                <button type="button" id="tabRegister" class="flex-1 py-1.5 rounded font-label text-sm transition-colors">Create account</button>
+            </div>
+            <p id="authSubtitle" class="text-sm text-on-surface-variant mb-4"></p>
+            <form id="authForm">
+                <input id="authUser" type="text" autocomplete="username" placeholder="Username" class="unlock-input mb-2" />
+                <input id="authPass" type="password" autocomplete="current-password" placeholder="Password" class="unlock-input" />
+                <input id="authPass2" type="password" autocomplete="new-password" placeholder="Confirm password" class="unlock-input mt-2" style="display:none;" />
+                <div id="authError" class="text-xs mt-2" style="color:#9f403d; display:none;"></div>
                 <div class="flex justify-end gap-2 mt-4">
-                    <button type="button" id="unlockCancel" class="px-4 py-2 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">Unlock</button>
+                    <button type="button" id="authCancel" class="px-4 py-2 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">Cancel</button>
+                    <button type="submit" id="authSubmit" class="px-4 py-2 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors"></button>
                 </div>
             </form>
         </div>
     `;
     document.body.appendChild(overlay);
-    const input = overlay.querySelector("#unlockPass");
-    input.focus();
-    overlay.querySelector("#unlockCancel").onclick = closeUnlockDialog;
+
+    let currentMode = mode;
+    const userInput = overlay.querySelector("#authUser");
+    const passInput = overlay.querySelector("#authPass");
+    const pass2Input = overlay.querySelector("#authPass2");
+    const errorEl = overlay.querySelector("#authError");
+
+    function paintMode() {
+        const register = currentMode === "register";
+        overlay.querySelector("#tabLogin").className =
+            "flex-1 py-1.5 rounded font-label text-sm transition-colors " +
+            (register
+                ? "bg-surface-container text-on-surface-variant"
+                : "bg-primary text-on-primary");
+        overlay.querySelector("#tabRegister").className =
+            "flex-1 py-1.5 rounded font-label text-sm transition-colors " +
+            (register
+                ? "bg-primary text-on-primary"
+                : "bg-surface-container text-on-surface-variant");
+        overlay.querySelector("#authSubtitle").textContent = register
+            ? "Create an account to build your own systems and edit ones you are added to."
+            : "Log in to create systems and edit the ones you own or were added to.";
+        pass2Input.style.display = register ? "" : "none";
+        passInput.autocomplete = register ? "new-password" : "current-password";
+        overlay.querySelector("#authSubmit").textContent = register
+            ? "Create account"
+            : "Log in";
+        errorEl.style.display = "none";
+    }
+    overlay.querySelector("#tabLogin").onclick = () => {
+        currentMode = "login";
+        paintMode();
+    };
+    overlay.querySelector("#tabRegister").onclick = () => {
+        currentMode = "register";
+        paintMode();
+    };
+    paintMode();
+
+    userInput.focus();
+    overlay.querySelector("#authCancel").onclick = closeAuthDialog;
     overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) closeUnlockDialog();
+        if (e.target === overlay) closeAuthDialog();
     });
-    overlay.querySelector("#unlockForm").onsubmit = async (e) => {
+    overlay.querySelector("#authForm").onsubmit = async (e) => {
         e.preventDefault();
-        const res = await fetch("/api/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ passcode: input.value }),
-        });
+        const username = userInput.value.trim();
+        const password = passInput.value;
+        if (currentMode === "register" && password !== pass2Input.value) {
+            errorEl.textContent = "Passwords do not match";
+            errorEl.style.display = "block";
+            return;
+        }
+        const submit = overlay.querySelector("#authSubmit");
+        submit.disabled = true;
+        const res = await fetch(
+            currentMode === "register" ? "/api/register" : "/api/login",
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: username, password: password }),
+            },
+        );
+        submit.disabled = false;
         if (res.ok) {
-            closeUnlockDialog();
-            showToast("Editing unlocked");
+            const data = await res.json();
+            closeAuthDialog();
+            showToast(
+                currentMode === "register"
+                    ? "Account created, welcome " + data.username
+                    : "Logged in as " + data.username,
+            );
             refreshAuthState();
         } else {
-            overlay.querySelector("#unlockError").style.display = "block";
-            input.value = "";
-            input.focus();
+            let msg = currentMode === "register" ? "Registration failed" : "Incorrect username or password";
+            try {
+                const data = await res.json();
+                if (data.error) msg = data.error;
+            } catch (e) {}
+            errorEl.textContent = msg;
+            errorEl.style.display = "block";
+            passInput.value = "";
+            pass2Input.value = "";
+            passInput.focus();
         }
     };
 }
 
-function closeUnlockDialog() {
-    const overlay = document.getElementById("unlockOverlay");
+function closeAuthDialog() {
+    const overlay = document.getElementById("authOverlay");
     if (overlay) overlay.remove();
 }
 
-async function lockNow() {
+// Backwards-compatible name used by older call sites
+function showUnlockDialog() {
+    showAuthDialog("login");
+}
+
+async function logoutNow() {
     await fetch("/api/logout", { method: "POST" });
-    showToast("Editing locked");
+    showToast("Logged out");
     refreshAuthState();
+}
+
+// ---- Copying a system ----
+
+// Duplicate the tree loaded on the current page as a new system owned by
+// the current user, then open it in the editor
+async function copyCurrentTree() {
+    const tree = window.currentTree;
+    if (!tree) return;
+    if (!window.currentUser) {
+        showAuthDialog("login");
+        return;
+    }
+    const res = await fetch(`/api/tree/${tree.id}/copy`, { method: "POST" });
+    if (res.ok) {
+        const data = await res.json();
+        window.location.href = "/edit/" + data.id;
+    } else if (res.status === 401) {
+        showAuthDialog("login");
+    } else {
+        showToast("Could not copy system", true);
+    }
+}
+
+// ---- Sharing (managing editors) ----
+
+// Open the sharing dialog for the tree loaded on the current page
+function shareCurrentTree() {
+    if (window.currentTree) showShareDialog(window.currentTree);
+}
+
+async function showShareDialog(tree) {
+    closeShareDialog();
+    let allUsers = [];
+    try {
+        const res = await fetch("/api/users");
+        if (res.ok) allUsers = (await res.json()).users || [];
+    } catch (e) {}
+
+    const overlay = document.createElement("div");
+    overlay.id = "shareOverlay";
+    overlay.className = "unlock-overlay";
+    overlay.innerHTML = `
+        <div class="unlock-card">
+            <span class="material-symbols-outlined text-primary text-3xl mb-2">group</span>
+            <h2 class="font-headline font-bold text-on-surface text-lg mb-1">Sharing</h2>
+            <p class="text-sm text-on-surface-variant mb-3">Editors can change this system, but only the owner can delete it or manage editors.</p>
+            <div class="text-xs text-on-surface-variant mb-3">
+                Owner: <span class="font-semibold">${tree.owner ? escapeHtml(tree.owner) : "<em>unclaimed (legacy system)</em>"}</span>
+            </div>
+            <div id="editorList" class="w-full space-y-1.5 mb-3"></div>
+            <form id="addEditorForm" class="w-full">
+                <div class="flex gap-2">
+                    <input id="editorUser" type="text" list="editorUserList" placeholder="Username to add" autocomplete="off" class="unlock-input" />
+                    <datalist id="editorUserList"></datalist>
+                    <button type="submit" class="shrink-0 px-3 py-2 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">Add</button>
+                </div>
+                <div id="shareError" class="text-xs mt-2" style="color:#9f403d; display:none;"></div>
+            </form>
+            <div class="flex justify-end mt-4 w-full">
+                <button type="button" id="shareClose" class="px-4 py-2 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">Close</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const listEl = overlay.querySelector("#editorList");
+    const errorEl = overlay.querySelector("#shareError");
+    const userInput = overlay.querySelector("#editorUser");
+    const datalist = overlay.querySelector("#editorUserList");
+
+    function renderEditors() {
+        const editors = tree.editors || [];
+        listEl.innerHTML = editors.length
+            ? editors
+                  .map(
+                      (u) => `
+                <div class="flex items-center justify-between px-3 py-2 bg-surface-container-low rounded">
+                    <span class="flex items-center gap-2 text-sm text-on-surface">
+                        <span class="material-symbols-outlined text-base text-primary">edit</span>
+                        ${escapeHtml(u)}
+                    </span>
+                    <button type="button" data-remove="${escapeHtml(u)}" title="Remove editor" class="px-2 py-1 bg-error-container/40 text-on-error-container rounded text-xs font-label hover:bg-error-container transition-colors">Remove</button>
+                </div>`,
+                  )
+                  .join("")
+            : `<p class="text-sm text-on-surface-variant italic">No editors yet.</p>`;
+        listEl.querySelectorAll("[data-remove]").forEach((btn) => {
+            btn.onclick = () => changeEditor(btn.dataset.remove, "remove");
+        });
+        datalist.innerHTML = allUsers
+            .filter((u) => u !== tree.owner && !editors.includes(u))
+            .map((u) => `<option value="${escapeHtml(u)}"></option>`)
+            .join("");
+    }
+
+    async function changeEditor(username, action) {
+        errorEl.style.display = "none";
+        const res = await fetch(`/api/tree/${tree.id}/editors`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: username, action: action }),
+        });
+        if (res.ok) {
+            const data = await res.json();
+            tree.editors = data.editors || [];
+            renderEditors();
+            showToast(
+                action === "add"
+                    ? `${username} can now edit`
+                    : `${username} removed`,
+            );
+            document.dispatchEvent(new CustomEvent("editorschange"));
+        } else {
+            let msg = "Could not update editors";
+            try {
+                const data = await res.json();
+                if (data.error) msg = data.error;
+            } catch (e) {}
+            errorEl.textContent = msg;
+            errorEl.style.display = "block";
+        }
+    }
+
+    overlay.querySelector("#addEditorForm").onsubmit = (e) => {
+        e.preventDefault();
+        const username = userInput.value.trim().toLowerCase();
+        if (!username) return;
+        userInput.value = "";
+        changeEditor(username, "add");
+    };
+    overlay.querySelector("#shareClose").onclick = closeShareDialog;
+    overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) closeShareDialog();
+    });
+
+    renderEditors();
+    userInput.focus();
+}
+
+function closeShareDialog() {
+    const overlay = document.getElementById("shareOverlay");
+    if (overlay) overlay.remove();
 }
 
 // Delete the system identified by the current URL and go back home
@@ -210,8 +461,10 @@ async function deleteCurrentTree() {
         window.treeDeleted = true;
         window.location.href = "/";
     } else if (res.status === 401) {
-        showToast("Passcode required", true);
-        showUnlockDialog();
+        showToast("Log in first", true);
+        showAuthDialog("login");
+    } else if (res.status === 403) {
+        showToast("Only the owner can delete this system", true);
     } else {
         showToast("Delete failed", true);
     }
@@ -228,19 +481,26 @@ function renderLayout(options) {
     const btnPrimary = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors no-underline";
     const btnDanger = "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-error-container/30 text-on-error-container rounded font-label text-sm hover:bg-error-container/60 transition-colors";
     const deleteBtn = `
-        <button onclick="deleteCurrentTree()" title="Delete system" data-auth-required style="display:none;" class="${btnDanger}">
+        <button onclick="deleteCurrentTree()" title="Delete system" data-owner-required style="display:none;" class="${btnDanger}">
             <span class="material-symbols-outlined text-sm">delete</span>
             <span class="hidden sm:inline">Delete</span>
+        </button>
+    `;
+    const shareBtn = `
+        <button onclick="shareCurrentTree()" title="Manage editors" data-owner-required style="display:none;" class="${btnGhost}">
+            <span class="material-symbols-outlined text-sm">group</span>
+            <span class="hidden sm:inline">Share</span>
         </button>
     `;
 
     let headerActions = '';
     if (mode === 'edit') {
         headerActions = `
-            <button onclick="saveTree()" data-auth-required style="display:none;" class="${btnGhost}">
+            <button onclick="saveTree()" data-edit-required style="display:none;" class="${btnGhost}">
                 <span class="material-symbols-outlined text-sm">save</span>
                 <span class="hidden sm:inline">Save</span>
             </button>
+            ${shareBtn}
             <a id="viewLink" href="#" class="${btnGhost}">
                 <span class="material-symbols-outlined text-sm">visibility</span>
                 <span class="hidden sm:inline">View</span>
@@ -257,10 +517,15 @@ function renderLayout(options) {
                 <span class="material-symbols-outlined text-sm">school</span>
                 <span class="hidden sm:inline">Practice</span>
             </a>
-            <a id="editLink" href="#" data-auth-required style="display:none;" class="${btnGhost}">
+            <button onclick="copyCurrentTree()" title="Create your own copy of this system" class="${btnGhost}">
+                <span class="material-symbols-outlined text-sm">content_copy</span>
+                <span class="hidden sm:inline">Copy</span>
+            </button>
+            <a id="editLink" href="#" data-edit-required style="display:none;" class="${btnGhost}">
                 <span class="material-symbols-outlined text-sm">edit</span>
                 <span class="hidden sm:inline">Edit</span>
             </a>
+            ${shareBtn}
             ${deleteBtn}
         `;
     } else if (mode === 'practice') {
@@ -269,10 +534,11 @@ function renderLayout(options) {
                 <span class="material-symbols-outlined text-sm">visibility</span>
                 <span class="hidden sm:inline">View</span>
             </a>
-            <a id="editLink" href="#" data-auth-required style="display:none;" class="${btnGhost}">
+            <a id="editLink" href="#" data-edit-required style="display:none;" class="${btnGhost}">
                 <span class="material-symbols-outlined text-sm">edit</span>
                 <span class="hidden sm:inline">Edit</span>
             </a>
+            ${shareBtn}
             ${deleteBtn}
         `;
     }
@@ -313,12 +579,12 @@ function renderLayout(options) {
                     <h2 class="font-manrope font-semibold text-[#2d3435] dark:text-slate-200">Library</h2>
                     <p class="text-[10px] uppercase tracking-widest text-outline-variant">Personal Workspace</p>
                     ${mode === 'edit' ? `
-                        <button onclick="addNewRoot(); closeSidebar();" data-auth-required style="display:none;" class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2">
+                        <button onclick="addNewRoot(); closeSidebar();" data-edit-required style="display:none;" class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2">
                             <span class="material-symbols-outlined text-sm">add</span>
                             New Root Node
                         </button>
                     ` : mode === 'index' ? `
-                        <button onclick="createTree(); closeSidebar();" data-auth-required style="display:none;" class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2">
+                        <button onclick="createTree(); closeSidebar();" class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2">
                             <span class="material-symbols-outlined text-sm">add</span>
                             New Collection
                         </button>

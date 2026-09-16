@@ -40,7 +40,6 @@
                 const trees = (await res.json()) || [];
                 treesCache = trees;
                 const content = document.getElementById("main-content");
-                const unlocked = window.appUnlocked;
 
                 if (trees.length === 0) {
                     content.innerHTML = `
@@ -48,9 +47,9 @@
                             <span class="material-symbols-outlined text-outline-variant text-6xl mb-4">account_tree</span>
                             <p class="text-on-surface-variant text-lg font-body">No collections yet.</p>
                             <p class="text-on-surface-variant text-sm font-body mt-2">${
-                                unlocked
+                                window.currentUser
                                     ? 'Click "New Collection" to get started.'
-                                    : 'Unlock editing to create your first system.'
+                                    : "Create an account to build your first system."
                             }</p>
                         </div>
                     `;
@@ -65,7 +64,14 @@
                             <div class="tree-list-item flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
                                 <div class="flex items-center gap-3 min-w-0">
                                     <span class="material-symbols-outlined text-primary text-xl">account_tree</span>
-                                    <span class="font-headline font-semibold text-on-surface truncate">${colorSuits(t.name)}</span>
+                                    <div class="min-w-0">
+                                        <span class="font-headline font-semibold text-on-surface truncate block">${colorSuits(t.name)}</span>
+                                        <span class="text-xs text-on-surface-variant font-label">by ${t.owner ? escapeHtml(t.owner) : "<em>unclaimed</em>"}${
+                                            treeCanEdit(t) && !treeIsOwner(t)
+                                                ? ' <span class="text-primary">· you can edit</span>'
+                                                : ""
+                                        }</span>
+                                    </div>
                                 </div>
                                 <div class="flex items-center gap-2 flex-wrap shrink-0">
                                     <a href="/practice/${t.id}" title="Practice" class="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded text-xs font-label hover:bg-primary-dim transition-colors no-underline">
@@ -76,13 +82,22 @@
                                         <span class="material-symbols-outlined text-sm">visibility</span>
                                         View
                                     </a>
+                                    <button onclick="duplicateTree('${t.id}')" title="Create your own copy of this system" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded text-xs font-label hover:bg-surface-container-high transition-colors">
+                                        <span class="material-symbols-outlined text-sm">content_copy</span>
+                                        Copy
+                                    </button>
                                     ${
-                                        unlocked
+                                        treeCanEdit(t)
                                             ? `
                                     <a href="/edit/${t.id}" title="Edit" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded text-xs font-label hover:bg-surface-container-high transition-colors no-underline">
                                         <span class="material-symbols-outlined text-sm">edit</span>
                                         Edit
-                                    </a>
+                                    </a>`
+                                            : ""
+                                    }
+                                    ${
+                                        treeIsOwner(t)
+                                            ? `
                                     <button onclick="deleteTree('${t.id}')" title="Delete" class="flex items-center gap-1 px-2 py-1.5 bg-error-container/40 text-on-error-container rounded text-xs font-label hover:bg-error-container transition-colors">
                                         <span class="material-symbols-outlined text-sm">delete</span>
                                     </button>`
@@ -98,11 +113,30 @@
             }
 
             function createTree() {
-                if (!window.appUnlocked) {
-                    showUnlockDialog();
+                if (!window.currentUser) {
+                    showAuthDialog("login");
                     return;
                 }
                 showCreateDialog();
+            }
+
+            // Duplicate any public system as a new one owned by the current user
+            async function duplicateTree(treeId) {
+                if (!window.currentUser) {
+                    showAuthDialog("login");
+                    return;
+                }
+                const res = await fetch(`/api/tree/${treeId}/copy`, {
+                    method: "POST",
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    window.location.href = "/edit/" + data.id;
+                } else if (res.status === 401) {
+                    showAuthDialog("login");
+                } else {
+                    showToast("Could not copy system", true);
+                }
             }
 
             function showCreateDialog() {
@@ -141,7 +175,7 @@
                     });
                     if (res.status === 401) {
                         overlay.remove();
-                        showUnlockDialog();
+                        showAuthDialog("login");
                         return;
                     }
                     if (!res.ok) {
@@ -165,8 +199,10 @@
                     showToast("System deleted");
                     loadList();
                 } else if (res.status === 401) {
-                    showToast("Passcode required", true);
-                    showUnlockDialog();
+                    showToast("Log in first", true);
+                    showAuthDialog("login");
+                } else if (res.status === 403) {
+                    showToast("Only the owner can delete this system", true);
                 } else {
                     showToast("Delete failed", true);
                 }

@@ -60,6 +60,8 @@
                     treeData.roots = [treeData.root];
                 }
                 treeData.roots = treeData.roots || [];
+                treeData.editors = treeData.editors || [];
+                window.currentTree = treeData;
                 if (!treeData.name) {
                     // migrate legacy files that used the first root as the name
                     treeData.name =
@@ -68,7 +70,8 @@
                 document.getElementById("treeNameDisplay").innerText =
                     treeData.name || "Untitled System";
                 dirty = false;
-                renderTree();
+                treeLoaded = true;
+                updatePermsUI();
             }
 
             function addNewRoot() {
@@ -553,6 +556,10 @@
             }
 
             async function saveTree() {
+                if (!treeCanEdit(treeData)) {
+                    showToast("You don't have edit access to this system", true);
+                    return;
+                }
                 try {
                     const res = await fetch("/api/tree/" + id, {
                         method: "PUT",
@@ -560,8 +567,15 @@
                         body: JSON.stringify(treeData),
                     });
                     if (res.status === 401) {
-                        showToast("Passcode required", true);
-                        showUnlockDialog();
+                        showToast("Log in first", true);
+                        showAuthDialog("login");
+                        return;
+                    }
+                    if (res.status === 403) {
+                        showToast(
+                            "Only the owner and editors can edit this system",
+                            true,
+                        );
                         return;
                     }
                     if (!res.ok) throw new Error(res.statusText);
@@ -572,34 +586,47 @@
                 }
             }
 
-            function showLockScreen() {
+            function showNoPermissionScreen() {
                 const content = document.getElementById("main-content");
+                const ownerLine = treeData.owner
+                    ? `Only <span class="font-semibold">${escapeHtml(treeData.owner)}</span> and the editors they add can edit this system.`
+                    : "Log in to edit this system.";
                 content.innerHTML = `
                     <div class="text-center py-16 bg-surface-container-lowest rounded-xl border border-outline-variant/10 max-w-md mx-auto">
-                        <span class="material-symbols-outlined text-primary text-5xl mb-4">lock</span>
-                        <p class="text-on-surface text-lg font-headline font-bold">Editing is protected</p>
-                        <p class="text-on-surface-variant text-sm mt-2 mb-6">Enter the passcode to edit this system.</p>
-                        <button onclick="showUnlockDialog()" class="px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
-                            Enter passcode
-                        </button>
+                        <span class="material-symbols-outlined text-primary text-5xl mb-4">${window.currentUser ? "lock" : "person"}</span>
+                        <p class="text-on-surface text-lg font-headline font-bold">${window.currentUser ? "No edit access" : "Log in to edit"}</p>
+                        <p class="text-on-surface-variant text-sm mt-2 mb-6">${ownerLine}</p>
+                        <div class="flex items-center justify-center gap-3 flex-wrap">
+                            ${window.currentUser ? "" : `
+                            <button onclick="showAuthDialog('login')" class="px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                                Log in
+                            </button>`}
+                            <a href="/view/${id}" class="px-5 py-2.5 bg-surface-container text-on-surface rounded font-label text-sm hover:bg-surface-container-high transition-colors no-underline">
+                                View system
+                            </a>
+                        </div>
                     </div>
                 `;
             }
 
             let treeLoaded = false;
+            let editorShown = false;
 
-            document.addEventListener("authchange", () => {
-                if (window.appUnlocked) {
-                    if (!treeLoaded) {
-                        treeLoaded = true;
-                        loadTree();
-                    } else {
+            function updatePermsUI() {
+                if (!treeLoaded) return;
+                applyTreePerms(treeData);
+                if (treeCanEdit(treeData)) {
+                    if (!editorShown) {
+                        editorShown = true;
                         renderTree();
                     }
                 } else {
-                    showLockScreen();
+                    editorShown = false;
+                    showNoPermissionScreen();
                 }
-            });
+            }
+
+            document.addEventListener("authchange", updatePermsUI);
 
             document.addEventListener("keydown", (e) => {
                 if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -615,6 +642,7 @@
                 }
             });
 
+            loadTree();
             refreshAuthState();
         </script>
     </body>
