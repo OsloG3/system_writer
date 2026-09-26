@@ -1,0 +1,20 @@
+# ~1 hour CPU run on this box (4 cores): small preset, batch 256, 3200 steps
+# (~21% of one epoch over the 3.8M hero-rotated sequences).
+model:
+  d_model: 176
+  n_layers: 6
+  n_heads: 8
+  d_ff: 448
+  dropout: 0.0
+train:
+  batch_size: 256
+  lr: 5.0e-4
+  epochs: 1
+  max_steps: 2800
+  warmup_steps: 300
+  val_every: 400
+  val_batches: 60
+  log_every: 100
+data:
+  cache_dir: cache
+  num_workers: 2

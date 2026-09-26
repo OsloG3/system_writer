@@ -1,0 +1,17 @@
+# ~6.4M params
+model:
+  d_model: 256
+  n_layers: 8
+  n_heads: 8
+  d_ff: 680
+  dropout: 0.0
+train:
+  batch_size: 512
+  lr: 4.0e-4
+  epochs: 2
+  warmup_steps: 2000
+  val_every: 2000
+  log_every: 100
+data:
+  cache_dir: cache
+  num_workers: 8

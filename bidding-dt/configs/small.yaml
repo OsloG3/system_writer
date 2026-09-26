@@ -1,0 +1,18 @@
+# ~2.2M params. GPU full run:
+#   python -m bidding_dt.train --config configs/small.yaml --out runs/small
+model:
+  d_model: 176
+  n_layers: 6
+  n_heads: 8
+  d_ff: 448
+  dropout: 0.0
+train:
+  batch_size: 512
+  lr: 6.0e-4
+  epochs: 2
+  warmup_steps: 2000
+  val_every: 2000
+  log_every: 100
+data:
+  cache_dir: cache
+  num_workers: 8

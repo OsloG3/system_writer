@@ -1,0 +1,18 @@
+# CPU smoke run: tiny model, warm-started from runs/smoke/best.pt.
+#   uv run python -m bidding_dt.rl.train_ppo --preset tiny \
+#       --bc-ckpt runs/smoke/best.pt --config configs/rl_smoke.yaml \
+#       --out runs/rl_smoke
+rl:
+  iters: 6
+  deals_per_iter: 24
+  eval_every: 3
+  eval_deals: 12
+  snapshot_every: 3
+  league_prob: 0.5
+  minibatch_size: 128
+  ppo_epochs: 2
+  warmup_iters: 2
+  cache_path: cache/dd_smoke.sqlite
+  rollout_temp: 1.2
+  team_weight: 1.0
+  par_weight: 0.25

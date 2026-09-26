@@ -1,0 +1,654 @@
+<!doctype html>
+
+<html class="light" lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>Atheneum | Play vs Bots</title>
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+            rel="stylesheet"
+        />
+        <script src="/static/shared.js"></script>
+        <link rel="stylesheet" href="/static/shared.css" />
+    </head>
+    <body
+        class="bg-background text-on-surface font-body selection:bg-tertiary-container/30 overflow-hidden"
+    >
+        <div id="app"></div>
+
+        <script>
+            document.getElementById("app").innerHTML = renderLayout({
+                mode: "play",
+                badge: "Play",
+                title: "Play vs Bots",
+                subtitle:
+                    "Sit South at a table with three bots from the bidding-dt project. Each board is scored in IMPs versus double-dummy par, and your running average is kept.",
+            });
+
+            const SEAT_NAMES = ["North", "East", "South", "West"];
+            const VULN_NAMES = ["None", "N-S", "E-W", "Both"];
+            const SUIT_SYMBOL = { S: "♠", H: "♥", D: "♦", C: "♣", N: "NT" };
+            const SUIT_ORDER = ["C", "D", "H", "S", "N"]; // ascending bid rank
+            const AUCTION_COLS = [3, 0, 1, 2]; // W N E S: South rightmost
+            const BOARD_KEY = "atheneum_play_board";
+
+            let state = null; // current board from the server
+            let stats = null; // { boards, impsTotal, avgImps, recent }
+            let busy = false; // a request is in flight (bots thinking)
+            let autoRetries = 0; // failed auto-recovery attempts in a row
+            let bidLevelSel = null; // bidding-box selection, kept across renders
+            let bidStrainSel = null;
+
+            // ---- formatting helpers ----
+
+            function callLabel(c) {
+                if (c === "P") return "Pass";
+                if (c === "X") return "Dbl";
+                if (c === "XX") return "Rdbl";
+                if (c.length === 2) return c[0] + SUIT_SYMBOL[c[1]];
+                return c;
+            }
+
+            function callHtml(c) {
+                return colorSuits(callLabel(c));
+            }
+
+            // "4S by W" / "1HX by E" / "passed out" -> suit-symbolized html
+            function contractHtml(text) {
+                const t = String(text || "").replace(
+                    /([1-7])([CDHSN])/g,
+                    (m, l, d) => l + (d === "N" ? "NT" : SUIT_SYMBOL[d]),
+                );
+                return colorSuits(t);
+            }
+
+            function seatIsVul(seat, vuln) {
+                const ns = seat % 2 === 0;
+                return (
+                    vuln === 3 || (vuln === 1 && ns) || (vuln === 2 && !ns)
+                );
+            }
+
+            function signed(n, digits) {
+                const v = Number(n);
+                const s = digits === undefined ? String(v) : v.toFixed(digits);
+                return v > 0 ? "+" + s : s;
+            }
+
+            function scoreText(n) {
+                return n > 0 ? "+" + n : String(n);
+            }
+
+            function handHtml(handStr, small) {
+                const parts = String(handStr || "").split("."); // S,H,D,C
+                return [["S", "♠"], ["H", "♥"], ["D", "♦"], ["C", "♣"]]
+                    .map(([ch, sym], i) => {
+                        const color =
+                            ch === "H" || ch === "D"
+                                ? "color:#b91c1c;"
+                                : "color:#15803d;";
+                        const cards = escapeHtml(parts[i] || "—")
+                            .split("")
+                            .join(" ");
+                        return `<div class="flex items-baseline gap-1">
+                            <span class="w-3.5 shrink-0 ${small ? "text-xs" : "text-base"} leading-none" style="${color}">${sym}</span>
+                            <span class="font-headline font-semibold ${small ? "text-[11px]" : "text-sm"} tracking-wide text-on-surface">${cards || "—"}</span>
+                        </div>`;
+                    })
+                    .join("");
+            }
+
+            function impsColor(imps) {
+                if (imps > 0) return "text-green-700";
+                if (imps < 0) return "text-error";
+                return "text-on-surface-variant";
+            }
+
+            function timeAgo(ts) {
+                const d = new Date(ts);
+                if (isNaN(d)) return "";
+                const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+                if (mins < 1) return "just now";
+                if (mins < 60) return mins + "m ago";
+                const hrs = Math.floor(mins / 60);
+                if (hrs < 24) return hrs + "h ago";
+                return Math.floor(hrs / 24) + "d ago";
+            }
+
+            // ---- server calls ----
+
+            async function handleResponse(res) {
+                if (res.status === 401) {
+                    busy = false;
+                    render();
+                    showAuthDialog("login");
+                    return;
+                }
+                let data = null;
+                try {
+                    data = await res.json();
+                } catch (e) {}
+                if (!res.ok) {
+                    busy = false;
+                    autoRetries++;
+                    if (res.status === 404 && state) {
+                        localStorage.removeItem(BOARD_KEY);
+                        state = null;
+                    }
+                    showToast((data && data.error) || "Request failed", true);
+                    render();
+                    return;
+                }
+                state = data;
+                if (data.stats) stats = data.stats;
+                localStorage.setItem(BOARD_KEY, data.id);
+                busy = false;
+                autoRetries = 0;
+                render();
+            }
+
+            async function newBoard() {
+                if (!window.currentUser) {
+                    showAuthDialog("login");
+                    return;
+                }
+                if (busy) return;
+                busy = true;
+                render();
+                try {
+                    const res = await fetch("/api/play/new", {
+                        method: "POST",
+                    });
+                    await handleResponse(res);
+                } catch (e) {
+                    busy = false;
+                    showToast("Network error", true);
+                    render();
+                }
+            }
+
+            async function makeCall(call) {
+                if (!state || busy || state.done || !state.yourTurn) return;
+                busy = true;
+                render();
+                try {
+                    const res = await fetch(`/api/play/${state.id}/call`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ call: call }),
+                    });
+                    await handleResponse(res);
+                } catch (e) {
+                    busy = false;
+                    showToast("Network error", true);
+                    render();
+                }
+            }
+
+            async function loadStatsAndResume() {
+                try {
+                    const res = await fetch("/api/play/stats");
+                    if (res.ok) stats = await res.json();
+                } catch (e) {}
+                const id = localStorage.getItem(BOARD_KEY);
+                if (id) {
+                    try {
+                        const res = await fetch(
+                            "/api/play/" + encodeURIComponent(id),
+                        );
+                        if (res.ok) {
+                            state = await res.json();
+                            if (state.stats) stats = state.stats;
+                        } else {
+                            localStorage.removeItem(BOARD_KEY);
+                        }
+                    } catch (e) {}
+                }
+                render();
+            }
+
+            // ---- rendering ----
+
+            function seatBox(seat) {
+                const isHuman = seat === (state ? state.humanSeat : 2);
+                const active =
+                    state && !state.done && state.nextSeat === seat;
+                const model =
+                    state && state.bots ? state.bots[String(seat)] : "";
+                const sub = isHuman
+                    ? "you"
+                    : "bot" + (model ? " · " + escapeHtml(model) : "");
+                const partner = seat === 0 ? " · your partner" : "";
+                const ring = active
+                    ? "border-primary ring-2 ring-primary/30"
+                    : "border-outline-variant/10";
+                const vulChip =
+                    state && seatIsVul(seat, state.vuln)
+                        ? `<span class="px-1 py-px rounded text-[9px] font-bold uppercase bg-error-container/50 text-on-error-container">vul</span>`
+                        : "";
+                const thinking =
+                    active && busy && !isHuman
+                        ? `<span class="flex items-center gap-1 text-[11px] text-primary font-label"><span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>thinking…</span>`
+                        : active
+                          ? `<span class="text-[11px] ${isHuman ? "text-primary font-label font-semibold" : "text-on-surface-variant"}">${isHuman ? "your turn" : "to act"}</span>`
+                          : "";
+                const hand = isHuman
+                    ? state
+                        ? `<div id="southHand" class="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5">${handHtml(state.hand, true)}</div>`
+                        : ""
+                    : state && state.done && state.hands
+                      ? `<div class="mt-1.5 space-y-0.5">${handHtml(state.hands[seat], true)}</div>`
+                      : "";
+                return `
+                    <div class="bg-surface-container-lowest border ${ring} rounded-xl px-2.5 py-2 min-w-0 transition-all">
+                        <div class="flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-base ${isHuman ? "text-tertiary" : "text-primary"}">${isHuman ? "person" : "smart_toy"}</span>
+                            <span class="font-headline font-bold text-sm text-on-surface truncate">${SEAT_NAMES[seat]}</span>
+                            ${vulChip}
+                        </div>
+                        <div class="text-[10px] text-on-surface-variant font-label truncate">${sub}${partner}</div>
+                        <div class="min-h-[14px] mt-0.5">${thinking}</div>
+                        ${hand}
+                    </div>`;
+            }
+
+            function auctionHtml() {
+                const calls = state.calls || [];
+                const rows = [];
+                let row = null;
+                let prevPos = -1;
+                for (let i = 0; i < calls.length; i++) {
+                    const pos = AUCTION_COLS.indexOf(
+                        (state.dealer + i) % 4,
+                    );
+                    if (!row || pos <= prevPos) {
+                        row = [null, null, null, null];
+                        rows.push(row);
+                    }
+                    row[pos] = calls[i];
+                    prevPos = pos;
+                }
+                const head = AUCTION_COLS.map(
+                    (s) =>
+                        `<th class="px-2 sm:px-3 py-0.5 text-center text-[10px] uppercase tracking-widest font-label ${s === state.dealer ? "text-primary font-bold" : "text-outline"}">${SEAT_NAMES[s][0]}${calls.length === 0 && s === state.dealer ? " •" : ""}</th>`,
+                ).join("");
+                const body = rows
+                    .map(
+                        (r) =>
+                            `<tr class="border-t border-outline-variant/10">` +
+                            r
+                                .map(
+                                    (c) =>
+                                        `<td class="px-2 sm:px-3 py-0.5 text-center text-sm font-headline font-semibold text-on-surface">${c ? callHtml(c) : ""}</td>`,
+                                )
+                                .join("") +
+                            `</tr>`,
+                    )
+                    .join("");
+                return `
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-2 sm:px-3 py-1.5 min-w-[210px]">
+                        <div class="text-[9px] uppercase tracking-widest text-outline font-label mb-0.5 text-center">
+                            Auction · dealer ${SEAT_NAMES[state.dealer]} · vuln ${VULN_NAMES[state.vuln]}
+                        </div>
+                        <table class="w-full border-collapse">
+                            <thead><tr>${head}</tr></thead>
+                            <tbody>${body || `<tr><td colspan="4" class="py-2 text-center text-xs text-outline-variant">no calls yet</td></tr>`}</tbody>
+                        </table>
+                    </div>`;
+            }
+
+            function biddingBoxHtml() {
+                const legal = new Set(state.legal || []);
+                const levels = [];
+                for (let l = 1; l <= 7; l++)
+                    if (SUIT_ORDER.some((d) => legal.has(l + d))) levels.push(l);
+                if (!levels.includes(bidLevelSel))
+                    bidLevelSel = levels.length ? levels[0] : null;
+                const strains = SUIT_ORDER.filter((d) =>
+                    legal.has(bidLevelSel + d),
+                );
+                if (!strains.includes(bidStrainSel))
+                    bidStrainSel = strains.length ? strains[0] : null;
+                const token =
+                    bidLevelSel !== null && bidStrainSel
+                        ? bidLevelSel + bidStrainSel
+                        : "";
+                const canBid = token && legal.has(token) && !busy;
+                const selectCls =
+                    "rounded border-outline-variant/30 bg-surface-container-lowest text-on-surface text-sm py-1 px-1.5";
+                const special = (t, label, cls) => {
+                    const ok = legal.has(t) && !busy;
+                    const dis = "opacity-30 cursor-not-allowed saturate-0";
+                    return `<button data-call="${t}" ${ok ? "" : "disabled"} class="px-3 py-1.5 rounded font-label text-xs font-semibold transition-colors ${cls} ${ok ? "" : dis}">${label}</button>`;
+                };
+                return `
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 py-2">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-[10px] uppercase tracking-widest text-outline font-label mr-1">Your call</span>
+                            <select id="bidLevel" ${busy ? "disabled" : ""} class="${selectCls} w-14">
+                                ${levels.map((l) => `<option value="${l}" ${l === bidLevelSel ? "selected" : ""}>${l}</option>`).join("")}
+                            </select>
+                            <select id="bidStrain" ${busy ? "disabled" : ""} class="${selectCls} w-20">
+                                ${strains.map((d) => `<option value="${d}" ${d === bidStrainSel ? "selected" : ""}>${SUIT_SYMBOL[d]}</option>`).join("")}
+                            </select>
+                            <button id="bidBtn" ${canBid ? "" : "disabled"} class="px-4 py-1.5 bg-primary text-on-primary rounded font-label text-xs font-semibold hover:bg-primary-dim transition-colors ${canBid ? "" : "opacity-30 cursor-not-allowed"}">Bid</button>
+                            <span class="flex-1"></span>
+                            ${special("P", "Pass", "bg-surface-container text-on-surface hover:bg-surface-container-high")}
+                            ${special("X", "Double", "bg-error-container/40 text-on-error-container hover:bg-error-container/70")}
+                            ${special("XX", "Redouble", "bg-tertiary-container/50 text-on-tertiary-container hover:bg-tertiary-container/80")}
+                        </div>
+                    </div>`;
+            }
+
+            // Keep the strain options and Bid button in sync with the level
+            // select without a full re-render
+            function updateBidControls() {
+                const str = document.getElementById("bidStrain");
+                const bidBtn = document.getElementById("bidBtn");
+                if (!str || !bidBtn || !state) return;
+                const legal = new Set(state.legal || []);
+                const strains = SUIT_ORDER.filter((d) =>
+                    legal.has(bidLevelSel + d),
+                );
+                if (!strains.includes(bidStrainSel))
+                    bidStrainSel = strains.length ? strains[0] : null;
+                str.innerHTML = strains
+                    .map(
+                        (d) =>
+                            `<option value="${d}" ${d === bidStrainSel ? "selected" : ""}>${SUIT_SYMBOL[d]}</option>`,
+                    )
+                    .join("");
+                const token =
+                    bidLevelSel !== null && bidStrainSel
+                        ? bidLevelSel + bidStrainSel
+                        : "";
+                bidBtn.disabled = !(token && legal.has(token)) || busy;
+            }
+
+            function resultHtml() {
+                const r = state.result;
+                let contractLine, trickLine;
+                if (r.contract) {
+                    const c = r.contract;
+                    const side =
+                        c.declarer % 2 === (state.humanSeat % 2)
+                            ? "your side"
+                            : "the bots";
+                    const pen = ["", " doubled", " redoubled"][c.penalty] || "";
+                    const need = c.level + 6;
+                    const margin = r.tricks - need;
+                    const made = margin >= 0;
+                    contractLine = `${c.level}${SUIT_SYMBOL[c.denom]}${pen ? '<span class="text-error font-semibold">' + escapeHtml(pen) + "</span>" : ""} by ${SEAT_NAMES[c.declarer]} (${side})`;
+                    trickLine = `${r.tricks} double-dummy tricks — ${made ? "made " + (margin > 0 ? "+" + margin : "exactly") : margin + " down"}`;
+                } else {
+                    contractLine = "Passed out";
+                    trickLine = "no contract was reached";
+                }
+                const nextLabel = "Next board";
+                return `
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm p-3 sm:p-4">
+                        <div class="text-[10px] uppercase tracking-widest text-outline font-label mb-2">Board complete — scored versus par</div>
+                        <div class="flex flex-wrap items-center gap-x-8 gap-y-3">
+                            <div>
+                                <div class="font-headline font-bold text-lg text-on-surface">${contractLine}</div>
+                                <div class="text-sm text-on-surface-variant mt-0.5">${trickLine}</div>
+                                <div class="text-xs text-on-surface-variant mt-1 font-label">
+                                    Par (N-S): <span class="font-semibold">${scoreText(r.parNs)}</span>
+                                    &nbsp;·&nbsp; Your score (N-S): <span class="font-semibold">${scoreText(r.scoreNs)}</span>
+                                </div>
+                            </div>
+                            <div class="text-center px-6 py-2 rounded-xl bg-surface-container-low">
+                                <div class="text-[10px] uppercase tracking-widest text-outline font-label">IMPs vs par</div>
+                                <div class="text-4xl font-headline font-extrabold ${impsColor(r.imps)}">${signed(r.imps)}</div>
+                            </div>
+                            <div class="text-center px-4 py-2">
+                                <div class="text-[10px] uppercase tracking-widest text-outline font-label">Career average</div>
+                                <div class="text-2xl font-headline font-bold ${stats ? impsColor(stats.avgImps) : ""}">${stats ? signed(stats.avgImps.toFixed(2)) : "—"}</div>
+                                <div class="text-[11px] text-on-surface-variant font-label">${stats ? stats.boards + " boards" : ""}</div>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3 mt-5">
+                            <button id="nextBoardBtn" class="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                                <span class="material-symbols-outlined text-sm">casino</span>
+                                ${nextLabel}
+                            </button>
+                            <span class="text-xs text-on-surface-variant">All four hands are shown at the table above.</span>
+                        </div>
+                    </div>`;
+            }
+
+            function tableHtml() {
+                return `
+                    <div class="space-y-2.5">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="text-xs text-on-surface-variant font-label">
+                                Board ${stats ? stats.boards + (state.done ? 0 : 1) : 1} · you sit South, North is your partner
+                            </div>
+                            <button id="abandonBtn" title="Abandon this board (not scored)" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                                <span class="material-symbols-outlined text-sm">restart_alt</span>
+                                New board
+                            </button>
+                        </div>
+                        <div class="bg-surface-container-low rounded-xl border border-outline-variant/10 p-2 sm:p-3">
+                            <div class="grid grid-cols-3 gap-2 items-start max-w-3xl mx-auto">
+                                <div></div>
+                                ${seatBox(0)}
+                                <div></div>
+                                ${seatBox(3)}
+                                <div class="row-span-1 flex items-center">${auctionHtml()}</div>
+                                ${seatBox(1)}
+                                <div></div>
+                                ${seatBox(2)}
+                                <div></div>
+                            </div>
+                        </div>
+                        ${
+                            state.done
+                                ? resultHtml()
+                                : busy || !state.yourTurn
+                                  ? waitingHtml()
+                                  : biddingBoxHtml()
+                        }
+                    </div>`;
+            }
+
+            function waitingHtml() {
+                return `
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 py-2 flex items-center gap-3">
+                        ${
+                            busy
+                                ? `<span class="material-symbols-outlined text-primary animate-spin">progress_activity</span>
+                                   <span class="text-sm text-on-surface-variant font-label">The bots are bidding…</span>`
+                                : `<span class="material-symbols-outlined text-outline">wifi_off</span>
+                                   <span class="text-sm text-on-surface-variant font-label">Waiting for the bots to bid…</span>
+                                   <button id="retryBtn" class="ml-auto flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                                       <span class="material-symbols-outlined text-sm">refresh</span>
+                                       Retry
+                                   </button>`
+                        }
+                    </div>`;
+            }
+
+            function statsBarHtml() {
+                if (!stats || !stats.boards) return "";
+                return `
+                    <div class="flex flex-wrap items-center gap-x-5 gap-y-1 mb-2.5 text-xs font-label text-on-surface-variant">
+                        <span>Avg <b class="font-headline text-sm ${impsColor(stats.avgImps)}">${signed(stats.avgImps.toFixed(2))}</b> IMPs/board vs par</span>
+                        <span>${stats.boards} boards</span>
+                        <span>Total <b class="font-headline text-sm ${impsColor(stats.impsTotal)}">${signed(stats.impsTotal)}</b> IMPs</span>
+                    </div>`;
+            }
+
+            function recentHtml() {
+                if (!stats || !stats.recent || stats.recent.length === 0)
+                    return "";
+                const rows = stats.recent
+                    .slice(0, 12)
+                    .map(
+                        (rec) => `
+                        <tr class="border-t border-outline-variant/10">
+                            <td class="px-3 py-1.5 text-xs text-on-surface-variant whitespace-nowrap">${timeAgo(rec.ts)}</td>
+                            <td class="px-3 py-1.5 text-xs text-on-surface-variant whitespace-nowrap">${SEAT_NAMES[rec.dealer][0]} · ${VULN_NAMES[rec.vuln]}</td>
+                            <td class="px-3 py-1.5 text-sm font-headline font-semibold text-on-surface">${contractHtml(rec.contract)}</td>
+                            <td class="px-3 py-1.5 text-xs text-on-surface-variant whitespace-nowrap">${rec.tricks === null || rec.tricks === undefined ? "—" : rec.tricks + " tricks"} · par ${scoreText(rec.parNs)}</td>
+                            <td class="px-3 py-1.5 text-sm font-headline font-bold text-right ${impsColor(rec.imps)}">${signed(rec.imps)}</td>
+                        </tr>`,
+                    )
+                    .join("");
+                return `
+                    <div class="mt-8">
+                        <div class="text-[10px] uppercase tracking-widest text-outline font-label mb-2">Recent boards</div>
+                        <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl overflow-x-auto">
+                            <table class="w-full border-collapse min-w-[520px]">
+                                <thead><tr>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-outline font-label">When</th>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-outline font-label">Deal</th>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-outline font-label">Contract</th>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-outline font-label">Result</th>
+                                    <th class="px-3 py-1.5 text-right text-[10px] uppercase tracking-widest text-outline font-label">IMPs</th>
+                                </tr></thead>
+                                <tbody>${rows}</tbody>
+                            </table>
+                        </div>
+                    </div>`;
+            }
+
+            function startCardHtml() {
+                return `
+                    <div class="text-center py-14 bg-surface-container-lowest rounded-xl border border-outline-variant/10">
+                        <span class="material-symbols-outlined text-primary text-5xl mb-4">smart_toy</span>
+                        <p class="text-on-surface text-lg font-headline font-semibold">Take a seat at the bot table</p>
+                        <p class="text-sm text-on-surface-variant mt-2 max-w-md mx-auto">
+                            You play South with a bidding-dt bot as partner against two more bots.
+                            When the auction ends, the board is scored in IMPs against double-dummy par.
+                        </p>
+                        <button id="dealBtn" class="mt-6 inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                            <span class="material-symbols-outlined text-sm">casino</span>
+                            Deal a board
+                        </button>
+                    </div>`;
+            }
+
+            function loginCardHtml() {
+                return `
+                    <div class="text-center py-14 bg-surface-container-lowest rounded-xl border border-outline-variant/10">
+                        <span class="material-symbols-outlined text-primary text-5xl mb-4">lock</span>
+                        <p class="text-on-surface text-lg font-headline font-semibold">Log in to play</p>
+                        <p class="text-sm text-on-surface-variant mt-2">Your IMPs/board history versus the bots is kept for your account.</p>
+                        <button id="loginBtn" class="mt-6 inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                            <span class="material-symbols-outlined text-sm">login</span>
+                            Log in
+                        </button>
+                    </div>`;
+            }
+
+            function render() {
+                const content = document.getElementById("main-content");
+                if (!content) return;
+                // Once a hand is running the page chrome gets out of the way:
+                // the intro header hides and the content padding shrinks so the
+                // table, South's cards and the bidding box fit one screen.
+                const header = content.previousElementSibling;
+                if (header && header.tagName === "HEADER") {
+                    header.style.display = state ? "none" : "";
+                }
+                const wrap = content.parentElement;
+                if (wrap) {
+                    wrap.style.paddingTop = state ? "0.75rem" : "";
+                    wrap.style.paddingBottom = state ? "1.5rem" : "";
+                }
+                if (!window.currentUser) {
+                    content.innerHTML = loginCardHtml();
+                    const lb = document.getElementById("loginBtn");
+                    if (lb) lb.onclick = () => showAuthDialog("login");
+                    return;
+                }
+                let html = statsBarHtml();
+                if (!state) {
+                    html += startCardHtml();
+                } else {
+                    html += tableHtml();
+                }
+                html += recentHtml();
+                content.innerHTML = html;
+
+                const deal = document.getElementById("dealBtn");
+                if (deal) deal.onclick = () => newBoard();
+                const abandon = document.getElementById("abandonBtn");
+                if (abandon) abandon.onclick = () => newBoard();
+                const next = document.getElementById("nextBoardBtn");
+                if (next) next.onclick = () => newBoard();
+                content.querySelectorAll("[data-call]").forEach((btn) => {
+                    btn.onclick = () => makeCall(btn.dataset.call);
+                });
+                const lvl = document.getElementById("bidLevel");
+                const str = document.getElementById("bidStrain");
+                const bidBtn = document.getElementById("bidBtn");
+                if (lvl)
+                    lvl.onchange = () => {
+                        bidLevelSel = parseInt(lvl.value, 10);
+                        updateBidControls();
+                    };
+                if (str)
+                    str.onchange = () => {
+                        bidStrainSel = str.value;
+                        updateBidControls();
+                    };
+                if (bidBtn)
+                    bidBtn.onclick = () =>
+                        makeCall(bidLevelSel + bidStrainSel);
+                const retry = document.getElementById("retryBtn");
+                if (retry)
+                    retry.onclick = () => {
+                        autoRetries = 0;
+                        refreshBoard();
+                    };
+
+                // Recover a board that stalled mid-bot-turn (e.g. the sidecar
+                // hiccuped): re-fetch it, which re-advances server-side.
+                if (
+                    state &&
+                    !busy &&
+                    !state.done &&
+                    !state.yourTurn &&
+                    autoRetries < 4
+                ) {
+                    setTimeout(refreshBoard, 1500 + autoRetries * 1500);
+                }
+            }
+
+            async function refreshBoard() {
+                if (!state || busy || state.done || state.yourTurn) return;
+                busy = true;
+                render();
+                try {
+                    const res = await fetch(
+                        "/api/play/" + encodeURIComponent(state.id),
+                    );
+                    await handleResponse(res);
+                } catch (e) {
+                    busy = false;
+                    render();
+                }
+            }
+
+            document.addEventListener("authchange", () => {
+                if (window.currentUser) {
+                    loadStatsAndResume();
+                } else {
+                    state = null;
+                    stats = null;
+                    render();
+                }
+            });
+
+            refreshAuthState();
+        </script>
+    </body>
+</html>

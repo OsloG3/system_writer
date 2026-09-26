@@ -95,6 +95,7 @@ func main() {
 
 	loadUsers()
 	loadSessions()
+	initPlay()
 
 	// API Endpoints
 	http.HandleFunc("POST /api/register", handleRegister)
@@ -109,11 +110,17 @@ func main() {
 	http.HandleFunc("DELETE /api/tree/{id}", handleTreeDelete)
 	http.HandleFunc("POST /api/tree/{id}/editors", handleTreeEditors)
 	http.HandleFunc("POST /api/tree/{id}/copy", handleTreeCopy)
+	http.HandleFunc("POST /api/play/new", handlePlayNew)
+	http.HandleFunc("GET /api/play/stats", handlePlayStats)
+	http.HandleFunc("GET /api/play/{id}", handlePlayGet)
+	http.HandleFunc("POST /api/play/{id}/call", handlePlayCall)
 
 	// Static/HTML Pages
 	http.HandleFunc("/edit/", serveHTML("static/edit.html"))
 	http.HandleFunc("/view/", serveHTML("static/view.html"))
 	http.HandleFunc("/practice/", serveHTML("static/practice.html"))
+	http.HandleFunc("/play", serveHTML("static/play.html"))
+	http.HandleFunc("/play/", serveHTML("static/play.html"))
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
 	http.HandleFunc("/", serveHTML("static/index.html")) // Homepage to create new
 

@@ -1,0 +1,43 @@
+# GPU self-play run (small preset): BC warm start + KL anchor annealed to 0,
+# league of past snapshots as opponents on half the iters. Reward = two-table
+# team match: IMP swing between the tables (credited only from the first
+# divergent call on) + par-diff IMPs at 1/4 weight.
+#   uv run python -m bidding_dt.rl.train_ppo --config configs/rl_small.yaml \
+#       --preset small --bc-ckpt runs/small/best.pt --out runs/rl_small
+#
+model:
+  dropout: 0.0
+rl:
+  iters: 128
+  deals_per_iter: 128
+  lr: 1.0e-4
+  warmup_iters: 5          # was 50: with 64 iters the LR never left warmup
+  minibatch_size: 124
+  ppo_epochs: 3
+  reward_scale: 0.2
+  team_weight: 1.0
+  par_weight: 0.25
+  rollout_temp: 1.5        # keep self-play tables diverging
+  gamma: 1.0
+  lam: 0.95
+  clip_eps: 0.2
+  vf_coef: 0.5
+  ent_coef: 0.01
+  ent_coef_end: 0.001
+  kl_beta: 0.1
+  kl_beta_end: 0.0
+  league_prob: 0.5
+  snapshot_every: 30
+  max_snapshots: 24
+  # frozen external league members (any BC/SL or RL checkpoint, any arch):
+  # league_members:
+  #   - bc:runs/small/best.pt
+  #   - rl:runs/rl_small/best.pt
+  # league_include_init: true   # --bc-ckpt warm start joins the league too
+  # member_weight: 1.0          # sampling weight per external member
+  # snapshot_weight: 1.0        # sampling weight per past-self snapshot
+  # league_persist: true        # league survives --resume (under <out>/league)
+  # pfsp_alpha: 0.0             # >0: favor opponents the learner is losing to
+  eval_every: 25
+  eval_deals: 128
+  cache_path: cache/dd.sqlite

@@ -472,10 +472,10 @@ async function deleteCurrentTree() {
 
 // Render the common page layout
 function renderLayout(options) {
-    // options: { mode: 'view' | 'edit' | 'practice' | 'index', title: '', titleId: '', subtitle: '', badge: '', badgeColor: '' }
+    // options: { mode: 'view' | 'edit' | 'practice' | 'play' | 'index', title: '', titleId: '', subtitle: '', badge: '', badgeColor: '' }
     const mode = options.mode || 'index';
     const badgeColor = options.badgeColor || (mode === 'edit' ? 'bg-primary-container text-on-primary-container' : 'bg-tertiary-container text-on-tertiary-container');
-    const modeLabel = mode === 'edit' ? 'Edit Mode' : mode === 'view' ? 'View Mode' : mode === 'practice' ? 'Practice Mode' : 'Home';
+    const modeLabel = mode === 'edit' ? 'Edit Mode' : mode === 'view' ? 'View Mode' : mode === 'practice' ? 'Practice Mode' : mode === 'play' ? 'Play Mode' : 'Home';
 
     const btnGhost = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-surface-container-highest text-on-surface rounded font-label text-sm hover:bg-surface-container-high transition-colors no-underline";
     const btnPrimary = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors no-underline";
@@ -543,6 +543,12 @@ function renderLayout(options) {
         `;
     }
 
+    const navActive = "text-[#2F5597] font-bold border-b-2 border-[#2F5597] pb-1 cursor-pointer duration-200 ease-in-out no-underline";
+    const navIdle = "text-[#2d3435]/60 hover:text-[#2d3435] pb-1 cursor-pointer duration-200 ease-in-out no-underline";
+    const sideActive = "text-[#2F5597] border-l-4 border-[#7a5a00] pl-4 bg-[#ffffff]/50";
+    const sideIdle = "text-[#2d3435] opacity-70 hover:opacity-100 pl-5 hover:bg-[#e4e9ea] dark:hover:bg-slate-800";
+    const sideLink = "flex items-center h-10 cursor-pointer transition-all duration-300 ease-out font-inter text-xs uppercase tracking-widest no-underline";
+
     return `
         <!-- TopAppBar -->
         <header class="fixed top-0 z-50 bg-[#ffffff] dark:bg-slate-950 flex justify-between items-center px-3 sm:px-6 h-16 w-full border-b border-outline-variant/10">
@@ -554,7 +560,8 @@ function renderLayout(options) {
                     Atheneum
                 </a>
                 <nav class="hidden md:flex items-center gap-6 font-manrope tracking-tight text-sm">
-                    <a class="text-[#2F5597] font-bold border-b-2 border-[#2F5597] pb-1 cursor-pointer duration-200 ease-in-out" href="/">Collections</a>
+                    <a class="${mode === 'play' ? navIdle : navActive}" href="/">Collections</a>
+                    <a class="${mode === 'play' ? navActive : navIdle}" href="/play">Play</a>
                 </nav>
             </div>
             <div class="flex items-center gap-1.5 sm:gap-4 shrink-0">
@@ -588,12 +595,21 @@ function renderLayout(options) {
                             <span class="material-symbols-outlined text-sm">add</span>
                             New Collection
                         </button>
+                    ` : mode === 'play' ? `
+                        <button onclick="newBoard(); closeSidebar();" class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2">
+                            <span class="material-symbols-outlined text-sm">casino</span>
+                            New Board
+                        </button>
                     ` : ''}
                 </div>
                 <nav class="flex-grow space-y-1">
-                    <a href="/" onclick="closeSidebar()" class="flex items-center ${mode === 'index' ? 'text-[#2F5597] border-l-4 border-[#7a5a00] pl-4 bg-[#ffffff]/50' : 'text-[#2d3435] opacity-70 hover:opacity-100 pl-5 hover:bg-[#e4e9ea] dark:hover:bg-slate-800'} h-10 cursor-pointer transition-all duration-300 ease-out font-inter text-xs uppercase tracking-widest no-underline">
+                    <a href="/" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' ? sideIdle : sideActive}">
                         <span class="material-symbols-outlined mr-3 text-lg">account_tree</span>
                         Collections
+                    </a>
+                    <a href="/play" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' ? sideActive : sideIdle}">
+                        <span class="material-symbols-outlined mr-3 text-lg">smart_toy</span>
+                        Play vs Bots
                     </a>
                 </nav>
             </aside>
