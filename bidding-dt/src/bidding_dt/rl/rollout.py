@@ -39,8 +39,10 @@ import numpy as np
 import torch
 from torch.distributions import Categorical
 
+from .. import xla
+from ..data.dataset import MAX_SEQ
 from ..data.hands import HAND_DIM
-from ..data.vocab import VOCAB_SIZE
+from ..data.vocab import CALL_PASS, VOCAB_SIZE
 from ..dd.scoring import points_to_imps
 from ..env.auction_env import AuctionBatch
 from ..env.deals import Deal
@@ -122,17 +124,29 @@ class RolloutBuffer:
         self.ret = R.astype(np.float32)
         self.adv = (R - value).astype(np.float32)
 
-    def to_torch(self, device):
-        """Pad once to max row length; returns dict of tensors on device."""
+    def to_torch(self, device, seq_len: int | None = None,
+                 pad_to: int | None = None):
+        """Pad once to max row length; returns dict of tensors on device.
+
+        XLA/TPU: pass seq_len (e.g. MAX_SEQ) and pad_to (a fixed row bucket)
+        so the tensor shapes are static across iterations -- TPUs recompile
+        the graph for every new shape. Pad rows are never selected by the
+        PPO permutation (see ppo_update's valid mask)."""
         n = self.n
-        L = max(self.row_len)
-        tokens = np.zeros((n, L), dtype=np.int64)
-        hand = np.zeros((n, HAND_DIM), dtype=np.float32)
-        vuln = np.zeros(n, dtype=np.int64)
-        row_len = np.zeros(n, dtype=np.int64)
-        mask = np.zeros((n, VOCAB_SIZE), dtype=bool)
-        action = np.zeros(n, dtype=np.int64)
-        logprob = np.zeros(n, dtype=np.float32)
+        L = seq_len if seq_len is not None else max(self.row_len)
+        assert L >= max(self.row_len)
+        n_alloc = max(n, pad_to or 0)
+        tokens = np.zeros((n_alloc, L), dtype=np.int64)
+        hand = np.zeros((n_alloc, HAND_DIM), dtype=np.float32)
+        vuln = np.zeros(n_alloc, dtype=np.int64)
+        row_len = np.ones(n_alloc, dtype=np.int64)  # gather-safe for pad rows
+        mask = np.zeros((n_alloc, VOCAB_SIZE), dtype=bool)
+        mask[:, CALL_PASS] = True
+        action = np.zeros(n_alloc, dtype=np.int64)
+        logprob = np.zeros(n_alloc, dtype=np.float32)
+        value = np.zeros(n_alloc, dtype=np.float32)
+        adv = np.zeros(n_alloc, dtype=np.float32)
+        ret = np.zeros(n_alloc, dtype=np.float32)
         for r in range(n):
             tokens[r, : self.row_len[r]] = self.tokens[r]
             hand[r] = self.hand[r]
@@ -141,6 +155,9 @@ class RolloutBuffer:
             mask[r] = self.mask[r]
             action[r] = self.action[r]
             logprob[r] = self.logprob[r]
+        value[:n] = np.asarray(self.value, dtype=np.float32)
+        adv[:n] = self.adv
+        ret[:n] = self.ret
         t = lambda a, dt: torch.as_tensor(a, dtype=dt, device=device)  # noqa: E731
         return {
             "tokens": t(tokens, torch.long),
@@ -150,9 +167,9 @@ class RolloutBuffer:
             "mask": t(mask, torch.bool),
             "action": t(action, torch.long),
             "logprob": t(logprob, torch.float32),
-            "value": t(np.asarray(self.value, dtype=np.float32), torch.float32),
-            "adv": t(self.adv, torch.float32),
-            "ret": t(self.ret, torch.float32),
+            "value": t(value, torch.float32),
+            "adv": t(adv, torch.float32),
+            "ret": t(ret, torch.float32),
         }
 
 
@@ -211,10 +228,29 @@ class TeamRollout:
 
 
 def _act(mdl, tokens, hand, vuln_cls, row_len, masks, device, greedy,
-         temp: float = 1.0):
+         temp: float = 1.0, pad_n: int | None = None):
     """One batched decision step for `mdl` (numpy inputs); returns torch
     (actions, logprobs, values). temp > 1 flattens the sampling distribution
-    (logprobs are from the tempered distribution, matching PPO recompute)."""
+    (logprobs are from the tempered distribution, matching PPO recompute).
+
+    pad_n: pad the batch to exactly pad_n rows (tokens to MAX_SEQ) for
+    static-shape XLA execution; pad rows get a pass-only mask (a valid
+    distribution, so no NaNs) and their outputs are discarded."""
+    n = tokens.shape[0]
+    if pad_n is not None:
+        assert pad_n >= n
+        pt = np.zeros((pad_n, MAX_SEQ), dtype=np.int64)
+        pt[:n, : tokens.shape[1]] = tokens
+        ph = np.zeros((pad_n, hand.shape[1]), dtype=np.float32)
+        ph[:n] = hand
+        pv = np.zeros(pad_n, dtype=np.int64)
+        pv[:n] = vuln_cls
+        pr = np.ones(pad_n, dtype=np.int64)
+        pr[:n] = row_len
+        pm = np.zeros((pad_n, VOCAB_SIZE), dtype=bool)
+        pm[:, CALL_PASS] = True
+        pm[:n] = masks
+        tokens, hand, vuln_cls, row_len, masks = pt, ph, pv, pr, pm
     logits, values = mdl.forward_last(
         torch.as_tensor(tokens, dtype=torch.long, device=device),
         torch.as_tensor(hand, dtype=torch.float32, device=device),
@@ -230,13 +266,22 @@ def _act(mdl, tokens, hand, vuln_cls, row_len, masks, device, greedy,
         actions = logits.argmax(-1)
     else:
         actions = dist.sample()
-    return actions, dist.log_prob(actions), values
+    out = (actions, dist.log_prob(actions), values)
+    if pad_n is not None:
+        out = tuple(o[:n] for o in out)
+    return out
 
 
 @torch.no_grad()
 def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
-         buf: RolloutBuffer | None, temp: float):
-    """Step env to completion; record learner decisions into buf (if any)."""
+         buf: RolloutBuffer | None, temp: float, static: bool = False):
+    """Step env to completion; record learner decisions into buf (if any).
+
+    static=True (XLA/TPU): every model call is padded to a fixed shape
+    (env.b rows x MAX_SEQ tokens) so the TPU compiles one graph per model
+    instead of one per (rows, length) combination, and the lazy graph is
+    flushed (mark_step) once per env step."""
+    pad_n = env.b if static else None
     use_opp = opponent is not None and learner_ns is not None
     while env.any_active():
         idx = env.active_idx()
@@ -254,7 +299,7 @@ def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
         if len(learn_rows):
             a, lp, v = _act(model, tokens[learn_rows], hand[learn_rows],
                             vuln_cls[learn_rows], row_len[learn_rows],
-                            masks[learn_rows], device, greedy, temp)
+                            masks[learn_rows], device, greedy, temp, pad_n)
             a_np = a.cpu().numpy()
             actions[learn_rows] = a_np
             if buf is not None:
@@ -271,10 +316,12 @@ def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
             # opponent noise, and stays consistent with the PPO logprob recompute
             a, _, _ = _act(opponent, tokens[opp_rows], hand[opp_rows],
                            vuln_cls[opp_rows], row_len[opp_rows],
-                           masks[opp_rows], device, greedy, 1.0)
+                           masks[opp_rows], device, greedy, 1.0, pad_n)
             actions[opp_rows] = a.cpu().numpy()
 
         env.step(idx, actions)
+        if static:
+            xla.mark_step()
 
 
 @torch.no_grad()
@@ -282,7 +329,7 @@ def play_deals(model, deals: list[Deal], dealer: np.ndarray, vuln: np.ndarray,
                device, rng: np.random.Generator | None = None, cache=None,
                opponent=None, learner_ns: np.ndarray | None = None,
                greedy: bool = False, record: bool = True,
-               temp: float = 1.0) -> tuple[RolloutBuffer | None, AuctionBatch, np.ndarray]:
+               temp: float = 1.0, static: bool = False) -> tuple[RolloutBuffer | None, AuctionBatch, np.ndarray]:
     """Single table: play all auctions to completion; returns
     (buffer, env, reward_imps_ns). Used by evaluation harnesses.
 
@@ -292,7 +339,7 @@ def play_deals(model, deals: list[Deal], dealer: np.ndarray, vuln: np.ndarray,
     """
     env = AuctionBatch(deals, dealer, vuln)
     buf = RolloutBuffer() if record else None
-    _run(env, model, device, opponent, learner_ns, greedy, buf, temp)
+    _run(env, model, device, opponent, learner_ns, greedy, buf, temp, static)
     rewards = env.rewards(cache=cache)
     r_ns = np.array([r.reward_imps for r in rewards], dtype=np.float64)
     return buf, env, r_ns
@@ -317,7 +364,7 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
                     vuln: np.ndarray, device,
                     rng: np.random.Generator | None = None, cache=None,
                     opponent=None, greedy: bool = False, temp: float = 1.0,
-                    record: bool = True) -> TeamRollout:
+                    record: bool = True, static: bool = False) -> TeamRollout:
     """Play every deal at two tables (team match) and score the comparison.
 
     opponent given (league): the learner team is N-S at table 0 and E-W at
@@ -334,7 +381,7 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
     learner_ns = (np.concatenate([np.ones(b, bool), np.zeros(b, bool)])
                   if opponent is not None else None)
     buf = RolloutBuffer() if record else None
-    _run(env, model, device, opponent, learner_ns, greedy, buf, temp)
+    _run(env, model, device, opponent, learner_ns, greedy, buf, temp, static)
 
     rewards = env.rewards(cache=cache)
     score_ns = np.array([r.score_ns for r in rewards], dtype=np.int64)

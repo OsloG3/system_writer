@@ -1,0 +1,40 @@
+# TPU (PyTorch/XLA) self-play run, tuned for a v2-8 / v3-8 TPU VM (8 cores).
+# Launch (on the TPU VM):
+#   uv run python -m bidding_dt.rl.train_ppo --config configs/rl_tpu.yaml \
+#       --preset small --bc-ckpt runs/small/best.pt --device xla --out runs/rl_tpu
+#
+# TPU notes:
+# - --device xla spawns one data-parallel process per core; deals_per_iter
+#   must be divisible by the core count (512 / 8 = 64 deals per core here).
+# - Static shapes are on automatically: rollout batches are padded to a
+#   fixed width x MAX_SEQ, and PPO buffer rows to whole static_row_bucket
+#   buckets (a multiple of minibatch_size), so each graph compiles once.
+# - minibatch_size should divide static_row_bucket evenly.
+model:
+  dropout: 0.0
+rl:
+  iters: 400
+  deals_per_iter: 512        # 64 deals/core on 8-core v2-8
+  lr: 1.5e-4                 # ~sqrt-scaled for the 8x larger effective batch
+  warmup_iters: 20
+  minibatch_size: 256        # static PPO minibatch shape (256, MAX_SEQ)
+  static_row_bucket: 1024    # buffer row padding bucket (multiple of minibatch)
+  ppo_epochs: 3
+  reward_scale: 0.2
+  team_weight: 1.0
+  par_weight: 0.25
+  rollout_temp: 1.5          # keep self-play tables diverging
+  gamma: 1.0
+  lam: 0.95
+  clip_eps: 0.2
+  vf_coef: 0.5
+  ent_coef: 0.01
+  ent_coef_end: 0.001
+  kl_beta: 0.1
+  kl_beta_end: 0.0
+  league_prob: 0.5
+  snapshot_every: 30
+  max_snapshots: 24
+  eval_every: 25
+  eval_deals: 256            # sharded across cores + all-reduced
+  cache_path: cache/dd.sqlite

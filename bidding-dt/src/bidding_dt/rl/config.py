@@ -36,6 +36,11 @@ class RLConfig:
     ppo_epochs: int = 3
     minibatch_size: int = 512
     vf_coef: float = 0.5
+    # XLA/TPU only: pad the rollout buffer's row count up to a multiple of
+    # this, so buffer tensor shapes stay in a small set of buckets and the
+    # TPU reuses its compiled graphs across iterations (0 -> pad to whole
+    # minibatches only)
+    static_row_bucket: int = 512
     # anchors (annealed linearly from *_start to *_end over iters)
     ent_coef: float = 0.01
     ent_coef_end: float = 0.0

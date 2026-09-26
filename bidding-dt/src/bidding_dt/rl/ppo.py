@@ -3,14 +3,27 @@
 Clipped surrogate + value MSE + entropy bonus + optional KL(pi || pi_BC)
 anchor (annealed externally). Everything runs on decision states in the
 supervised representation; masks keep distributions over legal calls only.
+
+XLA/TPU (static=True): tensor shapes must not change between steps or the
+TPU recompiles, so the row count is padded up to whole minibatches. Pad rows
+are cyclic repeats of real rows and are excluded from every loss via a valid
+mask, so the update is numerically identical to the dynamic path. Per-step
+stats are accumulated on-device and synced to the host once at the end
+(.item()/float() per minibatch would stall the TPU pipeline each time).
+Multi-core runs pass world>1: gradients are all-reduced (averaged) across
+ranks before the optimizer step, making the update equivalent to one big
+minibatch over all ranks' rollouts.
 """
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from torch.distributions import Categorical
 
+from .. import xla
 from .config import RLConfig
+
+_STAT_KEYS = ("policy_loss", "value_loss", "entropy", "kl", "clipfrac",
+              "approx_kl")
 
 
 def _masked_dist(logits, mask):
@@ -20,22 +33,48 @@ def _masked_dist(logits, mask):
 def ppo_update(model, ref_model, buf_tensors: dict, opt, device,
                cfg: RLConfig, kl_beta: float, ent_coef: float,
                rng: np.random.Generator, use_amp: bool = False,
-               temp: float = 1.0) -> dict:
+               temp: float = 1.0, static: bool = False,
+               world: int = 1, n_rows: int | None = None) -> dict:
     model.train()
-    n = buf_tensors["action"].shape[0]
-    adv = buf_tensors["adv"]
+    on_xla = xla.is_xla(device)
+    n_alloc = buf_tensors["action"].shape[0]
+    n = n_rows if n_rows is not None else n_alloc
+    assert 0 < n <= n_alloc
+    mb = cfg.minibatch_size
+    adv = buf_tensors["adv"][:n]
     if n > 1:
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
-    stats = {k: 0.0 for k in ("policy_loss", "value_loss", "entropy", "kl",
-                              "clipfrac", "approx_kl")}
+        buf_tensors = {**buf_tensors,
+                       "adv": torch.cat([adv, buf_tensors["adv"][n:]])}
+    if static:
+        stats = {k: torch.zeros((), device=device) for k in _STAT_KEYS}
+    else:
+        stats = {k: 0.0 for k in _STAT_KEYS}
     n_updates = 0
+
+    # padded row count so every minibatch has shape (mb, ...) -- static graph
+    n_pad = max(mb, -(-n // mb) * mb) if static else n
 
     for _ in range(cfg.ppo_epochs):
         perm = rng.permutation(n)
-        for start in range(0, n, cfg.minibatch_size):
-            rows = perm[start:start + cfg.minibatch_size]
+        if static:
+            perm = np.resize(perm, n_pad)  # cyclic tile: pads with real rows
+        for start in range(0, n_pad, mb):
+            rows = perm[start:start + mb]
             sl = torch.as_tensor(rows, device=device)
             b = {k: v[sl] for k, v in buf_tensors.items()}
+            if static:
+                # valid mask excludes pad rows from every reduction; shape
+                # stays (mb,) regardless of n
+                vm = (start + torch.arange(len(rows), device=device)
+                      ).float().lt(n).float()
+                denom = vm.sum().clamp(min=1.0)
+
+                def red(x, vm=vm, denom=denom):
+                    return (x * vm).sum() / denom
+            else:
+                def red(x):
+                    return x.mean()
             with torch.autocast(device.type if isinstance(device, torch.device)
                                 else "cpu", dtype=torch.bfloat16, enabled=use_amp):
                 logits, values = model.forward_last(
@@ -49,13 +88,13 @@ def ppo_update(model, ref_model, buf_tensors: dict, opt, device,
             ratio = torch.exp(logp - b["logprob"])
             surr1 = ratio * adv[sl]
             surr2 = ratio.clamp(1 - cfg.clip_eps, 1 + cfg.clip_eps) * adv[sl]
-            policy_loss = -torch.min(surr1, surr2).mean()
-            value_loss = F.mse_loss(values.float(), b["ret"])
-            entropy = dist.entropy().mean()
+            policy_loss = -red(torch.min(surr1, surr2))
+            value_loss = red((values.float() - b["ret"]) ** 2)
+            entropy = red(dist.entropy())
             loss = (policy_loss + cfg.vf_coef * value_loss
                     - ent_coef * entropy)
 
-            kl_val = 0.0
+            kl_mean = None
             if ref_model is not None:
                 with torch.no_grad():
                     ref_logits, _ = ref_model.forward_last(
@@ -71,26 +110,42 @@ def ppo_update(model, ref_model, buf_tensors: dict, opt, device,
                 diff = torch.where(b["mask"], dist.logits - ref_logp,
                                    torch.zeros_like(ref_logp))
                 kl = (p * diff).sum(-1)
-                kl_val = float(kl.mean().detach())
+                kl_mean = red(kl)
                 if kl_beta > 0:
-                    loss = loss + kl_beta * kl.mean()
+                    loss = loss + kl_beta * kl_mean
 
             opt.zero_grad(set_to_none=True)
             loss.backward()
             if cfg.grad_clip:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-            opt.step()
+            if world > 1:
+                xla.average_grads(model.parameters(), world)
+            if on_xla:
+                xla.optimizer_step(opt)
+            else:
+                opt.step()
 
             with torch.no_grad():
-                approx_kl = float((b["logprob"] - logp).mean())
-                clipfrac = float(((ratio - 1).abs() > cfg.clip_eps).float().mean())
-            stats["policy_loss"] += float(policy_loss.detach())
-            stats["value_loss"] += float(value_loss.detach())
-            stats["entropy"] += float(entropy.detach())
-            stats["kl"] += kl_val
-            stats["clipfrac"] += clipfrac
-            stats["approx_kl"] += approx_kl
+                approx_kl = red(b["logprob"] - logp)
+                clipfrac = red(((ratio - 1).abs() > cfg.clip_eps).float())
+            vals = {"policy_loss": policy_loss.detach(),
+                    "value_loss": value_loss.detach(),
+                    "entropy": entropy.detach(),
+                    "kl": kl_mean.detach() if kl_mean is not None
+                          else torch.zeros((), device=device),
+                    "clipfrac": clipfrac,
+                    "approx_kl": approx_kl}
+            if static:
+                for k, v in vals.items():
+                    stats[k] += v
+            else:
+                for k, v in vals.items():
+                    stats[k] += float(v)
             n_updates += 1
 
     model.eval()
+    if static:
+        # single host sync for all metrics instead of one per minibatch
+        packed = torch.stack([stats[k] for k in _STAT_KEYS]).cpu()
+        stats = {k: float(v) for k, v in zip(_STAT_KEYS, packed)}
     return {k: v / max(n_updates, 1) for k, v in stats.items()}

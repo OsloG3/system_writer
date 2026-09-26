@@ -12,6 +12,9 @@ dependencies = [
 [project.optional-dependencies]
 cpu = ["torch>=2.4"]
 cuda = ["torch>=2.4"]
+# torch_xla is version-matched to torch (2.9.x <-> 2.9.x); the [tpu] extra
+# pulls the libtpu runtime (available on PyPI)
+tpu = ["torch~=2.9.0", "torch-xla[tpu]~=2.9.0"]
 dev = ["pytest>=8.0"]
 rl = ["endplay>=0.5.10"]
 plot = ["matplotlib>=3.8"]
@@ -27,12 +30,13 @@ url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [tool.uv]
-conflicts = [[{ extra = "cpu" }, { extra = "cuda" }]]
+conflicts = [[{ extra = "cpu" }, { extra = "cuda" }, { extra = "tpu" }]]
 
 [tool.uv.sources]
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
     { index = "pytorch-cuda", extra = "cuda" },
+    { index = "pytorch-cpu", extra = "tpu" },
 ]
 
 [build-system]
