@@ -108,6 +108,28 @@ def deal_reward(hands4, dealer: int, vuln: int, calls: Sequence[int],
     return deal_rewards([req], cache=cache)[0]
 
 
+def warm_cache(hands_list, cache: TableCache | None) -> int:
+    """Pre-solve DD tables for the given deals into cache; returns the number
+    of newly solved deals.
+
+    Used to overlap libdds solving with the neural rollout on multi-core CPUs:
+    submit to a background thread at the start of an iteration (libdds releases
+    the GIL and runs its own solver threads) and join before env.rewards(), so
+    scoring becomes pure cache hits. Duplicate hands are solved once.
+    """
+    if cache is None:
+        return 0
+    uniq: dict[bytes, Sequence[str]] = {}
+    for h in hands_list:
+        uniq.setdefault(deal_key(h), h)
+    miss = [(k, h) for k, h in uniq.items() if cache.get(k) is None]
+    if not miss:
+        return 0
+    solved = dd_tables_batch([h for _, h in miss])
+    cache.put_many([(k, solved[j]) for j, (k, _) in enumerate(miss)])
+    return len(miss)
+
+
 def deal_rewards(requests: Sequence[RewardRequest],
                  cache: TableCache | None = None) -> list[DealReward]:
     """Batch par-diff rewards; solves uncached deals together.

@@ -259,5 +259,456 @@
         "imps": 13
       }
     ]
+  },
+  "rl_small_test": {
+    "boards": 21,
+    "impsTotal": 2,
+    "recent": [
+      {
+        "ts": "2026-09-27T09:58:35Z",
+        "dealer": 2,
+        "vuln": 0,
+        "calls": [
+          "P",
+          "P",
+          "P",
+          "1N",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "1N by E",
+        "tricks": 7,
+        "parNs": 100,
+        "scoreNs": -90,
+        "imps": -5
+      },
+      {
+        "ts": "2026-09-27T09:58:12Z",
+        "dealer": 1,
+        "vuln": 0,
+        "calls": [
+          "P",
+          "P",
+          "1S",
+          "3D",
+          "3S",
+          "P",
+          "4S",
+          "5D",
+          "P",
+          "P",
+          "X",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "5DX by N",
+        "tricks": 9,
+        "parNs": -100,
+        "scoreNs": -300,
+        "imps": -5
+      },
+      {
+        "ts": "2026-09-27T09:57:55Z",
+        "dealer": 3,
+        "vuln": 1,
+        "calls": [
+          "P",
+          "1C",
+          "X",
+          "P",
+          "1S",
+          "P",
+          "2S",
+          "P",
+          "3S",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "3S by W",
+        "tricks": 6,
+        "parNs": 90,
+        "scoreNs": 150,
+        "imps": 2
+      },
+      {
+        "ts": "2026-09-27T09:57:28Z",
+        "dealer": 1,
+        "vuln": 0,
+        "calls": [
+          "P",
+          "1H",
+          "P",
+          "1S",
+          "P",
+          "2C",
+          "P",
+          "4S",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "4S by N",
+        "tricks": 12,
+        "parNs": 990,
+        "scoreNs": 480,
+        "imps": -11
+      },
+      {
+        "ts": "2026-09-27T09:56:58Z",
+        "dealer": 0,
+        "vuln": 1,
+        "calls": [
+          "P",
+          "1S",
+          "3D",
+          "3S",
+          "P",
+          "4S",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "4S by E",
+        "tricks": 8,
+        "parNs": 100,
+        "scoreNs": 100,
+        "imps": 0
+      },
+      {
+        "ts": "2026-09-27T09:56:43Z",
+        "dealer": 2,
+        "vuln": 1,
+        "calls": [
+          "P",
+          "1H",
+          "P",
+          "1S",
+          "P",
+          "2D",
+          "P",
+          "3S",
+          "P",
+          "4S",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "4S by E",
+        "tricks": 10,
+        "parNs": -420,
+        "scoreNs": -420,
+        "imps": 0
+      },
+      {
+        "ts": "2026-09-27T09:56:16Z",
+        "dealer": 2,
+        "vuln": 0,
+        "calls": [
+          "1C",
+          "P",
+          "1D",
+          "P",
+          "1H",
+          "1N",
+          "2C",
+          "P",
+          "P",
+          "X",
+          "P",
+          "2S",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "2S by E",
+        "tricks": 7,
+        "parNs": -90,
+        "scoreNs": 50,
+        "imps": 4
+      },
+      {
+        "ts": "2026-09-27T09:55:42Z",
+        "dealer": 0,
+        "vuln": 3,
+        "calls": [
+          "1N",
+          "P",
+          "2H",
+          "P",
+          "2S",
+          "P",
+          "4S",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "4S by N",
+        "tricks": 10,
+        "parNs": 500,
+        "scoreNs": 620,
+        "imps": 3
+      },
+      {
+        "ts": "2026-09-27T09:55:03Z",
+        "dealer": 2,
+        "vuln": 1,
+        "calls": [
+          "P",
+          "1D",
+          "1H",
+          "X",
+          "3H",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "3H by N",
+        "tricks": 9,
+        "parNs": 140,
+        "scoreNs": 140,
+        "imps": 0
+      },
+      {
+        "ts": "2026-09-27T09:54:33Z",
+        "dealer": 0,
+        "vuln": 2,
+        "calls": [
+          "P",
+          "1D",
+          "3C",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "3C by S",
+        "tricks": 9,
+        "parNs": -300,
+        "scoreNs": 110,
+        "imps": 9
+      },
+      {
+        "ts": "2026-09-27T09:54:08Z",
+        "dealer": 2,
+        "vuln": 1,
+        "calls": [
+          "1H",
+          "P",
+          "3H",
+          "P",
+          "4H",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "4H by S",
+        "tricks": 9,
+        "parNs": 100,
+        "scoreNs": -100,
+        "imps": -5
+      },
+      {
+        "ts": "2026-09-27T09:53:39Z",
+        "dealer": 2,
+        "vuln": 0,
+        "calls": [
+          "2S",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "2S by S",
+        "tricks": 8,
+        "parNs": 140,
+        "scoreNs": 110,
+        "imps": -1
+      },
+      {
+        "ts": "2026-09-27T09:45:07Z",
+        "dealer": 0,
+        "vuln": 3,
+        "calls": [
+          "1N",
+          "P",
+          "3N",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "3N by N",
+        "tricks": 8,
+        "parNs": 120,
+        "scoreNs": -100,
+        "imps": -6
+      },
+      {
+        "ts": "2026-09-27T09:32:57Z",
+        "dealer": 3,
+        "vuln": 3,
+        "calls": [
+          "P",
+          "P",
+          "P",
+          "1H",
+          "P",
+          "3H",
+          "P",
+          "4H",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "4H by S",
+        "tricks": 10,
+        "parNs": 620,
+        "scoreNs": 620,
+        "imps": 0
+      },
+      {
+        "ts": "2026-09-27T09:32:08Z",
+        "dealer": 1,
+        "vuln": 2,
+        "calls": [
+          "3C",
+          "P",
+          "4C",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "4C by E",
+        "tricks": 10,
+        "parNs": -630,
+        "scoreNs": -130,
+        "imps": 11
+      },
+      {
+        "ts": "2026-09-27T09:31:22Z",
+        "dealer": 1,
+        "vuln": 2,
+        "calls": [
+          "P",
+          "2H",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "2H by S",
+        "tricks": 7,
+        "parNs": -90,
+        "scoreNs": -50,
+        "imps": 1
+      },
+      {
+        "ts": "2026-09-27T09:30:55Z",
+        "dealer": 3,
+        "vuln": 0,
+        "calls": [
+          "P",
+          "1H",
+          "2D",
+          "P",
+          "P",
+          "2H",
+          "P",
+          "3N",
+          "P",
+          "4H",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "4H by N",
+        "tricks": 11,
+        "parNs": 920,
+        "scoreNs": 450,
+        "imps": -10
+      },
+      {
+        "ts": "2026-09-27T09:30:10Z",
+        "dealer": 1,
+        "vuln": 1,
+        "calls": [
+          "1N",
+          "P",
+          "2S",
+          "P",
+          "3C",
+          "P",
+          "3D",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "3D by W",
+        "tricks": 9,
+        "parNs": -400,
+        "scoreNs": -110,
+        "imps": 7
+      },
+      {
+        "ts": "2026-09-27T09:29:35Z",
+        "dealer": 1,
+        "vuln": 3,
+        "calls": [
+          "1S",
+          "2H",
+          "P",
+          "P",
+          "2S",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "2S by E",
+        "tricks": 6,
+        "parNs": -120,
+        "scoreNs": 200,
+        "imps": 8
+      },
+      {
+        "ts": "2026-09-27T09:28:59Z",
+        "dealer": 3,
+        "vuln": 3,
+        "calls": [
+          "1C",
+          "1N",
+          "P",
+          "2H",
+          "P",
+          "2S",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "2S by N",
+        "tricks": 8,
+        "parNs": 120,
+        "scoreNs": 110,
+        "imps": 0
+      },
+      {
+        "ts": "2026-09-27T09:28:27Z",
+        "dealer": 0,
+        "vuln": 2,
+        "calls": [
+          "1H",
+          "P",
+          "4C",
+          "P",
+          "4H",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "4H by N",
+        "tricks": 11,
+        "parNs": 450,
+        "scoreNs": 450,
+        "imps": 0
+      }
+    ]
   }
 }

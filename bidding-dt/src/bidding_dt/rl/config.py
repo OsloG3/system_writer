@@ -36,11 +36,11 @@ class RLConfig:
     ppo_epochs: int = 3
     minibatch_size: int = 512
     vf_coef: float = 0.5
-    # XLA/TPU only: pad the rollout buffer's row count up to a multiple of
-    # this, so buffer tensor shapes stay in a small set of buckets and the
-    # TPU reuses its compiled graphs across iterations (0 -> pad to whole
-    # minibatches only)
-    static_row_bucket: int = 512
+    # length bucketing: rows are sorted by auction length within random
+    # groups of length_bucket * minibatch_size so each minibatch's token
+    # block can be truncated to its longest row (drops padded-column work
+    # from every PPO forward/backward; 0 = purely random minibatches)
+    length_bucket: int = 8
     # anchors (annealed linearly from *_start to *_end over iters)
     ent_coef: float = 0.01
     ent_coef_end: float = 0.0
@@ -70,6 +70,13 @@ class RLConfig:
     seed: int = 1337
     device: str | None = None
     cache_path: str = "cache/dd.sqlite"
+    # multi-core CPU: torch intra-op threads (0 = torch default). Capping
+    # this (e.g. cores/2) leaves headroom for the background DD presolve
+    # thread and libdds' own solver threads.
+    threads: int = 0
+    # bf16 autocast for the CPU rollout/update forwards: ~2x matmul speed on
+    # AVX512-BF16/AMX cores (Zen4+, Intel Ice Lake+); slower on older CPUs.
+    cpu_bf16: bool = False
 
 
 @dataclass

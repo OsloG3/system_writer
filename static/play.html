@@ -44,6 +44,7 @@
             let autoRetries = 0; // failed auto-recovery attempts in a row
             let bidLevelSel = null; // bidding-box selection, kept across renders
             let bidStrainSel = null;
+            let shownBoardId = null; // last board id we scrolled into view
 
             // ---- formatting helpers ----
 
@@ -240,7 +241,7 @@
                           : "";
                 const hand = isHuman
                     ? state
-                        ? `<div id="southHand" class="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5">${handHtml(state.hand, true)}</div>`
+                        ? `<div id="southHand" class="mt-1.5 space-y-0.5">${handHtml(state.hand, true)}</div>`
                         : ""
                     : state && state.done && state.hands
                       ? `<div class="mt-1.5 space-y-0.5">${handHtml(state.hands[seat], true)}</div>`
@@ -274,18 +275,27 @@
                     row[pos] = calls[i];
                     prevPos = pos;
                 }
-                const head = AUCTION_COLS.map(
-                    (s) =>
-                        `<th class="px-2 sm:px-3 py-0.5 text-center text-[10px] uppercase tracking-widest font-label ${s === state.dealer ? "text-primary font-bold" : "text-outline"}">${SEAT_NAMES[s][0]}${calls.length === 0 && s === state.dealer ? " •" : ""}</th>`,
-                ).join("");
+                const head = AUCTION_COLS.map((s) => {
+                    const vul = seatIsVul(s, state.vuln);
+                    const chip = vul
+                        ? "bg-red-600 text-white"
+                        : "bg-white text-neutral-800";
+                    const dealer =
+                        s === state.dealer
+                            ? "ring-2 ring-primary ring-offset-1 ring-offset-transparent"
+                            : "";
+                    return `<th class="px-2 sm:px-3 py-1 text-center">
+                        <span class="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] uppercase font-label font-bold border border-outline-variant/30 ${chip} ${dealer}">${SEAT_NAMES[s][0]}</span>
+                    </th>`;
+                }).join("");
                 const body = rows
                     .map(
                         (r) =>
                             `<tr class="border-t border-outline-variant/10">` +
                             r
                                 .map(
-                                    (c) =>
-                                        `<td class="px-2 sm:px-3 py-0.5 text-center text-sm font-headline font-semibold text-on-surface">${c ? callHtml(c) : ""}</td>`,
+                                    (c, i) =>
+                                        `<td class="px-2 sm:px-3 py-0.5 text-center text-sm font-headline font-semibold text-on-surface ${seatIsVul(AUCTION_COLS[i], state.vuln) ? "bg-red-600/5" : ""}">${c ? callHtml(c) : ""}</td>`,
                                 )
                                 .join("") +
                             `</tr>`,
@@ -303,7 +313,9 @@
                     </div>`;
             }
 
-            function biddingBoxHtml() {
+            // Levels (up to 7) and strains (5) shown as two rows of buttons;
+            // pick one of each then Bid. Rebuilt in place on every selection.
+            function bidBoxInnerHtml() {
                 const legal = new Set(state.legal || []);
                 const levels = [];
                 for (let l = 1; l <= 7; l++)
@@ -320,8 +332,31 @@
                         ? bidLevelSel + bidStrainSel
                         : "";
                 const canBid = token && legal.has(token) && !busy;
-                const selectCls =
-                    "rounded border-outline-variant/30 bg-surface-container-lowest text-on-surface text-sm py-1 px-1.5";
+
+                const selCls =
+                    "bg-primary-container ring-2 ring-primary text-on-primary-container";
+                const idleCls =
+                    "bg-surface-container text-on-surface hover:bg-surface-container-high";
+                const levelBtn = (l) => {
+                    const on = l === bidLevelSel;
+                    return `<button data-level="${l}" ${busy ? "disabled" : ""} class="w-8 py-1.5 rounded font-headline font-bold text-sm transition-colors ${on ? selCls : idleCls} ${busy ? "opacity-30 cursor-not-allowed" : ""}">${l}</button>`;
+                };
+                const strainBtn = (d) => {
+                    const ok = legal.has(bidLevelSel + d);
+                    const on = ok && d === bidStrainSel;
+                    const dis = "opacity-30 cursor-not-allowed saturate-0";
+                    return `<button data-strain="${d}" ${ok && !busy ? "" : "disabled"} class="px-2.5 py-1.5 rounded font-headline font-bold text-sm transition-colors ${on ? selCls : idleCls} ${ok && !busy ? "" : dis}">${colorSuits(SUIT_SYMBOL[d])}</button>`;
+                };
+                return `
+                    <div class="flex items-center gap-1">${levels.map(levelBtn).join("")}</div>
+                    <div class="flex items-center gap-1">
+                        ${SUIT_ORDER.map(strainBtn).join("")}
+                        <button id="bidBtn" ${canBid ? "" : "disabled"} class="ml-2 px-4 py-1.5 bg-primary text-on-primary rounded font-label text-xs font-semibold hover:bg-primary-dim transition-colors ${canBid ? "" : "opacity-30 cursor-not-allowed"}">Bid</button>
+                    </div>`;
+            }
+
+            function biddingBoxHtml() {
+                const legal = new Set(state.legal || []);
                 const special = (t, label, cls) => {
                     const ok = legal.has(t) && !busy;
                     const dis = "opacity-30 cursor-not-allowed saturate-0";
@@ -331,13 +366,7 @@
                     <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 py-2">
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="text-[10px] uppercase tracking-widest text-outline font-label mr-1">Your call</span>
-                            <select id="bidLevel" ${busy ? "disabled" : ""} class="${selectCls} w-14">
-                                ${levels.map((l) => `<option value="${l}" ${l === bidLevelSel ? "selected" : ""}>${l}</option>`).join("")}
-                            </select>
-                            <select id="bidStrain" ${busy ? "disabled" : ""} class="${selectCls} w-20">
-                                ${strains.map((d) => `<option value="${d}" ${d === bidStrainSel ? "selected" : ""}>${SUIT_SYMBOL[d]}</option>`).join("")}
-                            </select>
-                            <button id="bidBtn" ${canBid ? "" : "disabled"} class="px-4 py-1.5 bg-primary text-on-primary rounded font-label text-xs font-semibold hover:bg-primary-dim transition-colors ${canBid ? "" : "opacity-30 cursor-not-allowed"}">Bid</button>
+                            <span id="bidBox" class="flex flex-col items-start gap-1.5">${bidBoxInnerHtml()}</span>
                             <span class="flex-1"></span>
                             ${special("P", "Pass", "bg-surface-container text-on-surface hover:bg-surface-container-high")}
                             ${special("X", "Double", "bg-error-container/40 text-on-error-container hover:bg-error-container/70")}
@@ -346,29 +375,34 @@
                     </div>`;
             }
 
-            // Keep the strain options and Bid button in sync with the level
-            // select without a full re-render
-            function updateBidControls() {
-                const str = document.getElementById("bidStrain");
-                const bidBtn = document.getElementById("bidBtn");
-                if (!str || !bidBtn || !state) return;
-                const legal = new Set(state.legal || []);
-                const strains = SUIT_ORDER.filter((d) =>
-                    legal.has(bidLevelSel + d),
-                );
-                if (!strains.includes(bidStrainSel))
-                    bidStrainSel = strains.length ? strains[0] : null;
-                str.innerHTML = strains
-                    .map(
-                        (d) =>
-                            `<option value="${d}" ${d === bidStrainSel ? "selected" : ""}>${SUIT_SYMBOL[d]}</option>`,
-                    )
-                    .join("");
-                const token =
-                    bidLevelSel !== null && bidStrainSel
-                        ? bidLevelSel + bidStrainSel
-                        : "";
-                bidBtn.disabled = !(token && legal.has(token)) || busy;
+            // Wire level/strain buttons so a selection rebuilds the box in
+            // place (no full re-render, which would lose nothing but is wasteful)
+            function wireBidBox(root) {
+                const box = root.getElementById("bidBox");
+                if (!box) return;
+                box.querySelectorAll("[data-level]").forEach((btn) => {
+                    btn.onclick = () => {
+                        bidLevelSel = parseInt(btn.dataset.level, 10);
+                        refreshBidBox();
+                    };
+                });
+                box.querySelectorAll("[data-strain]").forEach((btn) => {
+                    btn.onclick = () => {
+                        bidStrainSel = btn.dataset.strain;
+                        refreshBidBox();
+                    };
+                });
+                const bidBtn = box.querySelector("#bidBtn");
+                if (bidBtn)
+                    bidBtn.onclick = () =>
+                        makeCall(bidLevelSel + bidStrainSel);
+            }
+
+            function refreshBidBox() {
+                const box = document.getElementById("bidBox");
+                if (!box || !state) return;
+                box.innerHTML = bidBoxInnerHtml();
+                wireBidBox(document);
             }
 
             function resultHtml() {
@@ -435,7 +469,7 @@
                                 New board
                             </button>
                         </div>
-                        <div class="bg-surface-container-low rounded-xl border border-outline-variant/10 p-2 sm:p-3">
+                        <div id="tableBox" class="bg-surface-container-low rounded-xl border border-outline-variant/10 p-2 sm:p-3">
                             <div class="grid grid-cols-3 gap-2 items-start max-w-3xl mx-auto">
                                 <div></div>
                                 ${seatBox(0)}
@@ -578,6 +612,17 @@
                 html += recentHtml();
                 content.innerHTML = html;
 
+                // A freshly dealt board scrolls to the center of the viewport.
+                if (state && state.id !== shownBoardId) {
+                    shownBoardId = state.id;
+                    const tbl = document.getElementById("tableBox");
+                    if (tbl)
+                        tbl.scrollIntoView({
+                            behavior: "smooth",
+                            block: "center",
+                        });
+                }
+
                 const deal = document.getElementById("dealBtn");
                 if (deal) deal.onclick = () => newBoard();
                 const abandon = document.getElementById("abandonBtn");
@@ -587,22 +632,7 @@
                 content.querySelectorAll("[data-call]").forEach((btn) => {
                     btn.onclick = () => makeCall(btn.dataset.call);
                 });
-                const lvl = document.getElementById("bidLevel");
-                const str = document.getElementById("bidStrain");
-                const bidBtn = document.getElementById("bidBtn");
-                if (lvl)
-                    lvl.onchange = () => {
-                        bidLevelSel = parseInt(lvl.value, 10);
-                        updateBidControls();
-                    };
-                if (str)
-                    str.onchange = () => {
-                        bidStrainSel = str.value;
-                        updateBidControls();
-                    };
-                if (bidBtn)
-                    bidBtn.onclick = () =>
-                        makeCall(bidLevelSel + bidStrainSel);
+                wireBidBox(document);
                 const retry = document.getElementById("retryBtn");
                 if (retry)
                     retry.onclick = () => {
