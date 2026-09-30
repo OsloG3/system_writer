@@ -4,7 +4,7 @@
     <head>
         <meta charset="utf-8" />
         <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-        <title>Atheneum | Play vs Bots</title>
+        <title>Bridge Trainer | Play vs Bots</title>
         <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
         <link
             href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
@@ -16,9 +16,559 @@
         />
         <script src="/static/shared.js"></script>
         <link rel="stylesheet" href="/static/shared.css" />
+        <style>
+            body.cb-page {
+                background: #151a24;
+            }
+            body.cb-page main {
+                background: #151a24 !important;
+            }
+            body.cb-page .page-enter > header h1 {
+                color: #f2f4f8;
+            }
+            body.cb-page .page-enter > header p {
+                color: #93a0b4;
+            }
+            body.cb-page .unlock-card {
+                background: #1c2330;
+                border-color: rgba(255, 255, 255, 0.1);
+            }
+            body.cb-page .unlock-card .text-on-surface {
+                color: #eef1f5;
+            }
+            body.cb-page .unlock-card .text-on-surface-variant {
+                color: #9aa7b8;
+            }
+            body.cb-page .unlock-card .bg-surface-container {
+                background: #2a3240;
+                color: #cbd5e1;
+            }
+            body.cb-page .unlock-input {
+                background: #151a24;
+                border-color: #39424f;
+                color: #e5e9f0;
+            }
+            body.cb-page .history-card {
+                background: #1c2330;
+                border-color: rgba(255, 255, 255, 0.08);
+            }
+
+            .cb-topbar {
+                display: flex;
+                align-items: center;
+                gap: 0.45rem;
+                padding: 0.55rem 0.75rem;
+                max-width: 46rem;
+                margin: 0 auto;
+                width: 100%;
+            }
+            .cb-iconbtn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 2.35rem;
+                height: 2.35rem;
+                border-radius: 0.7rem;
+                background: #202836;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                color: #e5e9f0;
+                flex-shrink: 0;
+            }
+            .cb-iconbtn:disabled {
+                opacity: 0.35;
+            }
+            .cb-plainbtn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 2.35rem;
+                height: 2.35rem;
+                color: #dfe5ee;
+                flex-shrink: 0;
+            }
+            .cb-title {
+                flex: 1;
+                min-width: 0;
+                text-align: center;
+            }
+            .cb-title .t {
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.05rem;
+                color: #f2f4f8;
+                line-height: 1.15;
+            }
+            .cb-title .s {
+                font-size: 0.72rem;
+                color: #8fa0b5;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .cb-nexthand {
+                display: flex;
+                align-items: center;
+                gap: 0.35rem;
+                padding: 0.5rem 0.7rem;
+                border-radius: 0.8rem;
+                background: linear-gradient(180deg, #3fae6c, #25854c);
+                color: #fff;
+                font-family: Inter, sans-serif;
+                font-weight: 700;
+                font-size: 0.72rem;
+                letter-spacing: 0.02em;
+                box-shadow: 0 3px 0 rgba(13, 77, 43, 0.7);
+                flex-shrink: 0;
+                white-space: nowrap;
+            }
+            .cb-menuwrap {
+                position: relative;
+                flex-shrink: 0;
+            }
+            .cb-menu {
+                position: absolute;
+                right: 0;
+                top: calc(100% + 6px);
+                z-index: 60;
+                min-width: 190px;
+                background: #1c2330;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 0.9rem;
+                padding: 0.35rem;
+                box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+            }
+            .cb-menu button {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                width: 100%;
+                padding: 0.5rem 0.6rem;
+                border-radius: 0.6rem;
+                color: #dfe5ee;
+                font-size: 0.8rem;
+                font-family: Inter, sans-serif;
+            }
+            .cb-menu button:hover {
+                background: rgba(255, 255, 255, 0.07);
+            }
+
+            .cb-mid {
+                flex: 1;
+                min-height: 0;
+                overflow-y: auto;
+                padding: 0 0.75rem 0.5rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.6rem;
+                max-width: 42rem;
+                margin: 0 auto;
+                width: 100%;
+            }
+            .cb-mid.cb-mid-bid > .cb-auction {
+                flex: 1 1 auto;
+                display: flex;
+                flex-direction: column;
+            }
+            .cb-mid.cb-mid-bid > .cb-auction .cb-auc-body {
+                flex: 1;
+            }
+
+            .cb-auction {
+                background: #1e3c3c;
+                border-radius: 1rem;
+                overflow: hidden;
+                border: 1px solid rgba(255, 255, 255, 0.06);
+            }
+            .cb-auc-meta {
+                display: flex;
+                justify-content: space-between;
+                gap: 0.5rem;
+                padding: 0.35rem 0.7rem;
+                font-size: 0.62rem;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: #7fa0a0;
+                font-family: Inter, sans-serif;
+            }
+            .cb-auc-head {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                background: #152c33;
+            }
+            .cb-auc-head > div {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 2.2rem;
+                color: #cfd8e3;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.85rem;
+            }
+            .cb-auc-head > div.dlr {
+                color: #f2ca4c;
+            }
+            .cb-seatyou {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 1.5rem;
+                height: 1.5rem;
+                border-radius: 50%;
+                border: 2px solid #e8ecf2;
+                color: #fff;
+            }
+            .cb-auc-body {
+                min-height: 8rem;
+                padding: 0.5rem 0.4rem 0.6rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.3rem;
+            }
+            .cb-auc-row {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 0.3rem;
+            }
+            .cb-auc-cell {
+                display: flex;
+                justify-content: center;
+            }
+            .cb-auc-empty {
+                padding: 2.5rem 0;
+                text-align: center;
+                color: #5f8f8f;
+                font-size: 0.75rem;
+                font-family: Inter, sans-serif;
+            }
+            .cb-call {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 1px;
+                min-width: 2.6rem;
+                height: 1.7rem;
+                padding: 0 0.45rem;
+                border-radius: 0.45rem;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.85rem;
+            }
+            .cb-call-c { background: #b5e48c; color: #2b7a4b; }
+            .cb-call-d { background: #f8c471; color: #c05621; }
+            .cb-call-h { background: #f1948a; color: #b03a2e; }
+            .cb-call-s { background: #a5b4f4; color: #2a3f93; }
+            .cb-call-n { background: #e8eaed; color: #1b1f27; }
+            .cb-call-p {
+                background: #2e5d43;
+                color: #cfe8d4;
+                font-size: 0.68rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+            .cb-call-x { background: #c0392b; color: #fff; }
+            .cb-call-xx { background: #2a51b0; color: #fff; }
+            .cb-q {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 1.7rem;
+                height: 1.7rem;
+                border-radius: 0.5rem;
+                background: #e8eaed;
+                color: #39424f;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                animation: cb-pulse 1.6s ease-in-out infinite;
+            }
+            @keyframes cb-pulse {
+                0%, 100% { opacity: 0.45; }
+                50% { opacity: 1; }
+            }
+
+            .cb-levels {
+                display: flex;
+                gap: 3px;
+                padding: 0 0.5rem;
+                margin-bottom: -10px;
+                position: relative;
+                z-index: 2;
+            }
+            .cb-level {
+                flex: 1;
+                height: 2.2rem;
+                border-radius: 0.6rem 0.6rem 0 0;
+                background: #1b2330;
+                color: #8fa0b5;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.95rem;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-bottom: none;
+            }
+            .cb-level:disabled {
+                opacity: 0.35;
+            }
+            .cb-level.sel {
+                background: #1e3c3c;
+                color: #fff;
+                height: 2.4rem;
+                border-color: transparent;
+                box-shadow: 0 6px 0 0 #1e3c3c;
+            }
+            .cb-bidpanel {
+                position: relative;
+                z-index: 1;
+                background: #1e3c3c;
+                border-radius: 1rem;
+                padding: 0.75rem 0.6rem 0.65rem;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 0.4rem;
+            }
+            .cb-tile {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 1px;
+                height: 2.9rem;
+                min-width: 3.1rem;
+                padding: 0 0.5rem;
+                border-radius: 0.7rem;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.25rem;
+                box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+            }
+            .cb-tile b {
+                font-size: 1.05rem;
+            }
+            .cb-tile-c { background: #b5e48c; color: #2b7a4b; }
+            .cb-tile-d { background: #f8c471; color: #c05621; }
+            .cb-tile-h { background: #f1948a; color: #b03a2e; }
+            .cb-tile-s { background: #a5b4f4; color: #2a3f93; }
+            .cb-tile-n { background: #e8eaed; color: #1b1f27; }
+            .cb-tile-x { background: #c0392b; color: #fff; }
+            .cb-tile-xx { background: #2a51b0; color: #fff; }
+            .cb-tile:disabled {
+                opacity: 0.3;
+                filter: saturate(0.3);
+                box-shadow: none;
+            }
+            .cb-pass {
+                margin-left: auto;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                height: 2.9rem;
+                padding: 0 1.4rem;
+                border-radius: 0.9rem;
+                background: #5d8b57;
+                color: #fff;
+                font-family: Inter, sans-serif;
+                font-weight: 800;
+                font-size: 1.05rem;
+                letter-spacing: 0.03em;
+                box-shadow: 0 3px 0 #3c6b39;
+            }
+            .cb-pass:disabled {
+                opacity: 0.4;
+            }
+
+            .cb-wait {
+                background: #1e3c3c;
+                border-radius: 1rem;
+                padding: 1rem;
+                display: flex;
+                align-items: center;
+                gap: 0.6rem;
+                flex-wrap: wrap;
+                color: #a9c3c3;
+                font-size: 0.85rem;
+                font-family: Inter, sans-serif;
+            }
+            .cb-ready {
+                background: #1e3c3c;
+                border-radius: 1rem;
+                padding: 2.2rem 1.5rem;
+                text-align: center;
+                color: #dfe5ee;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .cb-result {
+                background: #1e3c3c;
+                border-radius: 1rem;
+                padding: 0.9rem 1rem;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.8rem;
+                align-items: center;
+            }
+            .cb-btn-green {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
+                padding: 0.55rem 0.9rem;
+                border-radius: 0.8rem;
+                background: linear-gradient(180deg, #3fae6c, #25854c);
+                color: #fff;
+                font-family: Inter, sans-serif;
+                font-weight: 700;
+                font-size: 0.8rem;
+                box-shadow: 0 3px 0 rgba(13, 77, 43, 0.7);
+            }
+            .cb-btn-ghost {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
+                padding: 0.55rem 0.8rem;
+                border-radius: 0.8rem;
+                background: #202836;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #dfe5ee;
+                font-size: 0.78rem;
+                font-family: Inter, sans-serif;
+                font-weight: 600;
+            }
+
+            .cb-hands {
+                display: flex;
+                flex-direction: column;
+                gap: 0.4rem;
+            }
+            .cb-handsrow {
+                background: #1b2330;
+                border-radius: 0.8rem;
+                padding: 0.45rem 0.6rem;
+                display: flex;
+                align-items: center;
+                gap: 0.6rem;
+                overflow: hidden;
+            }
+            .cb-handsrow .lbl {
+                width: 4.6rem;
+                flex-shrink: 0;
+                font-size: 0.7rem;
+                color: #8fa0b5;
+                font-family: Inter, sans-serif;
+            }
+
+            .cb-handfoot {
+                padding: 0.3rem 0.75rem calc(0.55rem + env(safe-area-inset-bottom));
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.3rem;
+                max-width: 42rem;
+                margin: 0 auto;
+                width: 100%;
+            }
+            .cb-handlabel {
+                color: #e5e9f0;
+                font-family: Inter, sans-serif;
+                font-size: 0.85rem;
+            }
+            .cb-fan {
+                display: flex;
+                padding: 0.2rem 0.4rem;
+            }
+            .cb-card {
+                position: relative;
+                width: 3rem;
+                height: 4.3rem;
+                border-radius: 0.45rem;
+                background: linear-gradient(180deg, #ffffff, #f2f2ee);
+                border: 1px solid rgba(0, 0, 0, 0.35);
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+                margin-left: -1.55rem;
+                flex-shrink: 0;
+            }
+            .cb-card:first-child {
+                margin-left: 0;
+            }
+            .cb-card.red { color: #c0392b; }
+            .cb-card.blk { color: #1b1f27; }
+            .cb-corner {
+                position: absolute;
+                top: 0.2rem;
+                left: 0.25rem;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                line-height: 1;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+            }
+            .cb-corner b { font-size: 0.8rem; }
+            .cb-corner i {
+                font-size: 0.7rem;
+                font-style: normal;
+                margin-top: 1px;
+            }
+            .cb-midsuit {
+                position: absolute;
+                right: 0.3rem;
+                bottom: 0.35rem;
+                font-size: 1.1rem;
+                line-height: 1;
+            }
+            .cb-fan-sm .cb-card {
+                width: 1.7rem;
+                height: 2.5rem;
+                margin-left: -0.85rem;
+                border-radius: 0.3rem;
+            }
+            .cb-fan-sm .cb-corner b { font-size: 0.55rem; }
+            .cb-fan-sm .cb-corner i { font-size: 0.5rem; margin-top: 0; }
+            .cb-fan-sm .cb-midsuit { display: none; }
+            @media (max-width: 400px) {
+                .cb-card {
+                    width: 2.6rem;
+                    height: 3.8rem;
+                    margin-left: -1.35rem;
+                }
+                .cb-corner b { font-size: 0.7rem; }
+                .cb-corner i { font-size: 0.6rem; }
+                .cb-midsuit { font-size: 0.95rem; }
+            }
+
+            .cb-cardpanel {
+                background: #1b2330;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 1rem;
+            }
+            .cb-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 14px;
+                border-radius: 9999px;
+                background: #1b2330;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                font-size: 12px;
+                color: #cbd5e1;
+            }
+            .cb-input {
+                width: 100%;
+                border: 1.5px solid #39424f;
+                border-radius: 10px;
+                padding: 10px 14px;
+                font-size: 14px;
+                background: #151a24;
+                color: #e5e9f0;
+                outline: none;
+            }
+            .cb-input:focus {
+                border-color: #3fae6c;
+            }
+        </style>
     </head>
     <body
-        class="bg-background text-on-surface font-body selection:bg-tertiary-container/30 overflow-hidden"
+        class="cb-page text-white font-body selection:bg-tertiary-container/30 overflow-hidden"
     >
         <div id="app"></div>
 
@@ -34,58 +584,42 @@
             const SEAT_NAMES = ["North", "East", "South", "West"];
             const VULN_NAMES = ["None", "N-S", "E-W", "Both"];
             const SUIT_SYMBOL = { S: "♠", H: "♥", D: "♦", C: "♣", N: "NT" };
-            const SUIT_ORDER = ["C", "D", "H", "S", "N"]; // ascending bid rank
-            const AUCTION_COLS = [3, 0, 1, 2]; // W N E S: South rightmost
+            const SUIT_ORDER = ["C", "D", "H", "S", "N"];
+            const TILE_CLS = { C: "c", D: "d", H: "h", S: "s", N: "n" };
             const BOARD_KEY = "atheneum_play_board";
             const TEAM_KEY = "atheneum_play_team";
 
-            let state = null; // active table: a solo board or a team game view
-            let stats = null; // solo career stats { boards, impsTotal, avgImps, recent }
-            let games = null; // team tables this user is part of
-            let allUsers = []; // account names, for the partner autocomplete
-            let busy = false; // a request is in flight (bots thinking)
-            let autoRetries = 0; // failed auto-recovery attempts in a row
-            let bidLevelSel = null; // bidding-box selection, kept across renders
-            let bidStrainSel = null;
-            let pollTimer = null; // pending background refresh
-            let overlay = null; // board-history overlay state
+            let state = null;
+            let stats = null;
+            let games = null;
+            let allUsers = [];
+            let busy = false;
+            let autoRetries = 0;
+            let bidLevelSel = null;
+            let pollTimer = null;
+            let overlay = null;
 
-            // ---- formatting helpers ----
-
-            function callLabel(c) {
-                if (c === "P") return "Pass";
-                if (c === "X") return "Dbl";
-                if (c === "XX") return "Rdbl";
-                if (c.length === 2) return c[0] + SUIT_SYMBOL[c[1]];
-                return c;
+            function dcolorSuits(text) {
+                return escapeHtml(text)
+                    .replace(/♣/g, '<span style="color:#8fd694;">♣</span>')
+                    .replace(/♠/g, '<span style="color:#8fd694;">♠</span>')
+                    .replace(/♦/g, '<span style="color:#f08a8a;">♦</span>')
+                    .replace(/♥/g, '<span style="color:#f08a8a;">♥</span>');
             }
 
-            function callHtml(c) {
-                return colorSuits(callLabel(c));
-            }
-
-            // "4S by W" / "1HX by E" / "passed out" -> suit-symbolized html
             function contractHtml(text) {
                 const t = String(text || "").replace(
                     /([1-7])([CDHSN])/g,
                     (m, l, d) => l + (d === "N" ? "NT" : SUIT_SYMBOL[d]),
                 );
-                return colorSuits(t);
+                return dcolorSuits(t);
             }
 
-            // contract object from the sidecar -> "4SX by N"
             function contractString(c) {
                 if (!c) return "passed out";
                 const pen = ["", "X", "XX"][c.penalty] || "";
                 const decl = "NESW"[c.declarer] || "?";
                 return `${c.level}${c.denom}${pen} by ${decl}`;
-            }
-
-            function seatIsVul(seat, vuln) {
-                const ns = seat % 2 === 0;
-                return (
-                    vuln === 3 || (vuln === 1 && ns) || (vuln === 2 && !ns)
-                );
             }
 
             function signed(n, digits) {
@@ -98,52 +632,48 @@
                 return n > 0 ? "+" + n : String(n);
             }
 
-            // A hand rendered as little playing cards per suit.
-            function handHtml(handStr, small) {
-                const parts = String(handStr || "").split("."); // S,H,D,C
-                const suits = [
-                    ["S", "♠", "blk"],
-                    ["H", "♥", "red"],
-                    ["D", "♦", "red"],
-                    ["C", "♣", "blk"],
-                ];
-                return suits
-                    .map(([ch, sym, col], i) => {
-                        const cards = (parts[i] || "").split("");
-                        const tiles = cards.length
-                            ? cards
-                                  .map((c) => {
-                                      const ten =
-                                          c === "T"
-                                              ? "font-size:9px;letter-spacing:-0.08em;"
-                                              : "";
-                                      return `<span class="pcard ${col}${small ? " pcard-sm" : ""}"><span class="r" style="${ten}">${c === "T" ? "10" : escapeHtml(c)}</span><span class="s">${sym}</span></span>`;
-                                  })
-                                  .join("")
-                            : `<span class="text-outline-variant text-xs font-label px-1">—</span>`;
-                        const suitColor =
-                            col === "red"
-                                ? "color:#c0392b;"
-                                : "color:#17252a;";
-                        return `<div class="flex items-center gap-1.5 min-w-0">
-                            <span class="w-4 shrink-0 ${small ? "text-xs" : "text-base"} leading-none" style="${suitColor}">${sym}</span>
-                            <span class="flex flex-wrap gap-[2px]">${tiles}</span>
-                        </div>`;
-                    })
-                    .join("");
+            function hcpOf(handStr) {
+                let t = 0;
+                for (const c of String(handStr || "").replace(/\./g, "")) {
+                    if (c === "A") t += 4;
+                    else if (c === "K") t += 3;
+                    else if (c === "Q") t += 2;
+                    else if (c === "J") t += 1;
+                }
+                return t;
             }
 
-            function hiddenHandHtml() {
-                let cards = "";
-                for (let i = 0; i < 13; i++)
-                    cards += `<span class="card-back"></span>`;
-                return `<div class="card-fan mt-1 overflow-hidden">${cards}</div>`;
+            function cardFan(handStr, small) {
+                const suits = [
+                    ["S", "♠", 0],
+                    ["H", "♥", 1],
+                    ["D", "♦", 1],
+                    ["C", "♣", 0],
+                ];
+                const parts = String(handStr || "").split(".");
+                const cards = [];
+                suits.forEach(([ch, sym, red], i) => {
+                    (parts[i] || "").split("").forEach((r) =>
+                        cards.push({ r, sym, red }),
+                    );
+                });
+                if (!cards.length) return "";
+                return (
+                    `<div class="cb-fan ${small ? "cb-fan-sm" : ""}">` +
+                    cards
+                        .map((c) => {
+                            const rank = c.r === "T" ? "10" : c.r;
+                            return `<span class="cb-card ${c.red ? "red" : "blk"}"><span class="cb-corner"><b>${rank}</b><i>${c.sym}</i></span><span class="cb-midsuit">${c.sym}</span></span>`;
+                        })
+                        .join("") +
+                    `</div>`
+                );
             }
 
             function impsColor(imps) {
-                if (imps > 0) return "text-green-700";
-                if (imps < 0) return "text-error";
-                return "text-on-surface-variant";
+                if (imps > 0) return "text-[#6ee7a0]";
+                if (imps < 0) return "text-[#f08a8a]";
+                return "text-[#9aa7b8]";
             }
 
             function timeAgo(ts) {
@@ -157,7 +687,72 @@
                 return Math.floor(hrs / 24) + "d ago";
             }
 
-            // ---- server calls ----
+            function cbChip(c) {
+                if (c === "P") return `<span class="cb-call cb-call-p">pass</span>`;
+                if (c === "X") return `<span class="cb-call cb-call-x">X</span>`;
+                if (c === "XX") return `<span class="cb-call cb-call-xx">XX</span>`;
+                const sym = c[1] === "N" ? "NT" : SUIT_SYMBOL[c[1]];
+                return `<span class="cb-call cb-call-${TILE_CLS[c[1]]}">${c[0]}<b style="font-size:.75rem;">${sym}</b></span>`;
+            }
+
+            function auctionHtml(dealer, vuln, calls, pending, youSeat) {
+                const cols = [0, 1, 2, 3].map((k) => (dealer + k) % 4);
+                const list = calls || [];
+                const rows = [];
+                for (let i = 0; i < list.length; i += 4)
+                    rows.push(list.slice(i, i + 4).map((c) => ({ c })));
+                if (pending !== null && pending !== undefined) {
+                    const pos = (pending - dealer + 4) % 4;
+                    let r = Math.floor(list.length / 4);
+                    if (!rows[r]) rows[r] = [];
+                    if (pos < rows[r].length) {
+                        r++;
+                        rows[r] = [];
+                    }
+                    while (rows[r].length < pos) rows[r].push({ c: null });
+                    rows[r].push({ q: true });
+                }
+                const head = cols
+                    .map(
+                        (s) =>
+                            `<div class="${s === dealer ? "dlr" : ""}">${
+                                s === youSeat
+                                    ? `<span class="cb-seatyou">${SEAT_NAMES[s][0]}</span>`
+                                    : SEAT_NAMES[s][0]
+                            }</div>`,
+                    )
+                    .join("");
+                const body = rows.length
+                    ? rows
+                          .map(
+                              (row) =>
+                                  `<div class="cb-auc-row">` +
+                                  row
+                                      .map(
+                                          (cell) =>
+                                              `<div class="cb-auc-cell">${
+                                                  cell.q
+                                                      ? `<span class="cb-q">?</span>`
+                                                      : cell.c
+                                                        ? cbChip(cell.c)
+                                                        : ""
+                                              }</div>`,
+                                      )
+                                      .join("") +
+                                  `</div>`,
+                          )
+                          .join("")
+                    : `<div class="cb-auc-empty">no calls yet</div>`;
+                return `
+                    <div class="cb-auction">
+                        <div class="cb-auc-meta">
+                            <span>Dealer ${SEAT_NAMES[dealer][0]} · Vuln ${VULN_NAMES[vuln]}</span>
+                            <span>${list.length} call${list.length === 1 ? "" : "s"}</span>
+                        </div>
+                        <div class="cb-auc-head">${head}</div>
+                        <div class="cb-auc-body">${body}</div>
+                    </div>`;
+            }
 
             async function handleResponse(res) {
                 if (res.status === 401) {
@@ -187,10 +782,6 @@
                     return;
                 }
                 if (data.mode === "team") {
-                    // The team table polls continuously (other boards can
-                    // move without this one changing); skip the re-render
-                    // when the whole state is identical so a bid in progress
-                    // is never disturbed.
                     const changed =
                         !state ||
                         state.mode !== "team" ||
@@ -265,9 +856,6 @@
                 )
                     return;
                 if (!force && state.mode === "solo" && state.done) return;
-                // Team tables poll continuously; while the selected board is
-                // waiting for this player, fetch quietly instead of flashing
-                // a spinner over the bidding box.
                 const quiet =
                     state.mode === "team" && state.yourTurn && !state.done;
                 busy = true;
@@ -288,15 +876,11 @@
                 }
             }
 
-            // POST /start: deal a fresh 8-board match (table ready screen or
-            // after a match completes)
             async function teamStart() {
                 if (!state || state.mode !== "team" || busy) return;
                 await post(`/api/play/team/${state.id}/start`);
             }
 
-            // Switch the table view to another board of the match. The
-            // current board stays on screen while loading (no busy render).
             async function teamSelectBoard(no) {
                 if (!state || state.mode !== "team" || busy) return;
                 if (no === state.boardSel) return;
@@ -398,9 +982,6 @@
             }
 
             async function refreshLobby() {
-                // Never re-render the lobby out from under someone typing a
-                // partner name: the poll fires on a timer armed before they
-                // started typing, so re-check at fire time as well.
                 const input = document.getElementById("partnerName");
                 if (input && (input.value || document.activeElement === input)) {
                     clearTimeout(pollTimer);
@@ -428,8 +1009,6 @@
                         if (res.ok) {
                             state = await res.json();
                             state.mode = "team";
-                            // A team table in progress outranks any stale
-                            // solo board left in storage.
                             localStorage.removeItem(BOARD_KEY);
                             busy = false;
                             render();
@@ -458,318 +1037,65 @@
                 render();
             }
 
-            // ---- rendering ----
-
-            // Contract for one seat ("You", seat name, partner, bot).
-            function seatSub(seat) {
-                if (state.humanSeat === seat) return "you";
-                const named = state.seatNames
-                    ? state.seatNames[String(seat)]
-                    : "";
-                if (named)
-                    return escapeHtml(named) + " · your partner";
-                const model = state.bots ? state.bots[String(seat)] : "";
-                return "bot" + (model ? " · " + escapeHtml(model) : "");
-            }
-
-            function seatBox(seat) {
-                const isHuman = state.humanSeat === seat;
-                const named = state.seatNames
-                    ? state.seatNames[String(seat)]
-                    : "";
-                const active = !state.done && state.nextSeat === seat;
-                const dealer = state.dealer === seat;
-                const vulChip = seatIsVul(seat, state.vuln)
-                    ? `<span class="px-1.5 py-px rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-[#b03226] text-white">vul</span>`
-                    : "";
-                const dealerChip = dealer
-                    ? `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gradient-to-b from-gold-light to-gold text-on-gold text-[9px] font-extrabold border border-black/25" title="Dealer">D</span>`
-                    : "";
-                const coinCls = isHuman
-                    ? "avatar-you"
-                    : named
-                      ? "avatar-partner"
-                      : "avatar-bot";
-                const coinInitial = isHuman
-                    ? window.currentUser || "?"
-                    : (named || "?");
-                const coinInner = isHuman || named
-                    ? escapeHtml(coinInitial[0].toUpperCase())
-                    : `<span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' 1;">smart_toy</span>`;
-                let status = "";
-                if (active) {
-                    const label = isHuman
-                        ? "your turn"
-                        : named
-                          ? "partner to act"
-                          : "bot thinking…";
-                    status = `<span class="flex items-center gap-1 text-[10px] ${isHuman ? "text-[#1e7d47] font-label font-bold" : "text-on-surface-variant font-label"}">${busy && !isHuman ? '<span class="material-symbols-outlined text-xs animate-spin">progress_activity</span>' : ""}${label}</span>`;
-                }
-                let hand;
-                if (state.done && state.hands) {
-                    hand = `<div class="mt-1 space-y-0">${handHtml(state.hands[seat], true)}</div>`;
-                } else if (isHuman) {
-                    hand = `<div class="mt-1 text-[10px] font-label text-on-surface-variant">your cards below</div>`;
-                } else {
-                    hand = hiddenHandHtml();
-                }
+            function spinner(msg) {
                 return `
-                    <div class="player-plate ${active ? "seat-active" : ""} px-2.5 py-1.5 min-w-0">
-                        <div class="flex items-center gap-2">
-                            <span class="avatar-coin ${coinCls}">${coinInner}</span>
-                            <div class="min-w-0">
-                                <div class="flex items-center gap-1.5">
-                                    <span class="font-headline font-extrabold text-xs sm:text-sm text-on-surface truncate">${SEAT_NAMES[seat]}</span>
-                                    ${vulChip}${dealerChip}
-                                </div>
-                                <div class="text-[10px] text-on-surface-variant font-label truncate">${seatSub(seat)}</div>
-                            </div>
-                        </div>
-                        <div class="min-h-[14px] mt-0.5">${status}</div>
-                        ${hand}
-                    </div>`;
+                    <span class="material-symbols-outlined text-[#8fd694] animate-spin">progress_activity</span>
+                    <span class="text-sm text-[#a9c3c3] font-label">${msg}</span>`;
             }
 
-            function auctionTableHtml(dealer, vuln, calls) {
-                const list = calls || [];
-                const rows = [];
-                let row = null;
-                let prevPos = -1;
-                for (let i = 0; i < list.length; i++) {
-                    const pos = AUCTION_COLS.indexOf((dealer + i) % 4);
-                    if (!row || pos <= prevPos) {
-                        row = [null, null, null, null];
-                        rows.push(row);
-                    }
-                    row[pos] = list[i];
-                    prevPos = pos;
-                }
-                const head = AUCTION_COLS.map((s) => {
-                    const vul = seatIsVul(s, vuln);
-                    const chip = vul
-                        ? "bg-red-600 text-white"
-                        : "bg-white text-neutral-800";
-                    const atDealer =
-                        s === dealer
-                            ? "ring-2 ring-primary ring-offset-1 ring-offset-transparent"
-                            : "";
-                    return `<th class="px-0.5 sm:px-2 py-1 text-center">
-                        <span class="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] uppercase font-label font-bold border border-outline-variant/30 ${chip} ${atDealer}">${SEAT_NAMES[s][0]}</span>
-                    </th>`;
-                }).join("");
-                const body = rows
-                    .map(
-                        (r) =>
-                            `<tr class="border-t border-outline-variant/10">` +
-                            r
-                                .map(
-                                    (c, i) =>
-                                        `<td class="px-0.5 sm:px-2 py-0.5 text-center text-[11px] sm:text-sm font-headline font-semibold text-on-surface ${seatIsVul(AUCTION_COLS[i], vuln) ? "bg-red-600/5" : ""}">${c ? callHtml(c) : ""}</td>`,
-                                )
-                                .join("") +
-                            `</tr>`,
-                    )
-                    .join("");
-                return `
-                    <table class="w-full border-collapse">
-                        <thead><tr>${head}</tr></thead>
-                        <tbody>${body || `<tr><td colspan="4" class="py-1.5 text-center text-[11px] text-outline-variant">no calls yet</td></tr>`}</tbody>
-                    </table>`;
-            }
-
-            function auctionCardHtml() {
-                return `
-                    <div class="bg-[#f1f2ec] border border-black/10 rounded-xl shadow-sm px-1.5 sm:px-3 py-1.5 w-full">
-                        <div class="flex items-center justify-center gap-1.5 text-[9px] uppercase tracking-[0.18em] text-[#8a6d1d] font-label mb-0.5 text-center truncate">
-                            <span class="material-symbols-outlined text-[11px]">gavel</span>
-                            Auction · dealer ${SEAT_NAMES[state.dealer][0]} · vuln ${VULN_NAMES[state.vuln]}
-                        </div>
-                        ${auctionTableHtml(state.dealer, state.vuln, state.calls)}
-                    </div>`;
-            }
-
-            // Compact bidding pad styled like a real bridge bidding box:
-            // card-like level/strain tiles, green Pass, red Double, blue
-            // Redouble. Rebuilt in place on selection.
-            function bidBoxInnerHtml() {
+            function bidAreaHtml() {
                 const legal = new Set(state.legal || []);
-                const levels = [];
+                const avail = [];
                 for (let l = 1; l <= 7; l++)
-                    if (SUIT_ORDER.some((d) => legal.has(l + d))) levels.push(l);
-                if (!levels.includes(bidLevelSel))
-                    bidLevelSel = levels.length ? levels[0] : null;
-                const strains = SUIT_ORDER.filter((d) =>
-                    legal.has(bidLevelSel + d),
-                );
-                if (!strains.includes(bidStrainSel))
-                    bidStrainSel = strains.length ? strains[0] : null;
-                const token =
-                    bidLevelSel !== null && bidStrainSel
-                        ? bidLevelSel + bidStrainSel
+                    if (SUIT_ORDER.some((d) => legal.has(l + d))) avail.push(l);
+                if (!avail.includes(bidLevelSel))
+                    bidLevelSel = avail.length ? avail[0] : null;
+                const tabs = [1, 2, 3, 4, 5, 6, 7]
+                    .map((l) => {
+                        const ok = avail.includes(l) && !busy;
+                        return `<button data-level="${l}" ${ok ? "" : "disabled"} class="cb-level ${l === bidLevelSel ? "sel" : ""}">${l}</button>`;
+                    })
+                    .join("");
+                const l = bidLevelSel;
+                const tiles = SUIT_ORDER.map((d) => {
+                    const ok = l !== null && legal.has(l + d) && !busy;
+                    const sym = d === "N" ? "NT" : SUIT_SYMBOL[d];
+                    return `<button data-call="${l}${d}" ${ok ? "" : "disabled"} class="cb-tile cb-tile-${TILE_CLS[d]}">${l}<b>${sym}</b></button>`;
+                }).join("");
+                const dbl =
+                    legal.has("X") && !busy
+                        ? `<button data-call="X" class="cb-tile cb-tile-x">X</button>`
                         : "";
-                const canBid = token && legal.has(token) && !busy;
-
-                const levelBtn = (l) =>
-                    `<button data-level="${l}" ${busy ? "disabled" : ""} class="bid-tile ${l === bidLevelSel ? "selected" : ""}">${l}</button>`;
-                const strainBtn = (d) => {
-                    const ok = legal.has(bidLevelSel + d);
-                    return `<button data-strain="${d}" ${ok && !busy ? "" : "disabled"} class="bid-tile ${ok && d === bidStrainSel ? "selected" : ""}">${colorSuits(SUIT_SYMBOL[d])}</button>`;
-                };
-                const special = (t, label, cls) => {
-                    const ok = legal.has(t) && !busy;
-                    return `<button data-call="${t}" ${ok ? "" : "disabled"} class="bid-tile ${cls}" style="height:2.6rem;font-family:Inter,sans-serif;font-size:12px;font-weight:800;letter-spacing:0.02em;">${label}</button>`;
-                };
-                const bidLabel = canBid
-                    ? "Bid " +
-                      colorSuits(bidLevelSel + SUIT_SYMBOL[bidStrainSel])
-                    : "Bid";
-                return `
-                    <div class="w-full max-w-lg mx-auto">
-                        <div class="flex items-baseline justify-between mb-1.5">
-                            <span class="text-[10px] uppercase tracking-[0.2em] text-outline font-label font-bold">Your call</span>
-                            <span class="text-[11px] font-label text-on-surface-variant">${
-                                token
-                                    ? "selected " +
-                                      colorSuits(
-                                          bidLevelSel +
-                                              SUIT_SYMBOL[bidStrainSel],
-                                      ) +
-                                      " — press Bid"
-                                    : "pick a level and a strain"
-                            }</span>
-                        </div>
-                        <div class="grid grid-cols-7 gap-1.5 mb-1.5">
-                            ${levels.map(levelBtn).join("")}
-                        </div>
-                        <div class="grid grid-cols-6 gap-1.5 mb-2">
-                            ${SUIT_ORDER.map(strainBtn).join("")}
-                            <button id="bidBtn" ${canBid ? "" : "disabled"} class="bid-tile btn-gold" style="font-family:Inter,sans-serif;font-size:12px;font-weight:800;">${bidLabel}</button>
-                        </div>
-                        <div class="grid grid-cols-3 gap-1.5">
-                            ${special("P", "Pass", "btn-pass")}
-                            ${special("X", "Double", "btn-dbl")}
-                            ${special("XX", "Redouble", "btn-rdbl")}
-                        </div>
-                    </div>`;
+                const rdbl =
+                    legal.has("XX") && !busy
+                        ? `<button data-call="XX" class="cb-tile cb-tile-xx">XX</button>`
+                        : "";
+                const pass = `<button data-call="P" ${legal.has("P") && !busy ? "" : "disabled"} class="cb-pass">PASS</button>`;
+                return `<span id="bidArea" class="block">
+                    <div class="cb-levels">${tabs}</div>
+                    <div class="cb-bidpanel">${tiles}${dbl}${rdbl}${pass}</div>
+                </span>`;
             }
 
-            function biddingBoxHtml() {
-                return `
-                    <span id="bidBox" class="block">${bidBoxInnerHtml()}</span>`;
-            }
-
-            function wireBidBox(root) {
-                const box = root.getElementById("bidBox");
+            function wireBidArea(root) {
+                const box = root.getElementById("bidArea");
                 if (!box) return;
                 box.querySelectorAll("[data-level]").forEach((btn) => {
                     btn.onclick = () => {
                         bidLevelSel = parseInt(btn.dataset.level, 10);
-                        refreshBidBox();
-                    };
-                });
-                box.querySelectorAll("[data-strain]").forEach((btn) => {
-                    btn.onclick = () => {
-                        bidStrainSel = btn.dataset.strain;
-                        refreshBidBox();
+                        refreshBidArea();
                     };
                 });
                 box.querySelectorAll("[data-call]").forEach((btn) => {
                     btn.onclick = () => makeCall(btn.dataset.call);
                 });
-                const bidBtn = box.querySelector("#bidBtn");
-                if (bidBtn)
-                    bidBtn.onclick = () =>
-                        makeCall(bidLevelSel + bidStrainSel);
             }
 
-            function refreshBidBox() {
-                const box = document.getElementById("bidBox");
-                if (!box || !state) return;
-                box.innerHTML = bidBoxInnerHtml();
-                wireBidBox(document);
-            }
-
-            function handStripHtml() {
-                if (!state || state.done || !state.hand) return "";
-                return `
-                    <div class="px-3 py-2">
-                        <div class="flex items-center justify-between mb-1">
-                            <span class="text-[10px] uppercase tracking-[0.2em] text-outline font-label font-bold">Your hand</span>
-                            <span class="text-[10px] text-on-surface-variant font-label">${SEAT_NAMES[state.humanSeat]} · ${VULN_NAMES[state.vuln]} vuln</span>
-                        </div>
-                        <div class="grid grid-cols-1 gap-y-1">
-                            ${handHtml(state.hand, false)}
-                        </div>
-                    </div>`;
-            }
-
-            function resultHtml() {
-                const r = state.result;
-                let contractLine, trickLine;
-                if (r.contract) {
-                    const c = r.contract;
-                    const side =
-                        c.declarer % 2 === (state.humanSeat % 2)
-                            ? "your side"
-                            : "the bots";
-                    const pen = ["", " doubled", " redoubled"][c.penalty] || "";
-                    const need = c.level + 6;
-                    const margin = r.tricks - need;
-                    const made = margin >= 0;
-                    contractLine = `${c.level}${SUIT_SYMBOL[c.denom]}${pen ? '<span class="text-[#b03226] font-bold">' + escapeHtml(pen) + "</span>" : ""} by ${SEAT_NAMES[c.declarer]} (${side})`;
-                    trickLine = `${r.tricks} double-dummy tricks — ${made ? "made " + (margin > 0 ? "+" + margin : "exactly") : margin + " down"}`;
-                } else {
-                    contractLine = "Passed out";
-                    trickLine = "no contract was reached";
-                }
-                const st = state.stats || {};
-                const won = r.imps > 0;
-                const lost = r.imps < 0;
-                const trophyCls = won
-                    ? "bg-[#37b26a]/15 text-[#1e7d47]"
-                    : lost
-                      ? "bg-[#e2543f]/15 text-[#b03226]"
-                      : "bg-surface-container text-on-surface-variant";
-                const trophyIcon = won
-                    ? "emoji_events"
-                    : lost
-                      ? "trending_down"
-                      : "balance";
-                return `
-                    <div class="game-panel pop-in ${won ? "result-glow-pos" : lost ? "result-glow-neg" : ""} px-3 sm:px-4 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-2">
-                        <div class="flex items-center gap-3 min-w-0">
-                            <span class="flex items-center justify-center w-11 h-11 rounded-2xl ${trophyCls} shrink-0">
-                                <span class="material-symbols-outlined text-2xl">${trophyIcon}</span>
-                            </span>
-                            <div class="min-w-0">
-                                <div class="font-headline font-extrabold text-base text-on-surface">${contractLine}</div>
-                                <div class="text-xs text-on-surface-variant mt-0.5">${trickLine}</div>
-                                <div class="text-[11px] text-on-surface-variant mt-0.5 font-label">
-                                    Par (N-S) <span class="font-semibold">${scoreText(r.parNs)}</span>
-                                    · Your score (N-S) <span class="font-semibold">${scoreText(r.scoreNs)}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="text-center px-4 py-1 rounded-2xl bg-surface-container-low">
-                            <div class="text-[9px] uppercase tracking-[0.2em] text-outline font-label font-bold">IMPs vs par</div>
-                            <div class="victory-imps text-3xl font-headline font-extrabold leading-tight ${impsColor(r.imps)}">${signed(r.imps)}</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-[9px] uppercase tracking-widest text-outline font-label">Average</div>
-                            <div class="text-lg font-headline font-extrabold leading-tight ${impsColor(st.avgImps)}">${st.avgImps === undefined ? "—" : signed(st.avgImps.toFixed(2))}</div>
-                            <div class="text-[10px] text-on-surface-variant font-label">${st.boards || 0} boards</div>
-                        </div>
-                        <button id="nextBoardBtn" class="btn-gold ml-auto shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-xl font-label text-sm font-bold">
-                            <span class="material-symbols-outlined text-sm">${state.mode === "team" && state.matchDone ? "restart_alt" : "casino"}</span>
-                            ${state.mode === "team" && state.matchDone ? "Start next match" : "Next board"}
-                        </button>
-                    </div>`;
-            }
-
-            function spinner(msg) {
-                return `
-                    <span class="material-symbols-outlined text-primary animate-spin">progress_activity</span>
-                    <span class="text-sm text-on-surface-variant font-label">${msg}</span>`;
+            function refreshBidArea() {
+                const el = document.getElementById("bidArea");
+                if (!el || !state) return;
+                el.outerHTML = bidAreaHtml();
+                wireBidArea(document);
             }
 
             function waitingHtml() {
@@ -786,17 +1112,15 @@
                 } else if (partnerSeat) {
                     inner = spinner(escapeHtml(partnerSeat) + " is thinking…");
                 } else if (state.yourTurn) {
-                    inner = `<span class="material-symbols-outlined text-outline">wifi_off</span>
-                             <span class="text-sm text-on-surface-variant font-label">Could not load your options.</span>
-                             <button id="retryBtn" class="ml-auto flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                    inner = `<span class="material-symbols-outlined text-[#9aa7b8]">wifi_off</span>
+                             <span class="flex-1">Could not load your options.</span>
+                             <button id="retryBtn" class="cb-btn-ghost">
                                  <span class="material-symbols-outlined text-sm">refresh</span>
                                  Retry
                              </button>`;
                 } else {
                     inner = spinner("Waiting for the bots to bid…");
                 }
-                // On a table, other boards of the match may already be
-                // waiting for this player while the selected one is quiet.
                 const otherYours =
                     team &&
                     !state.done &&
@@ -804,61 +1128,91 @@
                         (b) => !b.done && b.yourTurn && b.no !== state.boardSel,
                     );
                 if (otherYours) {
-                    inner += `<button data-board="${otherYours.no}" class="ml-auto shrink-0 flex items-center gap-1 px-3 py-1.5 btn-gold rounded-xl font-label text-xs font-bold">
-                        <span class="material-symbols-outlined text-sm">touch_app</span>Board ${otherYours.no} awaits your call
+                    inner += `<button data-board="${otherYours.no}" class="cb-nexthand ml-auto">
+                        <span class="material-symbols-outlined text-sm">touch_app</span>Board ${otherYours.no} awaits
                     </button>`;
                 }
+                return `<div class="cb-wait">${inner}</div>`;
+            }
+
+            function resultHtml() {
+                const r = state.result;
+                let contractLine, trickLine;
+                if (r.contract) {
+                    const c = r.contract;
+                    const side =
+                        c.declarer % 2 === state.humanSeat % 2
+                            ? "your side"
+                            : "the bots";
+                    const pen = ["", " doubled", " redoubled"][c.penalty] || "";
+                    const need = c.level + 6;
+                    const margin = r.tricks - need;
+                    const made = margin >= 0;
+                    contractLine = `${c.level}${SUIT_SYMBOL[c.denom]}${pen} by ${SEAT_NAMES[c.declarer]} (${side})`;
+                    trickLine = `${r.tricks} double-dummy tricks — ${made ? "made " + (margin > 0 ? "+" + margin : "exactly") : margin + " down"}`;
+                } else {
+                    contractLine = "Passed out";
+                    trickLine = "no contract was reached";
+                }
                 return `
-                    <div class="px-3 py-2.5 flex items-center gap-3 flex-wrap">
-                        ${inner}
+                    <div class="cb-result pop-in">
+                        <div class="min-w-0 flex-1">
+                            <div class="font-headline font-extrabold text-lg text-white">${dcolorSuits(contractLine)}</div>
+                            <div class="text-xs text-[#9fc0c0] mt-0.5">${trickLine}</div>
+                            <div class="text-[11px] text-[#7fa0a0] mt-1 font-label">
+                                Par (N-S) <b>${scoreText(r.parNs)}</b> · Your score (N-S) <b>${scoreText(r.scoreNs)}</b>
+                            </div>
+                        </div>
+                        <div class="text-center px-3 py-1 rounded-xl" style="background:rgba(0,0,0,.25);">
+                            <div class="text-[9px] uppercase tracking-[0.2em] text-[#7fa0a0] font-label font-bold">IMPs vs par</div>
+                            <div class="victory-imps text-3xl font-headline font-extrabold leading-tight ${impsColor(r.imps)}">${signed(r.imps)}</div>
+                        </div>
+                        <div class="w-full flex flex-wrap gap-2 mt-1">
+                            <button id="nextBoardBtn" class="cb-btn-green">
+                                <span class="material-symbols-outlined text-sm">${state.mode === "team" && state.matchDone ? "restart_alt" : "casino"}</span>
+                                ${state.mode === "team" && state.matchDone ? "Start next match" : "Next board"}
+                            </button>
+                            ${state.hands ? `<button id="allHandsBtn" class="cb-btn-ghost"><span class="material-symbols-outlined text-sm">style</span>All hands</button>` : ""}
+                        </div>
                     </div>`;
             }
 
-            // Chips for every board of the current match: click to switch.
-            // Done boards carry their IMPs; boards waiting for this player
-            // pulse green so parallel bidding is discoverable. A little XP
-            // bar tracks match progress.
-            function boardStripHtml() {
-                if (state.mode !== "team" || !state.boards) return "";
-                const list = state.boards;
-                if (!list.length) return "";
-                const chips = list
-                    .map((b) => {
-                        let cls = "";
-                        let right = "";
-                        if (b.done) {
-                            right = `<span class="font-extrabold ${impsColor(b.imps)}">${signed(b.imps)}</span>`;
-                        } else if (b.yourTurn) {
-                            cls = "chip-your-turn";
-                            right = `<span class="material-symbols-outlined text-[13px] leading-none" style="font-variation-settings:'FILL' 1;">touch_app</span>`;
-                        }
-                        const sel = b.no === state.boardSel ? "chip-selected" : "";
-                        const title = b.done
-                            ? `Board ${b.no} · ${b.contract || "passed out"} · ${signed(b.imps)} IMPs`
-                            : `Board ${b.no} · dealer ${SEAT_NAMES[b.dealer][0]} · vuln ${VULN_NAMES[b.vuln]}` +
-                              (b.yourTurn ? " · your turn" : "");
-                        return `<button data-board="${b.no}" title="${title}" class="board-chip ${cls} ${sel}">
-                            <span>${b.no}</span>${right}
-                        </button>`;
-                    })
-                    .join("");
-                const done = list.filter((b) => b.done).length;
-                const pct = Math.round((done / list.length) * 100);
-                const waiting = list.filter((b) => !b.done && b.yourTurn)
-                    .length;
+            function allHandsHtml() {
+                if (!state.hands) return "";
+                return (
+                    `<div class="cb-hands">` +
+                    [0, 1, 2, 3]
+                        .map(
+                            (s) => `
+                            <div class="cb-handsrow">
+                                <span class="lbl">${SEAT_NAMES[s]}${state.humanSeat === s ? " · you" : ""} · ${hcpOf(state.hands[s])} HCP</span>
+                                ${cardFan(state.hands[s], true)}
+                            </div>`,
+                        )
+                        .join("") +
+                    `</div>`
+                );
+            }
+
+            function teamReadyHtml() {
                 return `
-                    <div class="flex items-center gap-1.5 flex-wrap shrink-0 min-w-0">
-                        ${chips}
-                        ${waiting > 0 ? `<span class="text-[10px] text-[#1e7d47] font-label font-bold ml-1 whitespace-nowrap">${waiting} board${waiting === 1 ? "" : "s"} to bid</span>` : ""}
-                    </div>
-                    <div class="flex items-center gap-2 shrink-0 w-full sm:w-auto">
-                        <div class="xp-bar flex-1 min-w-[80px] max-w-[240px]"><div class="xp-bar-fill" style="width:${pct}%"></div></div>
-                        <span class="text-[10px] font-label font-semibold text-on-surface-variant whitespace-nowrap">${done}/${list.length} boards</span>
+                    <div class="cb-ready pop-in">
+                        <span class="material-symbols-outlined text-4xl text-[#f2ca4c]" style="font-variation-settings:'FILL' 1;">playing_cards</span>
+                        <p class="font-headline font-extrabold text-xl text-white mt-3">Table ready</p>
+                        <p class="text-xs text-[#9aa7b8] mt-2 leading-relaxed max-w-xs">You &amp; ${escapeHtml(state.partner)} vs the East/West bots. An 8-board match is dealt all at once — every board runs its own auction, and you bid them in any order.</p>
+                        <button id="dealFirstBtn" class="cb-btn-green mt-5">
+                            <span class="material-symbols-outlined text-sm">casino</span>Start 8-board match
+                        </button>
                     </div>`;
             }
 
-            // The next board to jump to from a finished one: prefer a board
-            // waiting for this player, else the next unfinished board.
+            function dealingHtml() {
+                return `
+                    <div class="cb-ready pop-in">
+                        ${spinner("Dealing the 8 boards and letting the bots open…")}
+                    </div>`;
+            }
+
             function nextTeamBoardTarget() {
                 const list = state.boards || [];
                 if (!list.length) return null;
@@ -877,123 +1231,110 @@
                 return null;
             }
 
-            function playHeaderHtml() {
+            function topBarHtml() {
                 const team = state.mode === "team";
-                let left, right;
+                const list = state.boards || [];
+                let no, sub;
                 if (team) {
                     const partner =
                         state.yourSeat === 2 ? state.partner : state.host;
-                    const list = state.boards || [];
+                    no = state.noBoard ? "—" : state.boardSel;
                     const done = list.filter((b) => b.done).length;
-                    left = state.noBoard
-                        ? `Table · you &amp; ${escapeHtml(partner)} vs E/W bots · waiting to start`
-                        : `Table · you &amp; ${escapeHtml(partner)} vs E/W bots · match ${done}/${list.length} boards · <span class="${impsColor(state.matchImps)}">${signed(state.matchImps || 0)} IMPs</span>`;
-                    right = `
-                        <button id="historyBtn" class="flex items-center gap-1 px-3.5 py-1.5 bg-white text-on-surface-variant rounded-full border border-black/10 font-label text-xs font-semibold hover:text-on-surface hover:border-black/20 shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-all">
-                            <span class="material-symbols-outlined text-sm">history</span>Past boards
-                        </button>
-                        <button id="leaveBtn" title="Leave the table (it stays open)" class="shrink-0 flex items-center gap-1 px-3.5 py-1.5 bg-white text-on-surface-variant rounded-full border border-black/10 font-label text-xs font-semibold hover:text-[#b03226] hover:border-[#b03226]/30 shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-all">
-                            <span class="material-symbols-outlined text-sm">logout</span>Leave
-                        </button>`;
+                    sub =
+                        escapeHtml(partner || "") +
+                        (list.length
+                            ? ` · ${done}/${list.length} boards · ${signed(state.matchImps || 0)} IMPs`
+                            : "");
                 } else {
-                    left = `Board ${stats ? stats.boards + (state.done ? 0 : 1) : 1} · you sit South, North is your partner`;
-                    right = `
-                        <button id="historyBtn" class="flex items-center gap-1 px-3.5 py-1.5 bg-white text-on-surface-variant rounded-full border border-black/10 font-label text-xs font-semibold hover:text-on-surface hover:border-black/20 shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-all">
-                            <span class="material-symbols-outlined text-sm">history</span>Past boards
-                        </button>
-                        <button id="leaveBtn" title="Leave this board (not scored)" class="shrink-0 flex items-center gap-1 px-3.5 py-1.5 bg-white text-on-surface-variant rounded-full border border-black/10 font-label text-xs font-semibold hover:text-[#b03226] hover:border-[#b03226]/30 shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-all">
-                            <span class="material-symbols-outlined text-sm">logout</span>Leave
-                        </button>
-                        <button id="abandonBtn" title="Abandon this board and deal a new solo board" class="shrink-0 flex items-center gap-1 px-3.5 py-1.5 btn-gold rounded-full font-label text-xs font-bold">
-                            <span class="material-symbols-outlined text-sm">restart_alt</span>New board
-                        </button>`;
+                    no = stats ? stats.boards + (state.done ? 0 : 1) : 1;
+                    sub = `Solo vs bots · dealer ${SEAT_NAMES[state.dealer][0]} · ${VULN_NAMES[state.vuln]} vuln`;
                 }
-                return `
-                    <div class="flex items-center justify-between gap-2 shrink-0">
-                        <div class="text-xs text-on-surface-variant font-label truncate">${left}</div>
-                        <div class="flex items-center gap-1.5 shrink-0">${right}</div>
-                    </div>`;
-            }
-
-            function teamReadyHtml() {
-                return `
-                    <div class="game-panel pop-in max-w-sm mx-auto mt-6 px-6 py-8 text-center border-2 border-dashed border-[#2b7a4b]/40">
-                        <span class="flex items-center justify-center w-16 h-16 mx-auto rounded-full bg-gradient-to-b from-gold-light to-gold shadow-[0_3px_0_rgba(0,0,0,0.3)]">
-                            <span class="material-symbols-outlined text-3xl text-on-gold" style="font-variation-settings:'FILL' 1;">playing_cards</span>
-                        </span>
-                        <p class="font-headline font-extrabold text-xl text-on-surface mt-3">Table ready</p>
-                        <p class="text-xs text-on-surface-variant font-label mt-1.5 leading-relaxed">You &amp; ${escapeHtml(state.partner)} vs the East/West bots. An 8-board match is dealt all at once — every board runs its own auction, and you bid them in any order, switching freely between them.</p>
-                        <button id="dealFirstBtn" class="btn-gold mt-5 inline-flex items-center gap-2 px-6 py-3 rounded-xl font-label text-sm font-bold">
-                            <span class="material-symbols-outlined text-sm">casino</span>Start 8-board match
+                const arrows =
+                    team && list.length
+                        ? `
+                        <button id="prevHandBtn" class="cb-iconbtn" title="Previous hand" ${state.boardSel <= 1 ? "disabled" : ""}>
+                            <span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' 1;">arrow_back_ios</span>
                         </button>
-                    </div>`;
-            }
-
-            function dealingHtml() {
-                return `
-                    <div class="game-panel pop-in max-w-sm mx-auto mt-6 px-6 py-10 flex flex-col items-center gap-3">
-                        <div class="card-fan-deco">
-                            <span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span>
+                        <button id="nextHandBtn" class="cb-iconbtn" title="Next hand" ${state.boardSel >= list.length ? "disabled" : ""}>
+                            <span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' 1;">arrow_forward_ios</span>
+                        </button>`
+                        : "";
+                const target =
+                    team && !state.noBoard ? nextTeamBoardTarget() : null;
+                const jump =
+                    target !== null
+                        ? `<button id="jumpHandBtn" class="cb-nexthand" title="Go to the next hand where it is your turn to bid">
+                               <span class="material-symbols-outlined text-sm">touch_app</span>Next hand
+                           </button>`
+                        : "";
+                const menu = `
+                    <div class="cb-menuwrap">
+                        <button id="cbMenuBtn" class="cb-plainbtn" title="Menu">
+                            <span class="material-symbols-outlined">menu</span>
+                        </button>
+                        <div id="cbMenu" class="cb-menu" style="display:none;">
+                            <button id="historyBtn"><span class="material-symbols-outlined text-base">history</span>Past boards</button>
+                            ${team && state.matchDone ? `<button id="newMatchBtn"><span class="material-symbols-outlined text-base">restart_alt</span>Start next match</button>` : ""}
+                            ${!team ? `<button id="abandonBtn"><span class="material-symbols-outlined text-base">casino</span>New board</button>` : ""}
+                            <button id="leaveBtn"><span class="material-symbols-outlined text-base">logout</span>${team ? "Leave table" : "Leave board"}</button>
                         </div>
-                        ${spinner("Dealing the 8 boards and letting the bots open…")}
+                    </div>`;
+                return `
+                    <div class="cb-topbar">
+                        <button id="backBtn" class="cb-plainbtn" title="Back to lobby">
+                            <span class="material-symbols-outlined">chevron_left</span>
+                        </button>
+                        <div class="cb-title">
+                            <div class="t">Hand ${no}</div>
+                            <div class="s">${sub}</div>
+                        </div>
+                        ${arrows}${jump}${menu}
                     </div>`;
             }
 
-            // One unified play surface: seats + auction in a scrollable
-            // table area, hand + bidding panel in a dock at the bottom —
-            // all inside a single card. On phones the bidding panel comes
-            // first so it is always visible.
+            function handFooterHtml() {
+                if (state.noBoard || !state.hand) return "";
+                return `
+                    <div class="cb-handfoot">
+                        <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]} ${hcpOf(state.hand)} HCP</div>
+                        ${cardFan(state.hand, false)}
+                    </div>`;
+            }
+
             function tableView() {
                 const team = state.mode === "team";
-                let panel;
+                let mid;
                 if (team && state.noBoard) {
-                    panel = "";
-                } else if (state.done) {
-                    panel = resultHtml();
-                } else if (
-                    busy ||
-                    !state.yourTurn ||
-                    (state.yourTurn && !state.legal)
-                ) {
-                    panel = waitingHtml();
+                    mid = busy ? dealingHtml() : teamReadyHtml();
                 } else {
-                    panel = biddingBoxHtml();
+                    const parts = [
+                        auctionHtml(
+                            state.dealer,
+                            state.vuln,
+                            state.calls,
+                            state.done ? null : state.nextSeat,
+                            state.humanSeat,
+                        ),
+                    ];
+                    if (state.done) {
+                        parts.push(resultHtml());
+                        parts.push(allHandsHtml());
+                    } else if (
+                        busy ||
+                        !state.yourTurn ||
+                        (state.yourTurn && !state.legal)
+                    ) {
+                        parts.push(waitingHtml());
+                    } else {
+                        parts.push(bidAreaHtml());
+                    }
+                    mid = parts.join("");
                 }
-                const tableBody =
-                    team && state.noBoard
-                        ? busy
-                            ? dealingHtml()
-                            : teamReadyHtml()
-                        : `
-                            <div class="grid grid-cols-3 gap-1.5 sm:gap-3 items-center max-w-3xl m-auto w-full py-1.5">
-                                <div class="col-span-3 sm:hidden">${auctionCardHtml()}</div>
-                                <div></div>
-                                ${seatBox(0)}
-                                <div></div>
-                                ${seatBox(3)}
-                                <div class="flex items-center justify-center"><div class="hidden sm:block w-full">${auctionCardHtml()}</div></div>
-                                ${seatBox(1)}
-                                <div></div>
-                                ${seatBox(2)}
-                                <div></div>
-                            </div>`;
-                const strip = state.noBoard ? "" : handStripHtml();
-                const dock = state.noBoard
-                    ? ""
-                    : `<div class="bottom-dock shrink-0 border-t border-black/10 bg-[#f6f7f2] flex flex-col sm:flex-row gap-2 sm:gap-3 px-2 sm:px-3 py-2">
-                           <div class="order-2 sm:order-1 flex-1 min-w-0">${strip}</div>
-                           <div class="order-1 sm:order-2 flex-1 min-w-0">${panel}</div>
-                       </div>`;
                 return `
-                    <div class="flex-1 min-h-0 flex flex-col gap-1.5">
-                        ${playHeaderHtml()}
-                        ${boardStripHtml()}
-                        <div class="game-panel flex-1 min-h-0 flex flex-col overflow-hidden rounded-2xl">
-                            <div id="tableBox" class="flex-1 min-h-0 flex flex-col overflow-y-auto">
-                                ${tableBody}
-                            </div>
-                            ${dock}
-                        </div>
+                    <div class="flex-1 min-h-0 flex flex-col">
+                        ${topBarHtml()}
+                        <div class="cb-mid ${state.done ? "" : "cb-mid-bid"}">${mid}</div>
+                        ${handFooterHtml()}
                     </div>`;
             }
 
@@ -1001,23 +1342,23 @@
                 if (!stats || !stats.boards) return "";
                 return `
                     <div class="flex flex-wrap items-center gap-2 mb-4">
-                        <span class="stat-pill"><span class="material-symbols-outlined text-base text-[#d4a017]">military_tech</span>Avg <b class="font-headline text-sm ${impsColor(stats.avgImps)}">${signed(stats.avgImps.toFixed(2))}</b> IMPs/board vs par</span>
-                        <span class="stat-pill"><span class="material-symbols-outlined text-base text-[#2b7a4b]">style</span><b class="font-headline text-sm">${stats.boards}</b> boards</span>
-                        <span class="stat-pill"><span class="material-symbols-outlined text-base text-[#2a5193]">trending_up</span>Total <b class="font-headline text-sm ${impsColor(stats.impsTotal)}">${signed(stats.impsTotal)}</b> IMPs</span>
+                        <span class="cb-pill"><span class="material-symbols-outlined text-base text-[#f2ca4c]">military_tech</span>Avg <b class="font-headline text-sm ${impsColor(stats.avgImps)}">${signed(stats.avgImps.toFixed(2))}</b> IMPs/board vs par</span>
+                        <span class="cb-pill"><span class="material-symbols-outlined text-base text-[#43b78d]">style</span><b class="font-headline text-sm">${stats.boards}</b> boards</span>
+                        <span class="cb-pill"><span class="material-symbols-outlined text-base text-[#7ea2e8]">trending_up</span>Total <b class="font-headline text-sm ${impsColor(stats.impsTotal)}">${signed(stats.impsTotal)}</b> IMPs</span>
                     </div>`;
             }
 
             function soloCardHtml() {
                 return `
-                    <div class="game-panel game-panel-hover p-5 flex flex-col">
+                    <div class="cb-cardpanel p-5 flex flex-col">
                         <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-b from-[#5b8def] to-[#2a5193] shadow-[0_3px_0_rgba(0,0,0,0.25)]">
                             <span class="material-symbols-outlined text-2xl text-white" style="font-variation-settings:'FILL' 1;">smart_toy</span>
                         </span>
-                        <div class="font-headline font-extrabold text-on-surface mt-3 text-lg">Solo vs 3 bots</div>
-                        <p class="text-sm text-on-surface-variant mt-1.5 flex-1 leading-relaxed">
+                        <div class="font-headline font-extrabold text-white mt-3 text-lg">Solo vs 3 bots</div>
+                        <p class="text-sm text-[#9aa7b8] mt-1.5 flex-1 leading-relaxed">
                             You sit South; a bidding-dt bot fills every other seat. Each board is scored in IMPs against double-dummy par.
                         </p>
-                        <button id="dealBtn" class="btn-gold mt-4 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-label text-sm font-bold">
+                        <button id="dealBtn" class="cb-btn-green mt-4 justify-center !px-5 !py-3 !text-sm">
                             <span class="material-symbols-outlined text-sm">casino</span>Deal a board
                         </button>
                     </div>`;
@@ -1025,21 +1366,21 @@
 
             function teamCardHtml() {
                 return `
-                    <div class="game-panel game-panel-hover p-5 flex flex-col">
+                    <div class="cb-cardpanel p-5 flex flex-col">
                         <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-b from-[#43b78d] to-[#1c5535] shadow-[0_3px_0_rgba(0,0,0,0.25)]">
                             <span class="material-symbols-outlined text-2xl text-white" style="font-variation-settings:'FILL' 1;">group</span>
                         </span>
-                        <div class="font-headline font-extrabold text-on-surface mt-3 text-lg">
+                        <div class="font-headline font-extrabold text-white mt-3 text-lg">
                             Partner table
                             <span class="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-gold/90 text-on-gold align-middle">2 players vs 2 bots</span>
                         </div>
-                        <p class="text-sm text-on-surface-variant mt-1.5 flex-1 leading-relaxed">
+                        <p class="text-sm text-[#9aa7b8] mt-1.5 flex-1 leading-relaxed">
                             Team up with a partner (North–South) against the East/West bots. Each match is 8 boards dealt all at once — bid them in any order, switching between boards as the auctions unfold. Tables stay open while you are disconnected.
                         </p>
                         <div class="mt-4 flex flex-col gap-2">
-                            <input id="partnerName" list="partnerList" placeholder="Partner username" autocomplete="off" class="unlock-input !py-2.5 text-sm" />
+                            <input id="partnerName" list="partnerList" placeholder="Partner username" autocomplete="off" class="cb-input" />
                             <datalist id="partnerList"></datalist>
-                            <button id="createTableBtn" class="btn-gold inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-label text-sm font-bold">
+                            <button id="createTableBtn" class="cb-btn-green justify-center !px-5 !py-3 !text-sm">
                                 <span class="material-symbols-outlined text-sm">add</span>Create a table
                             </button>
                         </div>
@@ -1062,25 +1403,25 @@
                             status = g.boards
                                 ? "match in progress"
                                 : "in progress";
-                            cls = "bg-surface-container text-on-surface-variant";
+                            cls = "bg-white/10 text-[#9aa7b8]";
                         } else {
                             status = g.boards
                                 ? "match complete"
                                 : "ready to start";
-                            cls = "bg-gold/20 text-[#8a6d1d]";
+                            cls = "bg-gold/20 text-[#e5c558]";
                         }
                         return `
-                        <div class="game-panel flex items-center gap-3 px-3 py-2.5">
+                        <div class="cb-cardpanel flex items-center gap-3 px-3 py-2.5">
                             <span class="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-b from-[#43b78d] to-[#1c5535] shrink-0">
                                 <span class="material-symbols-outlined text-lg text-white" style="font-variation-settings:'FILL' 1;">group</span>
                             </span>
                             <div class="min-w-0 flex-1">
-                                <div class="text-sm font-label font-semibold text-on-surface truncate">You &amp; ${label}</div>
-                                <div class="text-[11px] text-on-surface-variant font-label">${g.boards} board${g.boards === 1 ? "" : "s"} · ${timeAgo(g.updated)}</div>
+                                <div class="text-sm font-label font-semibold text-white truncate">You &amp; ${label}</div>
+                                <div class="text-[11px] text-[#8fa0b5] font-label">${g.boards} board${g.boards === 1 ? "" : "s"} · ${timeAgo(g.updated)}</div>
                             </div>
                             <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider whitespace-nowrap ${cls}">${status}</span>
-                            <button data-open-game="${g.id}" class="btn-gold shrink-0 px-4 py-2 rounded-xl font-label text-xs font-bold">Resume</button>
-                            <button data-del-game="${g.id}" title="Delete table" class="shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-on-surface-variant hover:bg-[#e2543f]/15 hover:text-[#b03226] transition-colors">
+                            <button data-open-game="${g.id}" class="cb-btn-green !px-4 !py-2 !text-xs">Resume</button>
+                            <button data-del-game="${g.id}" title="Delete table" class="shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-[#8fa0b5] hover:bg-[#e2543f]/20 hover:text-[#f08a8a] transition-colors">
                                 <span class="material-symbols-outlined text-base">delete</span>
                             </button>
                         </div>`;
@@ -1088,7 +1429,7 @@
                     .join("");
                 return `
                     <div class="mt-6">
-                        <div class="text-[10px] uppercase tracking-widest text-outline font-label mb-2">Your tables</div>
+                        <div class="text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label mb-2">Your tables</div>
                         <div class="space-y-2">${rows}</div>
                     </div>`;
             }
@@ -1100,11 +1441,11 @@
                     .slice(0, 12)
                     .map(
                         (rec) => `
-                        <tr class="border-t border-outline-variant/10">
-                            <td class="px-3 py-1.5 text-xs text-on-surface-variant whitespace-nowrap">${timeAgo(rec.ts)}</td>
-                            <td class="px-3 py-1.5 text-xs text-on-surface-variant whitespace-nowrap">${SEAT_NAMES[rec.dealer][0]} · ${VULN_NAMES[rec.vuln]}</td>
-                            <td class="px-3 py-1.5 text-sm font-headline font-semibold text-on-surface">${contractHtml(rec.contract)}</td>
-                            <td class="px-3 py-1.5 text-xs text-on-surface-variant whitespace-nowrap">${rec.tricks === null || rec.tricks === undefined ? "—" : rec.tricks + " tricks"} · par ${scoreText(rec.parNs)}</td>
+                        <tr class="border-t border-white/5">
+                            <td class="px-3 py-1.5 text-xs text-[#8fa0b5] whitespace-nowrap">${timeAgo(rec.ts)}</td>
+                            <td class="px-3 py-1.5 text-xs text-[#8fa0b5] whitespace-nowrap">${SEAT_NAMES[rec.dealer][0]} · ${VULN_NAMES[rec.vuln]}</td>
+                            <td class="px-3 py-1.5 text-sm font-headline font-semibold text-white">${contractHtml(rec.contract)}</td>
+                            <td class="px-3 py-1.5 text-xs text-[#8fa0b5] whitespace-nowrap">${rec.tricks === null || rec.tricks === undefined ? "—" : rec.tricks + " tricks"} · par ${scoreText(rec.parNs)}</td>
                             <td class="px-3 py-1.5 text-sm font-headline font-bold text-right ${impsColor(rec.imps)}">${signed(rec.imps)}</td>
                         </tr>`,
                     )
@@ -1112,21 +1453,21 @@
                 return `
                     <div class="mt-8">
                         <div class="flex items-center justify-between mb-2">
-                            <div class="text-[10px] uppercase tracking-[0.2em] text-outline font-label font-bold flex items-center gap-1.5">
-                                <span class="material-symbols-outlined text-sm text-[#d4a017]">history</span>Recent solo boards
+                            <div class="text-[10px] uppercase tracking-[0.2em] text-[#8fa0b5] font-label font-bold flex items-center gap-1.5">
+                                <span class="material-symbols-outlined text-sm text-[#f2ca4c]">history</span>Recent solo boards
                             </div>
-                            <button id="historyBtn" class="flex items-center gap-1 text-xs font-label font-semibold text-[#2b7a4b] hover:text-[#1e7d47]">
+                            <button id="historyBtn" class="flex items-center gap-1 text-xs font-label font-semibold text-[#6ee7a0] hover:text-[#8fd694]">
                                 <span class="material-symbols-outlined text-sm">style</span>Review cards &amp; auctions
                             </button>
                         </div>
-                        <div class="game-panel overflow-x-auto">
+                        <div class="cb-cardpanel overflow-x-auto">
                             <table class="w-full border-collapse min-w-[520px]">
                                 <thead><tr>
-                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-outline font-label">When</th>
-                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-outline font-label">Deal</th>
-                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-outline font-label">Contract</th>
-                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-outline font-label">Result</th>
-                                    <th class="px-3 py-1.5 text-right text-[10px] uppercase tracking-widest text-outline font-label">IMPs</th>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label">When</th>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label">Deal</th>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label">Contract</th>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label">Result</th>
+                                    <th class="px-3 py-1.5 text-right text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label">IMPs</th>
                                 </tr></thead>
                                 <tbody>${rows}</tbody>
                             </table>
@@ -1147,20 +1488,35 @@
 
             function loginCardHtml() {
                 return `
-                    <div class="game-panel pop-in py-12 px-6 text-center">
+                    <div class="cb-cardpanel pop-in py-12 px-6 text-center">
                         <div class="card-fan-deco">
                             <span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span>
                         </div>
-                        <p class="text-on-surface text-xl font-headline font-extrabold mt-2">Log in to play</p>
-                        <p class="text-sm text-on-surface-variant mt-2 max-w-sm mx-auto leading-relaxed">Solo history and persistent partner tables are kept for your account. Climb the IMP ladder.</p>
-                        <button id="loginBtn" class="btn-gold mt-6 inline-flex items-center gap-2 px-7 py-3 rounded-xl font-label text-sm font-bold">
+                        <p class="text-white text-xl font-headline font-extrabold mt-2">Log in to play</p>
+                        <p class="text-sm text-[#9aa7b8] mt-2 max-w-sm mx-auto leading-relaxed">Solo history and persistent partner tables are kept for your account. Climb the IMP ladder.</p>
+                        <button id="loginBtn" class="cb-btn-green mt-6 !px-7 !py-3 !text-sm">
                             <span class="material-symbols-outlined text-sm">login</span>
                             Log in
                         </button>
                     </div>`;
             }
 
-            // ---- board history overlay ----
+            function currentItem() {
+                const r = state.result;
+                return {
+                    no: state.mode === "team" ? state.boardSel : null,
+                    ts: null,
+                    dealer: state.dealer,
+                    vuln: state.vuln,
+                    calls: state.calls || [],
+                    contract: contractString(r ? r.contract : null),
+                    tricks: r ? r.tricks : null,
+                    parNs: r ? r.parNs : 0,
+                    scoreNs: r ? r.scoreNs : 0,
+                    imps: r ? r.imps : 0,
+                    hands: state.hands || null,
+                };
+            }
 
             function historyItemFromSolo(rec, idx) {
                 return {
@@ -1240,47 +1596,45 @@
                         ? ""
                         : ` · ${item.tricks} tricks`;
                 return `
-                    <button data-hist-item="${i}" class="w-full flex items-center gap-3 px-3 py-2 bg-surface-container-low rounded-lg text-left hover:bg-surface-container-high transition-colors">
-                        <span class="text-xs text-on-surface-variant font-label w-20 shrink-0">${label}</span>
-                        <span class="text-sm font-headline font-semibold text-on-surface min-w-0 truncate">${contractHtml(item.contract)}</span>
-                        <span class="text-xs text-on-surface-variant font-label hidden sm:inline">${VULN_NAMES[item.vuln]}${resultTxt}</span>
-                        <span class="ml-auto text-xs text-on-surface-variant font-label">par ${scoreText(item.parNs)}</span>
+                    <button data-hist-item="${i}" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:brightness-125 transition-all" style="background:#202836;">
+                        <span class="text-xs text-[#8fa0b5] font-label w-20 shrink-0">${label}</span>
+                        <span class="text-sm font-headline font-semibold text-white min-w-0 truncate">${contractHtml(item.contract)}</span>
+                        <span class="text-xs text-[#8fa0b5] font-label hidden sm:inline">${VULN_NAMES[item.vuln]}${resultTxt}</span>
+                        <span class="ml-auto text-xs text-[#8fa0b5] font-label">par ${scoreText(item.parNs)}</span>
                         <span class="text-sm font-headline font-bold ${impsColor(item.imps)} w-10 text-right">${signed(item.imps)}</span>
                     </button>`;
             }
 
             function historyDetailHtml(item) {
-                const contractLine = contractHtml(item.contract);
+                const youSeat = state ? state.humanSeat : 2;
                 const hands = item.hands
-                    ? `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
-                           ${[0, 1, 2, 3]
-                               .map(
-                                   (s) => `
-                               <div class="bg-surface-container-low rounded-lg p-2">
-                                   <div class="text-[10px] uppercase tracking-widest text-outline font-label mb-1">${SEAT_NAMES[s]}${state && state.humanSeat === s ? " · you" : ""}</div>
-                                   <div class="space-y-0.5">${handHtml(item.hands[s], true)}</div>
-                               </div>`,
-                               )
-                               .join("")}
-                       </div>`
-                    : `<p class="text-xs text-on-surface-variant mt-3 italic">Cards were not recorded for this board.</p>`;
+                    ? `<div class="cb-hands mt-3">` +
+                      [0, 1, 2, 3]
+                          .map(
+                              (s) => `
+                              <div class="cb-handsrow">
+                                  <span class="lbl">${SEAT_NAMES[s]}${youSeat === s ? " · you" : ""}</span>
+                                  ${cardFan(item.hands[s], true)}
+                              </div>`,
+                          )
+                          .join("") +
+                      `</div>`
+                    : `<p class="text-xs text-[#8fa0b5] mt-3 italic">Cards were not recorded for this board.</p>`;
                 return `
                     <div class="flex items-center gap-2 mb-3">
-                        <button id="histBackBtn" class="flex items-center gap-1 px-2 py-1 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high">
+                        <button id="histBackBtn" class="cb-btn-ghost">
                             <span class="material-symbols-outlined text-sm">arrow_back</span>All boards
                         </button>
-                        <div class="font-headline font-bold text-on-surface min-w-0 truncate">${contractLine}</div>
-                        ${item.no ? `<span class="text-xs text-on-surface-variant font-label">· board ${item.no}</span>` : ""}
+                        <div class="font-headline font-bold text-white min-w-0 truncate">${contractHtml(item.contract)}</div>
+                        ${item.no ? `<span class="text-xs text-[#8fa0b5] font-label">· board ${item.no}</span>` : ""}
                     </div>
-                    <div class="text-xs text-on-surface-variant font-label">
+                    <div class="text-xs text-[#8fa0b5] font-label">
                         ${SEAT_NAMES[item.dealer]} dealt · ${VULN_NAMES[item.vuln]} vuln
                         ${item.tricks === null || item.tricks === undefined ? "" : ` · ${item.tricks} DD tricks`}
                         · par ${scoreText(item.parNs)} · your score ${scoreText(item.scoreNs)}
                         · <b class="${impsColor(item.imps)}">${signed(item.imps)} IMPs</b>
                     </div>
-                    <div class="mt-3 bg-surface-container-lowest border border-outline-variant/10 rounded-lg p-2">
-                        ${auctionTableHtml(item.dealer, item.vuln, item.calls)}
-                    </div>
+                    <div class="mt-3">${auctionHtml(item.dealer, item.vuln, item.calls, null, youSeat)}</div>
                     ${hands}`;
             }
 
@@ -1289,16 +1643,16 @@
                 if (overlay.loading) {
                     body = `<div class="flex items-center gap-2 py-6 justify-center">${spinner("Loading boards…")}</div>`;
                 } else if (overlay.error) {
-                    body = `<p class="text-sm text-on-surface-variant italic py-6 text-center">Could not load the boards just now.</p>`;
+                    body = `<p class="text-sm text-[#9aa7b8] italic py-6 text-center">Could not load the boards just now.</p>`;
                 } else if (!overlay.items || overlay.items.length === 0) {
-                    body = `<p class="text-sm text-on-surface-variant italic py-6 text-center">No completed boards yet.</p>`;
+                    body = `<p class="text-sm text-[#9aa7b8] italic py-6 text-center">No completed boards yet.</p>`;
                 } else {
                     body = `<div class="space-y-1.5">${overlay.items.map(historyRowHtml).join("")}</div>`;
                 }
                 return `
                     <div class="flex items-center justify-between mb-3">
-                        <div class="font-headline font-bold text-on-surface">Board history</div>
-                        <button id="histCloseBtn" class="material-symbols-outlined text-on-surface-variant hover:text-on-surface">close</button>
+                        <div class="font-headline font-bold text-white">Board history</div>
+                        <button id="histCloseBtn" class="material-symbols-outlined text-[#9aa7b8] hover:text-white">close</button>
                     </div>
                     ${body}`;
             }
@@ -1339,20 +1693,24 @@
                 });
             }
 
-            // ---- main render ----
+            function closeMenu() {
+                const m = document.getElementById("cbMenu");
+                if (m) m.style.display = "none";
+            }
 
             function render() {
                 const content = document.getElementById("main-content");
                 if (!content) return;
-                // While a table is open the page locks to the viewport: the
-                // intro header and lobby step aside, the table area flexes and the
-                // hand strip + bidder/result stay pinned below. Bidding,
-                // reading the score and dealing the next board never need
-                // page scrolling.
                 const header = content.previousElementSibling;
                 if (header && header.tagName === "HEADER") {
                     header.style.display = state ? "none" : "";
                 }
+                const appHeader = document.querySelector("#app > header");
+                if (appHeader) appHeader.style.display = state ? "none" : "";
+                const sidebar = document.getElementById("sidebar");
+                if (sidebar) sidebar.style.display = state ? "none" : "";
+                const shell = document.querySelector(".app-shell");
+                if (shell) shell.style.paddingTop = state ? "0" : "";
                 const wrap = content.parentElement;
                 const main = content.closest("main");
                 if (main) main.style.overflowY = state ? "hidden" : "";
@@ -1360,7 +1718,7 @@
                     wrap.style.height = state ? "100%" : "";
                     wrap.style.display = state ? "flex" : "";
                     wrap.style.flexDirection = state ? "column" : "";
-                    wrap.style.padding = state ? "0.75rem 1rem 0.75rem" : "";
+                    wrap.style.padding = state ? "0" : "";
                 }
                 content.className = state ? "flex-1 min-h-0 flex flex-col" : "";
 
@@ -1371,9 +1729,6 @@
                     renderOverlay();
                     return;
                 }
-                // The lobby re-renders on polls and busy toggles; keep what
-                // the user is typing in the partner box (value, caret and
-                // focus) across the innerHTML swap.
                 const prevInput = document.getElementById("partnerName");
                 const keepPartner =
                     prevInput && state === null
@@ -1388,7 +1743,6 @@
                         : null;
                 content.innerHTML = state ? tableView() : lobbyHtml();
 
-                // lobby buttons
                 const deal = document.getElementById("dealBtn");
                 if (deal) deal.onclick = () => newBoard();
                 const create = document.getElementById("createTableBtn");
@@ -1424,15 +1778,63 @@
                     btn.onclick = () => teamDelete(btn.dataset.delGame);
                 });
 
-                // table buttons
+                const back = document.getElementById("backBtn");
+                if (back) back.onclick = () => leaveTable();
+                const prev = document.getElementById("prevHandBtn");
+                if (prev)
+                    prev.onclick = () => teamSelectBoard(state.boardSel - 1);
+                const nxt = document.getElementById("nextHandBtn");
+                if (nxt)
+                    nxt.onclick = () => teamSelectBoard(state.boardSel + 1);
+                const jump = document.getElementById("jumpHandBtn");
+                if (jump)
+                    jump.onclick = () => {
+                        const t = nextTeamBoardTarget();
+                        if (t !== null) teamSelectBoard(t);
+                    };
+                const mbtn = document.getElementById("cbMenuBtn");
+                if (mbtn)
+                    mbtn.onclick = (e) => {
+                        e.stopPropagation();
+                        const m = document.getElementById("cbMenu");
+                        m.style.display =
+                            m.style.display === "none" ? "block" : "none";
+                    };
+                const newMatch = document.getElementById("newMatchBtn");
+                if (newMatch)
+                    newMatch.onclick = () => {
+                        closeMenu();
+                        teamStart();
+                    };
                 const history = document.getElementById("historyBtn");
-                if (history) history.onclick = openHistory;
+                if (history)
+                    history.onclick = () => {
+                        closeMenu();
+                        openHistory();
+                    };
                 const leave = document.getElementById("leaveBtn");
-                if (leave) leave.onclick = leaveTable;
-                const first = document.getElementById("dealFirstBtn");
-                if (first) first.onclick = teamStart;
+                if (leave)
+                    leave.onclick = () => {
+                        closeMenu();
+                        leaveTable();
+                    };
                 const abandon = document.getElementById("abandonBtn");
-                if (abandon) abandon.onclick = () => newBoard();
+                if (abandon)
+                    abandon.onclick = () => {
+                        closeMenu();
+                        newBoard();
+                    };
+                const allh = document.getElementById("allHandsBtn");
+                if (allh)
+                    allh.onclick = () => {
+                        overlay = {
+                            items: null,
+                            detail: currentItem(),
+                            loading: false,
+                            error: false,
+                        };
+                        renderOverlay();
+                    };
                 const next = document.getElementById("nextBoardBtn");
                 if (next)
                     next.onclick = () => {
@@ -1452,10 +1854,7 @@
                     btn.onclick = () =>
                         teamSelectBoard(parseInt(btn.dataset.board, 10));
                 });
-                content.querySelectorAll("[data-call]").forEach((btn) => {
-                    btn.onclick = () => makeCall(btn.dataset.call);
-                });
-                wireBidBox(document);
+                wireBidArea(document);
                 const retry = document.getElementById("retryBtn");
                 if (retry) retry.onclick = () => refreshBoard(true);
 
@@ -1468,15 +1867,10 @@
                 pollTimer = null;
                 if (!window.currentUser || busy) return;
                 if (state && state.mode === "team") {
-                    // Always poll the table: the partner may act on another
-                    // board of the match while the selected one is quiet.
-                    // handleResponse skips the re-render when nothing
-                    // actually changed.
                     pollTimer = setTimeout(() => refreshBoard(true), 3000);
                     return;
                 }
                 if (state) {
-                    // Solo: recover a board that stalled mid-bot-turn.
                     if (
                         !busy &&
                         !state.done &&
@@ -1490,12 +1884,12 @@
                     }
                     return;
                 }
-                // Lobby: keep the tables list fresh. refreshLobby re-checks
-                // the partner-name input at fire time and skips the render
-                // (re-arming) while it is being used, so arming here is
-                // always safe.
                 if (games !== null) pollTimer = setTimeout(refreshLobby, 5000);
             }
+
+            document.addEventListener("click", (e) => {
+                if (!e.target.closest(".cb-menuwrap")) closeMenu();
+            });
 
             document.addEventListener("authchange", () => {
                 if (window.currentUser) {

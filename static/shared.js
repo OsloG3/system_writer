@@ -118,6 +118,26 @@ function colorSuits(text) {
         .replace(/♠/g, '<span style="color:green;">♠</span>');
 }
 
+// Tab bar picking which root node (section) of a system is on screen.
+// Used by the view and edit pages: one root per page, switched at the top.
+function rootTabsHtml(roots, selectedId) {
+    if (!roots || roots.length === 0) return "";
+    return `
+        <div class="flex items-center gap-2 flex-wrap mb-6">
+            <span class="text-[10px] uppercase tracking-widest text-outline font-label font-bold mr-1">Section</span>
+            ${roots
+                .map(
+                    (r) => `
+                <button data-root-tab="${escapeHtml(r.id)}" class="px-3.5 py-1.5 rounded-full font-label text-sm font-semibold transition-colors ${
+                    r.id === selectedId
+                        ? "bg-primary text-on-primary"
+                        : "bg-surface-container text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                }">${colorSuits(r.name || "Untitled")}</button>`,
+                )
+                .join("")}
+        </div>`;
+}
+
 // Small transient notification at the bottom of the screen
 function showToast(message, isError) {
     const existing = document.getElementById("app-toast");
@@ -604,9 +624,9 @@ function renderLayout(options) {
                 </button>
                 <a href="/" class="flex items-center gap-2.5 no-underline shrink-0 group">
                     <span class="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-b from-gold-light to-gold shadow-[0_2px_0_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.4)] group-hover:scale-105 transition-transform">
-                        <span class="text-ink text-lg font-headline font-extrabold leading-none select-none">A</span>
+                        <span class="text-ink text-lg font-headline font-extrabold leading-none select-none">B</span>
                     </span>
-                    <span class="font-headline font-extrabold text-lg sm:text-xl text-white tracking-tight">Atheneum</span>
+                    <span class="font-headline font-extrabold text-lg sm:text-xl text-white tracking-tight">Bridge Trainer</span>
                 </a>
                 <nav class="hidden md:flex items-center gap-2 font-headline tracking-tight text-sm">
                     <a class="${mode === 'play' ? navIdle : navActive}" href="/">

@@ -4,7 +4,7 @@
     <head>
         <meta charset="utf-8" />
         <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-        <title>Atheneum | Edit System</title>
+        <title>Bridge Trainer | Edit System</title>
         <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
         <link
             href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
@@ -43,6 +43,7 @@
             let dropPosition = null;
             let expandedNodes = new Set();
             let dirty = false;
+            let selectedRootId = null;
 
             function markDirty() {
                 dirty = true;
@@ -69,18 +70,40 @@
                 }
                 document.getElementById("treeNameDisplay").innerText =
                     treeData.name || "Untitled System";
+                const wanted = new URLSearchParams(
+                    window.location.search,
+                ).get("root");
+                selectedRootId =
+                    (treeData.roots.find((r) => r.id === wanted) ||
+                        treeData.roots[0] ||
+                        {}).id || null;
                 dirty = false;
                 treeLoaded = true;
                 updatePermsUI();
             }
 
+            function selectRoot(rootId) {
+                if (rootId === selectedRootId) return;
+                selectedRootId = rootId;
+                history.replaceState(
+                    null,
+                    "",
+                    window.location.pathname +
+                        "?root=" +
+                        encodeURIComponent(rootId),
+                );
+                renderTree();
+            }
+
             function addNewRoot() {
-                treeData.roots.push({
+                const newRoot = {
                     id: "root-" + Math.random().toString(36).substr(2, 9),
                     name: "New Section",
                     description: "",
                     children: [],
-                });
+                };
+                treeData.roots.push(newRoot);
+                selectedRootId = newRoot.id;
                 markDirty();
                 renderTree();
             }
@@ -440,11 +463,20 @@
             function renderTree() {
                 const container = document.getElementById("main-content");
                 container.innerHTML = "";
+                container.insertAdjacentHTML(
+                    "beforeend",
+                    rootTabsHtml(treeData.roots, selectedRootId),
+                );
+                container.querySelectorAll("[data-root-tab]").forEach((btn) => {
+                    btn.onclick = () => selectRoot(btn.dataset.rootTab);
+                });
                 container.appendChild(buildSystemNameField());
                 if (treeData.roots && treeData.roots.length > 0) {
-                    treeData.roots.forEach((root) => {
-                        renderNode(root, container, true);
-                    });
+                    const root =
+                        treeData.roots.find((r) => r.id === selectedRootId) ||
+                        treeData.roots[0];
+                    selectedRootId = root.id;
+                    renderNode(root, container, true);
                 } else {
                     const empty = document.createElement("div");
                     empty.className = "text-center py-16";
@@ -489,11 +521,19 @@
                 return null;
             }
 
+            function containsNode(node, searchId) {
+                if (node.id === searchId) return true;
+                return (node.children || []).some((c) =>
+                    containsNode(c, searchId),
+                );
+            }
+
             function moveNodeWithPosition(sourceId, targetId, position) {
                 const source = findNodeAndParentGlobal(sourceId);
                 const target = findNodeAndParentGlobal(targetId);
                 if (!source || !target || source.node.id === target.node.id)
                     return;
+                if (containsNode(source.node, targetId)) return;
 
                 if (source.parent) {
                     source.parent.children = source.parent.children.filter(
@@ -533,6 +573,12 @@
                     );
                 } else {
                     treeData.roots.splice(res.rootIndex, 1);
+                }
+                if (
+                    selectedRootId &&
+                    !treeData.roots.some((r) => r.id === selectedRootId)
+                ) {
+                    selectedRootId = (treeData.roots[0] || {}).id || null;
                 }
                 markDirty();
                 renderTree();

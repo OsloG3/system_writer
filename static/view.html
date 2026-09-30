@@ -4,7 +4,7 @@
     <head>
         <meta charset="utf-8" />
         <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-        <title>Atheneum | System View</title>
+        <title>Bridge Trainer | System View</title>
         <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
         <link
             href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
@@ -38,6 +38,7 @@
 
             let treeData = { roots: [] };
             let toggles = [];
+            let selectedRootId = null;
 
             async function loadTree() {
                 const res = await fetch("/api/tree/" + id);
@@ -58,7 +59,27 @@
                     treeData.name ||
                     (treeData.roots[0] && treeData.roots[0].name) ||
                     id;
+                const wanted = new URLSearchParams(
+                    window.location.search,
+                ).get("root");
+                selectedRootId =
+                    (treeData.roots.find((r) => r.id === wanted) ||
+                        treeData.roots[0] ||
+                        {}).id || null;
                 applyTreePerms(treeData);
+                renderTree();
+            }
+
+            function selectRoot(rootId) {
+                if (rootId === selectedRootId) return;
+                selectedRootId = rootId;
+                history.replaceState(
+                    null,
+                    "",
+                    window.location.pathname +
+                        "?root=" +
+                        encodeURIComponent(rootId),
+                );
                 renderTree();
             }
 
@@ -71,6 +92,21 @@
                     container.innerHTML = `<p class="text-on-surface-variant">This system is empty. <a class="text-primary" href="/edit/${id}">Edit it</a> to add nodes.</p>`;
                     return;
                 }
+
+                container.insertAdjacentHTML(
+                    "beforeend",
+                    rootTabsHtml(treeData.roots, selectedRootId),
+                );
+                container
+                    .querySelectorAll("[data-root-tab]")
+                    .forEach((btn) => {
+                        btn.onclick = () => selectRoot(btn.dataset.rootTab);
+                    });
+
+                const root =
+                    treeData.roots.find((r) => r.id === selectedRootId) ||
+                    treeData.roots[0];
+                selectedRootId = root.id;
 
                 const bar = document.createElement("div");
                 bar.className = "flex items-center gap-2 mb-8";
@@ -88,9 +124,7 @@
 
                 const treeContainer = document.createElement("div");
                 container.appendChild(treeContainer);
-                treeData.roots.forEach((root) => {
-                    renderNode(root, treeContainer, 0);
-                });
+                renderNode(root, treeContainer, 0);
 
                 bar.querySelector("#expandAllBtn").onclick = () =>
                     setAllExpanded(true);

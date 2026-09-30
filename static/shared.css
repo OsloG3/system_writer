@@ -1,5 +1,5 @@
 /* ============================================================
-   Atheneum — game design system
+   Bridge Trainer — game design system
    Dark HUD chrome (header/sidebar) around a light play area,
    felt tables, playing-card tiles, gold accents, juicy motion.
    ============================================================ */
@@ -382,6 +382,15 @@ button:active:not(:disabled) {
     box-shadow: none;
     transform: translateY(1px);
     cursor: not-allowed;
+}
+
+/* A selected Pass/Double/Redouble in the two-step bidding box: gold ring */
+.special-selected {
+    box-shadow:
+        0 0 0 3px rgba(242, 202, 76, 0.95),
+        0 3px 0 rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    transform: translateY(-1px);
 }
 
 /* ---- Board selector chips ---- */
