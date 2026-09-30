@@ -144,7 +144,9 @@ button:active:not(:disabled) {
 
 /* ---- Playing cards ---- */
 
-/* One card of a hand: rank over suit, like a real playing card */
+/* One card of a hand: rank over suit, like a real playing card.
+   Static by design: the table re-renders while waiting for other
+   players, so entrance animations here would replay constantly. */
 .pcard {
     display: inline-flex;
     flex-direction: column;
@@ -161,8 +163,6 @@ button:active:not(:disabled) {
     line-height: 1;
     letter-spacing: -0.02em;
     user-select: none;
-    animation: card-in 0.3s ease both;
-    animation-delay: var(--ci, 0s);
 }
 .pcard .r {
     font-size: 11px;
@@ -188,14 +188,20 @@ button:active:not(:disabled) {
 .pcard-sm .s {
     font-size: 8px;
 }
-@keyframes card-in {
-    from {
-        opacity: 0;
-        transform: translateY(7px) rotate(-3deg);
+/* Compact cards on phones so a hand never wraps and starves the
+   bidding box of space */
+@media (max-width: 639px) {
+    .pcard {
+        width: 17px;
+        height: 24px;
+        border-radius: 3px;
     }
-    to {
-        opacity: 1;
-        transform: none;
+    .pcard .r {
+        font-size: 9px;
+    }
+    .pcard .s {
+        font-size: 8px;
+        margin-top: 0;
     }
 }
 
@@ -224,8 +230,6 @@ button:active:not(:disabled) {
 .card-fan .card-back {
     margin-right: 2px;
     transform: rotate(-1.6deg);
-    animation: card-in 0.35s ease both;
-    animation-delay: calc(var(--ci, 0) * 0.03s);
 }
 .card-fan .card-back:nth-child(2n) {
     transform: rotate(1.4deg) translateY(1px);
@@ -233,48 +237,20 @@ button:active:not(:disabled) {
 .card-fan .card-back:last-child {
     margin-right: 0;
 }
-
-/* ---- The felt table ---- */
-
-.felt {
-    position: relative;
-    border-radius: 1.5rem;
-    background:
-        radial-gradient(ellipse 120% 90% at 50% 28%, rgba(255, 255, 255, 0.1), transparent 55%),
-        radial-gradient(ellipse at 50% 45%, #2f8553 0%, #27734a 45%, #1c5535 78%, #12402a 100%);
-    box-shadow:
-        inset 0 0 0 2px rgba(255, 255, 255, 0.08),
-        inset 0 0 60px rgba(0, 0, 0, 0.45),
-        0 3px 0 rgba(84, 60, 38, 0.9),
-        0 5px 0 rgba(64, 45, 28, 0.9),
-        0 16px 30px -12px rgba(0, 0, 0, 0.55);
-    overflow: hidden;
-}
-.felt::before {
-    /* soft table texture */
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-    background-size: 7px 7px;
-    pointer-events: none;
-}
-.felt::after {
-    /* inner vignette */
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.35) 100%);
-    pointer-events: none;
+@media (max-width: 639px) {
+    .card-back {
+        width: 11px;
+        height: 24px;
+    }
 }
 
-/* Player plates sit on the felt */
+/* Player plates on the table area */
 .player-plate {
-    background: linear-gradient(180deg, #ffffff, #f3f4ee);
+    background: linear-gradient(180deg, #fbfcf9, #eef0e9);
     border-radius: 0.85rem;
     border: 1px solid rgba(16, 22, 30, 0.12);
     box-shadow:
-        0 2px 4px rgba(0, 0, 0, 0.25),
+        0 2px 4px rgba(0, 0, 0, 0.12),
         inset 0 1px 0 #ffffff;
     transition:
         transform 0.18s ease,

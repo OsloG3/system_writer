@@ -112,12 +112,12 @@
                         const cards = (parts[i] || "").split("");
                         const tiles = cards.length
                             ? cards
-                                  .map((c, j) => {
+                                  .map((c) => {
                                       const ten =
                                           c === "T"
                                               ? "font-size:9px;letter-spacing:-0.08em;"
                                               : "";
-                                      return `<span class="pcard ${col}${small ? " pcard-sm" : ""}" style="--ci:${j * 0.018}s"><span class="r" style="${ten}">${c === "T" ? "10" : escapeHtml(c)}</span><span class="s">${sym}</span></span>`;
+                                      return `<span class="pcard ${col}${small ? " pcard-sm" : ""}"><span class="r" style="${ten}">${c === "T" ? "10" : escapeHtml(c)}</span><span class="s">${sym}</span></span>`;
                                   })
                                   .join("")
                             : `<span class="text-outline-variant text-xs font-label px-1">—</span>`;
@@ -136,7 +136,7 @@
             function hiddenHandHtml() {
                 let cards = "";
                 for (let i = 0; i < 13; i++)
-                    cards += `<span class="card-back" style="--ci:${i}"></span>`;
+                    cards += `<span class="card-back"></span>`;
                 return `<div class="card-fan mt-1 overflow-hidden">${cards}</div>`;
             }
 
@@ -579,7 +579,7 @@
 
             function auctionCardHtml() {
                 return `
-                    <div class="bg-white/95 backdrop-blur border border-black/15 rounded-xl shadow-[0_4px_14px_rgba(0,0,0,0.25)] px-1.5 sm:px-3 py-1.5 w-full">
+                    <div class="bg-[#f1f2ec] border border-black/10 rounded-xl shadow-sm px-1.5 sm:px-3 py-1.5 w-full">
                         <div class="flex items-center justify-center gap-1.5 text-[9px] uppercase tracking-[0.18em] text-[#8a6d1d] font-label mb-0.5 text-center truncate">
                             <span class="material-symbols-outlined text-[11px]">gavel</span>
                             Auction · dealer ${SEAT_NAMES[state.dealer][0]} · vuln ${VULN_NAMES[state.vuln]}
@@ -655,9 +655,7 @@
 
             function biddingBoxHtml() {
                 return `
-                    <div class="game-panel px-3 py-2.5">
-                        <span id="bidBox" class="block">${bidBoxInnerHtml()}</span>
-                    </div>`;
+                    <span id="bidBox" class="block">${bidBoxInnerHtml()}</span>`;
             }
 
             function wireBidBox(root) {
@@ -694,7 +692,7 @@
             function handStripHtml() {
                 if (!state || state.done || !state.hand) return "";
                 return `
-                    <div class="game-panel px-3 py-2">
+                    <div class="px-3 py-2">
                         <div class="flex items-center justify-between mb-1">
                             <span class="text-[10px] uppercase tracking-[0.2em] text-outline font-label font-bold">Your hand</span>
                             <span class="text-[10px] text-on-surface-variant font-label">${SEAT_NAMES[state.humanSeat]} · ${VULN_NAMES[state.vuln]} vuln</span>
@@ -811,7 +809,7 @@
                     </button>`;
                 }
                 return `
-                    <div class="game-panel px-3 py-2.5 flex items-center gap-3 flex-wrap">
+                    <div class="px-3 py-2.5 flex items-center gap-3 flex-wrap">
                         ${inner}
                     </div>`;
             }
@@ -941,6 +939,10 @@
                     </div>`;
             }
 
+            // One unified play surface: seats + auction in a scrollable
+            // table area, hand + bidding panel in a dock at the bottom —
+            // all inside a single card. On phones the bidding panel comes
+            // first so it is always visible.
             function tableView() {
                 const team = state.mode === "team";
                 let panel;
@@ -963,37 +965,35 @@
                             ? dealingHtml()
                             : teamReadyHtml()
                         : `
-                            <div class="felt w-full max-w-3xl mx-auto px-2 py-3 sm:px-5 sm:py-4">
-                                <div class="grid grid-cols-3 gap-1.5 sm:gap-3 items-center max-w-3xl m-auto w-full relative">
-                                    <div class="col-span-3 sm:hidden">${auctionCardHtml()}</div>
-                                    <div></div>
-                                    ${seatBox(0)}
-                                    <div></div>
-                                    ${seatBox(3)}
-                                    <div class="flex items-center justify-center"><div class="hidden sm:block w-full">${auctionCardHtml()}</div></div>
-                                    ${seatBox(1)}
-                                    <div></div>
-                                    ${seatBox(2)}
-                                    <div></div>
-                                </div>
+                            <div class="grid grid-cols-3 gap-1.5 sm:gap-3 items-center max-w-3xl m-auto w-full py-1.5">
+                                <div class="col-span-3 sm:hidden">${auctionCardHtml()}</div>
+                                <div></div>
+                                ${seatBox(0)}
+                                <div></div>
+                                ${seatBox(3)}
+                                <div class="flex items-center justify-center"><div class="hidden sm:block w-full">${auctionCardHtml()}</div></div>
+                                ${seatBox(1)}
+                                <div></div>
+                                ${seatBox(2)}
+                                <div></div>
                             </div>`;
+                const strip = state.noBoard ? "" : handStripHtml();
                 const dock = state.noBoard
                     ? ""
-                    : (() => {
-                          const strip = handStripHtml();
-                          return `<div class="bottom-dock shrink-0 flex flex-col sm:flex-row gap-2">
-                           ${strip ? `<div class="flex-1 min-w-0">${strip}</div>` : ""}
-                           <div class="flex-1 min-w-0">${panel}</div>
+                    : `<div class="bottom-dock shrink-0 border-t border-black/10 bg-[#f6f7f2] flex flex-col sm:flex-row gap-2 sm:gap-3 px-2 sm:px-3 py-2">
+                           <div class="order-2 sm:order-1 flex-1 min-w-0">${strip}</div>
+                           <div class="order-1 sm:order-2 flex-1 min-w-0">${panel}</div>
                        </div>`;
-                      })();
                 return `
                     <div class="flex-1 min-h-0 flex flex-col gap-1.5">
                         ${playHeaderHtml()}
                         ${boardStripHtml()}
-                        <div id="tableBox" class="flex-1 min-h-0 flex flex-col overflow-y-auto">
-                            ${tableBody}
+                        <div class="game-panel flex-1 min-h-0 flex flex-col overflow-hidden rounded-2xl">
+                            <div id="tableBox" class="flex-1 min-h-0 flex flex-col overflow-y-auto">
+                                ${tableBody}
+                            </div>
+                            ${dock}
                         </div>
-                        ${dock}
                     </div>`;
             }
 
