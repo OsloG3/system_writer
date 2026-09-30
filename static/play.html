@@ -28,7 +28,7 @@
                 badge: "Play",
                 title: "Play vs Bots",
                 subtitle:
-                    "Sit South at a table with three bots from the bidding-dt project. Each board is scored in IMPs versus double-dummy par, and your running average is kept.",
+                    "Deal a solo board against three bidding-dt bots, or open a persistent partner table for two humans (North–South) against the East/West bots. Every board is scored in IMPs versus double-dummy par.",
             });
 
             const SEAT_NAMES = ["North", "East", "South", "West"];
@@ -37,14 +37,17 @@
             const SUIT_ORDER = ["C", "D", "H", "S", "N"]; // ascending bid rank
             const AUCTION_COLS = [3, 0, 1, 2]; // W N E S: South rightmost
             const BOARD_KEY = "atheneum_play_board";
+            const TEAM_KEY = "atheneum_play_team";
 
-            let state = null; // current board from the server
-            let stats = null; // { boards, impsTotal, avgImps, recent }
+            let state = null; // active table: a solo board or a team game view
+            let stats = null; // solo career stats { boards, impsTotal, avgImps, recent }
+            let games = null; // team tables this user is part of
             let busy = false; // a request is in flight (bots thinking)
             let autoRetries = 0; // failed auto-recovery attempts in a row
             let bidLevelSel = null; // bidding-box selection, kept across renders
             let bidStrainSel = null;
-            let shownBoardId = null; // last board id we scrolled into view
+            let pollTimer = null; // pending background refresh
+            let overlay = null; // board-history overlay state
 
             // ---- formatting helpers ----
 
@@ -67,6 +70,14 @@
                     (m, l, d) => l + (d === "N" ? "NT" : SUIT_SYMBOL[d]),
                 );
                 return colorSuits(t);
+            }
+
+            // contract object from the sidecar -> "4SX by N"
+            function contractString(c) {
+                if (!c) return "passed out";
+                const pen = ["", "X", "XX"][c.penalty] || "";
+                const decl = "NESW"[c.declarer] || "?";
+                return `${c.level}${c.denom}${pen} by ${decl}`;
             }
 
             function seatIsVul(seat, vuln) {
@@ -97,12 +108,19 @@
                         const cards = escapeHtml(parts[i] || "—")
                             .split("")
                             .join(" ");
-                        return `<div class="flex items-baseline gap-1">
-                            <span class="w-3.5 shrink-0 ${small ? "text-xs" : "text-base"} leading-none" style="${color}">${sym}</span>
-                            <span class="font-headline font-semibold ${small ? "text-[11px]" : "text-sm"} tracking-wide text-on-surface">${cards || "—"}</span>
+                        return `<div class="flex items-baseline gap-1 min-w-0">
+                            <span class="w-4 shrink-0 ${small ? "text-xs" : "text-base"} leading-none" style="${color}">${sym}</span>
+                            <span class="font-headline font-semibold ${small ? "text-[11px]" : "text-sm sm:text-base"} tracking-wide text-on-surface">${cards || "—"}</span>
                         </div>`;
                     })
                     .join("");
+            }
+
+            function hiddenHandHtml() {
+                let cards = "";
+                for (let i = 0; i < 13; i++)
+                    cards += `<span class="card-back"></span>`;
+                return `<div class="mt-1.5 flex gap-[2px] overflow-hidden">${cards}</div>`;
             }
 
             function impsColor(imps) {
@@ -138,20 +156,52 @@
                 if (!res.ok) {
                     busy = false;
                     autoRetries++;
-                    if (res.status === 404 && state) {
-                        localStorage.removeItem(BOARD_KEY);
-                        state = null;
+                    if (res.status === 404) {
+                        if (state) {
+                            localStorage.removeItem(
+                                state.mode === "team" ? TEAM_KEY : BOARD_KEY,
+                            );
+                            state = null;
+                        }
+                        refreshLobby();
                     }
                     showToast((data && data.error) || "Request failed", true);
                     render();
                     return;
                 }
-                state = data;
-                if (data.stats) stats = data.stats;
-                localStorage.setItem(BOARD_KEY, data.id);
+                if (data.mode === "team") {
+                    state = data;
+                    localStorage.setItem(TEAM_KEY, data.id);
+                    localStorage.removeItem(BOARD_KEY);
+                } else {
+                    data.mode = "solo";
+                    state = data;
+                    localStorage.setItem(BOARD_KEY, data.id);
+                    localStorage.removeItem(TEAM_KEY);
+                    if (data.stats) stats = data.stats;
+                }
                 busy = false;
                 autoRetries = 0;
                 render();
+            }
+
+            async function post(path, body) {
+                busy = true;
+                render();
+                try {
+                    const res = await fetch(path, {
+                        method: "POST",
+                        headers: body
+                            ? { "Content-Type": "application/json" }
+                            : {},
+                        body: body ? JSON.stringify(body) : undefined,
+                    });
+                    await handleResponse(res);
+                } catch (e) {
+                    busy = false;
+                    showToast("Network error", true);
+                    render();
+                }
             }
 
             async function newBoard() {
@@ -160,55 +210,169 @@
                     return;
                 }
                 if (busy) return;
-                busy = true;
-                render();
-                try {
-                    const res = await fetch("/api/play/new", {
-                        method: "POST",
-                    });
-                    await handleResponse(res);
-                } catch (e) {
-                    busy = false;
-                    showToast("Network error", true);
-                    render();
-                }
+                await post("/api/play/new");
             }
 
             async function makeCall(call) {
                 if (!state || busy || state.done || !state.yourTurn) return;
+                const path =
+                    state.mode === "team"
+                        ? `/api/play/team/${state.id}/call`
+                        : `/api/play/${state.id}/call`;
+                await post(path, { call: call });
+            }
+
+            async function refreshBoard(force) {
+                if (!state || busy) return;
+                if (
+                    !force &&
+                    !state.done &&
+                    state.yourTurn &&
+                    state.mode !== "team"
+                )
+                    return;
+                if (!force && state.mode === "solo" && state.done) return;
                 busy = true;
                 render();
                 try {
-                    const res = await fetch(`/api/play/${state.id}/call`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ call: call }),
-                    });
+                    const path =
+                        state.mode === "team"
+                            ? `/api/play/team/${state.id}`
+                            : `/api/play/${state.id}`;
+                    const res = await fetch(path);
                     await handleResponse(res);
                 } catch (e) {
                     busy = false;
-                    showToast("Network error", true);
                     render();
                 }
             }
 
-            async function loadStatsAndResume() {
+            async function teamCreate() {
+                if (!window.currentUser) {
+                    showAuthDialog("login");
+                    return;
+                }
+                if (busy) return;
+                await post("/api/play/team/new");
+            }
+
+            async function teamJoin(code) {
+                code = String(code || "")
+                    .trim()
+                    .toUpperCase();
+                if (!code) {
+                    showToast("Enter a join code", true);
+                    return;
+                }
+                await post("/api/play/team/join", { code: code });
+            }
+
+            async function teamOpen(id) {
+                if (busy) return;
+                busy = true;
+                render();
+                try {
+                    const res = await fetch(
+                        "/api/play/team/" + encodeURIComponent(id),
+                    );
+                    await handleResponse(res);
+                } catch (e) {
+                    busy = false;
+                    render();
+                }
+            }
+
+            async function teamNext() {
+                if (!state || state.mode !== "team" || busy) return;
+                await post(`/api/play/team/${state.id}/next`);
+            }
+
+            function leaveTable() {
+                localStorage.removeItem(TEAM_KEY);
+                state = null;
+                refreshLobby();
+            }
+
+            async function teamDelete(id) {
+                if (
+                    !confirm(
+                        "Delete this table for good? Both players lose its history.",
+                    )
+                )
+                    return;
+                try {
+                    const res = await fetch(
+                        "/api/play/team/" + encodeURIComponent(id),
+                        { method: "DELETE" },
+                    );
+                    if (res.ok) {
+                        showToast("Table deleted");
+                        refreshLobby();
+                    } else {
+                        showToast("Could not delete table", true);
+                    }
+                } catch (e) {
+                    showToast("Network error", true);
+                }
+            }
+
+            async function loadGames() {
+                try {
+                    const res = await fetch("/api/play/team/list");
+                    if (res.ok) games = (await res.json()).games || [];
+                } catch (e) {}
+            }
+
+            async function refreshLobby() {
+                await loadGames();
+                render();
+            }
+
+            async function loadInitial() {
                 try {
                     const res = await fetch("/api/play/stats");
                     if (res.ok) stats = await res.json();
                 } catch (e) {}
-                const id = localStorage.getItem(BOARD_KEY);
-                if (id) {
+                await loadGames();
+
+                const join = new URLSearchParams(location.search).get("join");
+                if (join && window.currentUser) {
+                    history.replaceState(null, "", "/play");
+                    await teamJoin(join);
+                    return;
+                }
+
+                const tid = localStorage.getItem(TEAM_KEY);
+                if (tid) {
                     try {
                         const res = await fetch(
-                            "/api/play/" + encodeURIComponent(id),
+                            "/api/play/team/" + encodeURIComponent(tid),
                         );
                         if (res.ok) {
                             state = await res.json();
-                            if (state.stats) stats = state.stats;
-                        } else {
-                            localStorage.removeItem(BOARD_KEY);
+                            state.mode = "team";
+                            busy = false;
+                            render();
+                            return;
                         }
+                        localStorage.removeItem(TEAM_KEY);
+                    } catch (e) {}
+                }
+                const bid = localStorage.getItem(BOARD_KEY);
+                if (bid) {
+                    try {
+                        const res = await fetch(
+                            "/api/play/" + encodeURIComponent(bid),
+                        );
+                        if (res.ok) {
+                            state = await res.json();
+                            state.mode = "solo";
+                            if (state.stats) stats = state.stats;
+                            busy = false;
+                            render();
+                            return;
+                        }
+                        localStorage.removeItem(BOARD_KEY);
                     } catch (e) {}
                 }
                 render();
@@ -216,76 +380,87 @@
 
             // ---- rendering ----
 
+            // Contract for one seat ("You", seat name, partner, bot).
+            function seatSub(seat) {
+                if (state.humanSeat === seat) return "you";
+                const named = state.seatNames
+                    ? state.seatNames[String(seat)]
+                    : "";
+                if (named)
+                    return escapeHtml(named) + " · your partner";
+                const model = state.bots ? state.bots[String(seat)] : "";
+                return "bot" + (model ? " · " + escapeHtml(model) : "");
+            }
+
             function seatBox(seat) {
-                const isHuman = seat === (state ? state.humanSeat : 2);
-                const active =
-                    state && !state.done && state.nextSeat === seat;
-                const model =
-                    state && state.bots ? state.bots[String(seat)] : "";
-                const sub = isHuman
-                    ? "you"
-                    : "bot" + (model ? " · " + escapeHtml(model) : "");
-                const partner = seat === 0 ? " · your partner" : "";
-                const ring = active
-                    ? "border-primary ring-2 ring-primary/30"
-                    : "border-outline-variant/10";
-                const vulChip =
-                    state && seatIsVul(seat, state.vuln)
-                        ? `<span class="px-1 py-px rounded text-[9px] font-bold uppercase bg-error-container/50 text-on-error-container">vul</span>`
-                        : "";
-                const thinking =
-                    active && busy && !isHuman
-                        ? `<span class="flex items-center gap-1 text-[11px] text-primary font-label"><span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>thinking…</span>`
-                        : active
-                          ? `<span class="text-[11px] ${isHuman ? "text-primary font-label font-semibold" : "text-on-surface-variant"}">${isHuman ? "your turn" : "to act"}</span>`
-                          : "";
-                const hand = isHuman
-                    ? state
-                        ? `<div id="southHand" class="mt-1.5 space-y-0.5">${handHtml(state.hand, true)}</div>`
-                        : ""
-                    : state && state.done && state.hands
-                      ? `<div class="mt-1.5 space-y-0.5">${handHtml(state.hands[seat], true)}</div>`
-                      : "";
+                const isHuman = state.humanSeat === seat;
+                const active = !state.done && state.nextSeat === seat;
+                const dealer = state.dealer === seat;
+                const vulChip = seatIsVul(seat, state.vuln)
+                    ? `<span class="px-1 py-px rounded text-[9px] font-bold uppercase bg-error-container/60 text-on-error-container">vul</span>`
+                    : "";
+                const dealerChip = dealer
+                    ? `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-tertiary-container text-on-tertiary-container text-[9px] font-bold border border-white/60" title="Dealer">D</span>`
+                    : "";
+                let status = "";
+                if (active) {
+                    const partner =
+                        state.mode === "team" &&
+                        state.seatNames &&
+                        state.seatNames[String(seat)];
+                    const label = isHuman
+                        ? "your turn"
+                        : partner
+                          ? "partner to act"
+                          : "bot thinking…";
+                    status = `<span class="flex items-center gap-1 text-[10px] ${isHuman ? "text-primary font-label font-semibold" : "text-on-surface-variant"}">${busy && !isHuman ? '<span class="material-symbols-outlined text-xs animate-spin">progress_activity</span>' : ""}${label}</span>`;
+                }
+                let hand;
+                if (state.done && state.hands) {
+                    hand = `<div class="mt-1.5 space-y-0.5">${handHtml(state.hands[seat], true)}</div>`;
+                } else if (isHuman) {
+                    hand = `<div class="mt-1.5 text-[10px] font-label text-on-surface-variant">your cards below</div>`;
+                } else {
+                    hand = hiddenHandHtml();
+                }
                 return `
-                    <div class="bg-surface-container-lowest border ${ring} rounded-xl px-2.5 py-2 min-w-0 transition-all">
+                    <div class="bg-white/95 border ${active ? "border-primary seat-active" : "border-black/5"} rounded-lg px-2 py-1.5 min-w-0 transition-all">
                         <div class="flex items-center gap-1.5">
-                            <span class="material-symbols-outlined text-base ${isHuman ? "text-tertiary" : "text-primary"}">${isHuman ? "person" : "smart_toy"}</span>
-                            <span class="font-headline font-bold text-sm text-on-surface truncate">${SEAT_NAMES[seat]}</span>
-                            ${vulChip}
+                            <span class="material-symbols-outlined text-base hidden sm:inline ${isHuman ? "text-tertiary" : "text-primary"}">${isHuman ? "person" : "smart_toy"}</span>
+                            <span class="font-headline font-bold text-xs sm:text-sm text-on-surface truncate">${SEAT_NAMES[seat]}</span>
+                            ${vulChip}${dealerChip}
                         </div>
-                        <div class="text-[10px] text-on-surface-variant font-label truncate">${sub}${partner}</div>
-                        <div class="min-h-[14px] mt-0.5">${thinking}</div>
+                        <div class="text-[10px] text-on-surface-variant font-label truncate">${seatSub(seat)}</div>
+                        <div class="min-h-[13px] mt-0.5">${status}</div>
                         ${hand}
                     </div>`;
             }
 
-            function auctionHtml() {
-                const calls = state.calls || [];
+            function auctionTableHtml(dealer, vuln, calls) {
+                const list = calls || [];
                 const rows = [];
                 let row = null;
                 let prevPos = -1;
-                for (let i = 0; i < calls.length; i++) {
-                    const pos = AUCTION_COLS.indexOf(
-                        (state.dealer + i) % 4,
-                    );
+                for (let i = 0; i < list.length; i++) {
+                    const pos = AUCTION_COLS.indexOf((dealer + i) % 4);
                     if (!row || pos <= prevPos) {
                         row = [null, null, null, null];
                         rows.push(row);
                     }
-                    row[pos] = calls[i];
+                    row[pos] = list[i];
                     prevPos = pos;
                 }
                 const head = AUCTION_COLS.map((s) => {
-                    const vul = seatIsVul(s, state.vuln);
+                    const vul = seatIsVul(s, vuln);
                     const chip = vul
                         ? "bg-red-600 text-white"
                         : "bg-white text-neutral-800";
-                    const dealer =
-                        s === state.dealer
+                    const atDealer =
+                        s === dealer
                             ? "ring-2 ring-primary ring-offset-1 ring-offset-transparent"
                             : "";
-                    return `<th class="px-2 sm:px-3 py-1 text-center">
-                        <span class="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] uppercase font-label font-bold border border-outline-variant/30 ${chip} ${dealer}">${SEAT_NAMES[s][0]}</span>
+                    return `<th class="px-0.5 sm:px-2 py-1 text-center">
+                        <span class="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] uppercase font-label font-bold border border-outline-variant/30 ${chip} ${atDealer}">${SEAT_NAMES[s][0]}</span>
                     </th>`;
                 }).join("");
                 const body = rows
@@ -295,26 +470,31 @@
                             r
                                 .map(
                                     (c, i) =>
-                                        `<td class="px-2 sm:px-3 py-0.5 text-center text-sm font-headline font-semibold text-on-surface ${seatIsVul(AUCTION_COLS[i], state.vuln) ? "bg-red-600/5" : ""}">${c ? callHtml(c) : ""}</td>`,
+                                        `<td class="px-0.5 sm:px-2 py-0.5 text-center text-[11px] sm:text-sm font-headline font-semibold text-on-surface ${seatIsVul(AUCTION_COLS[i], vuln) ? "bg-red-600/5" : ""}">${c ? callHtml(c) : ""}</td>`,
                                 )
                                 .join("") +
                             `</tr>`,
                     )
                     .join("");
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-2 sm:px-3 py-1.5 min-w-[210px]">
-                        <div class="text-[9px] uppercase tracking-widest text-outline font-label mb-0.5 text-center">
-                            Auction · dealer ${SEAT_NAMES[state.dealer]} · vuln ${VULN_NAMES[state.vuln]}
+                    <table class="w-full border-collapse">
+                        <thead><tr>${head}</tr></thead>
+                        <tbody>${body || `<tr><td colspan="4" class="py-1.5 text-center text-[11px] text-outline-variant">no calls yet</td></tr>`}</tbody>
+                    </table>`;
+            }
+
+            function auctionCardHtml() {
+                return `
+                    <div class="bg-white/95 border border-black/5 rounded-lg shadow-sm px-1.5 sm:px-3 py-1.5 w-full">
+                        <div class="text-[9px] uppercase tracking-widest text-outline font-label mb-0.5 text-center truncate">
+                            Auction · dealer ${SEAT_NAMES[state.dealer][0]} · vuln ${VULN_NAMES[state.vuln]}
                         </div>
-                        <table class="w-full border-collapse">
-                            <thead><tr>${head}</tr></thead>
-                            <tbody>${body || `<tr><td colspan="4" class="py-2 text-center text-xs text-outline-variant">no calls yet</td></tr>`}</tbody>
-                        </table>
+                        ${auctionTableHtml(state.dealer, state.vuln, state.calls)}
                     </div>`;
             }
 
-            // Levels (up to 7) and strains (5) shown as two rows of buttons;
-            // pick one of each then Bid. Rebuilt in place on every selection.
+            // Compact bidding pad: levels on top, strains + Bid, then
+            // Pass/X/XX, all in one tight card. Rebuilt in place on selection.
             function bidBoxInnerHtml() {
                 const legal = new Set(state.legal || []);
                 const levels = [];
@@ -333,41 +513,50 @@
                         : "";
                 const canBid = token && legal.has(token) && !busy;
 
-                const selCls =
-                    "bg-primary-container ring-2 ring-primary text-on-primary-container";
+                const selCls = "bg-primary text-on-primary shadow-sm";
                 const idleCls =
                     "bg-surface-container text-on-surface hover:bg-surface-container-high";
+                const disCls = "opacity-25 cursor-not-allowed saturate-0";
                 const levelBtn = (l) => {
                     const on = l === bidLevelSel;
-                    return `<button data-level="${l}" ${busy ? "disabled" : ""} class="w-8 py-1.5 rounded font-headline font-bold text-sm transition-colors ${on ? selCls : idleCls} ${busy ? "opacity-30 cursor-not-allowed" : ""}">${l}</button>`;
+                    return `<button data-level="${l}" ${busy ? "disabled" : ""} class="h-8 rounded font-headline font-bold text-sm transition-colors ${on ? selCls : idleCls} ${busy ? disCls : ""}">${l}</button>`;
                 };
                 const strainBtn = (d) => {
                     const ok = legal.has(bidLevelSel + d);
                     const on = ok && d === bidStrainSel;
-                    const dis = "opacity-30 cursor-not-allowed saturate-0";
-                    return `<button data-strain="${d}" ${ok && !busy ? "" : "disabled"} class="px-2.5 py-1.5 rounded font-headline font-bold text-sm transition-colors ${on ? selCls : idleCls} ${ok && !busy ? "" : dis}">${colorSuits(SUIT_SYMBOL[d])}</button>`;
+                    return `<button data-strain="${d}" ${ok && !busy ? "" : "disabled"} class="h-8 rounded font-headline font-bold text-sm transition-colors ${on ? selCls : idleCls} ${ok && !busy ? "" : disCls}">${colorSuits(SUIT_SYMBOL[d])}</button>`;
                 };
-                return `
-                    <div class="flex items-center gap-1">${levels.map(levelBtn).join("")}</div>
-                    <div class="flex items-center gap-1">
-                        ${SUIT_ORDER.map(strainBtn).join("")}
-                        <button id="bidBtn" ${canBid ? "" : "disabled"} class="ml-2 px-4 py-1.5 bg-primary text-on-primary rounded font-label text-xs font-semibold hover:bg-primary-dim transition-colors ${canBid ? "" : "opacity-30 cursor-not-allowed"}">Bid</button>
-                    </div>`;
-            }
-
-            function biddingBoxHtml() {
-                const legal = new Set(state.legal || []);
                 const special = (t, label, cls) => {
                     const ok = legal.has(t) && !busy;
-                    const dis = "opacity-30 cursor-not-allowed saturate-0";
-                    return `<button data-call="${t}" ${ok ? "" : "disabled"} class="px-3 py-1.5 rounded font-label text-xs font-semibold transition-colors ${cls} ${ok ? "" : dis}">${label}</button>`;
+                    return `<button data-call="${t}" ${ok ? "" : "disabled"} class="h-9 rounded font-label text-xs font-semibold transition-colors ${cls} ${ok ? "" : disCls}">${label}</button>`;
                 };
+                const bidLabel = canBid
+                    ? "Bid " +
+                      colorSuits(bidLevelSel + SUIT_SYMBOL[bidStrainSel])
+                    : "Bid";
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 py-2">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <span class="text-[10px] uppercase tracking-widest text-outline font-label mr-1">Your call</span>
-                            <span id="bidBox" class="flex flex-col items-start gap-1.5">${bidBoxInnerHtml()}</span>
-                            <span class="flex-1"></span>
+                    <div class="w-full max-w-lg mx-auto">
+                        <div class="flex items-baseline justify-between mb-1.5">
+                            <span class="text-[10px] uppercase tracking-widest text-outline font-label">Your call</span>
+                            <span class="text-[11px] font-label text-on-surface-variant">${
+                                token
+                                    ? "selected " +
+                                      colorSuits(
+                                          bidLevelSel +
+                                              SUIT_SYMBOL[bidStrainSel],
+                                      ) +
+                                      " — press Bid"
+                                    : "pick a level and a strain"
+                            }</span>
+                        </div>
+                        <div class="grid grid-cols-7 gap-1 mb-1">
+                            ${levels.map(levelBtn).join("")}
+                        </div>
+                        <div class="grid grid-cols-6 gap-1 mb-1">
+                            ${SUIT_ORDER.map(strainBtn).join("")}
+                            <button id="bidBtn" ${canBid ? "" : "disabled"} class="h-8 rounded font-label text-xs font-bold transition-colors ${canBid ? "bg-tertiary-container text-on-tertiary-container hover:bg-tertiary-fixed-dim" : "bg-surface-container text-on-surface " + disCls}">${bidLabel}</button>
+                        </div>
+                        <div class="grid grid-cols-3 gap-1">
                             ${special("P", "Pass", "bg-surface-container text-on-surface hover:bg-surface-container-high")}
                             ${special("X", "Double", "bg-error-container/40 text-on-error-container hover:bg-error-container/70")}
                             ${special("XX", "Redouble", "bg-tertiary-container/50 text-on-tertiary-container hover:bg-tertiary-container/80")}
@@ -375,8 +564,13 @@
                     </div>`;
             }
 
-            // Wire level/strain buttons so a selection rebuilds the box in
-            // place (no full re-render, which would lose nothing but is wasteful)
+            function biddingBoxHtml() {
+                return `
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 py-2.5">
+                        <span id="bidBox" class="block">${bidBoxInnerHtml()}</span>
+                    </div>`;
+            }
+
             function wireBidBox(root) {
                 const box = root.getElementById("bidBox");
                 if (!box) return;
@@ -392,6 +586,9 @@
                         refreshBidBox();
                     };
                 });
+                box.querySelectorAll("[data-call]").forEach((btn) => {
+                    btn.onclick = () => makeCall(btn.dataset.call);
+                });
                 const bidBtn = box.querySelector("#bidBtn");
                 if (bidBtn)
                     bidBtn.onclick = () =>
@@ -403,6 +600,20 @@
                 if (!box || !state) return;
                 box.innerHTML = bidBoxInnerHtml();
                 wireBidBox(document);
+            }
+
+            function handStripHtml() {
+                if (!state || state.done || !state.hand) return "";
+                return `
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 py-2">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-[10px] uppercase tracking-widest text-outline font-label">Your hand</span>
+                            <span class="text-[10px] text-on-surface-variant font-label">${SEAT_NAMES[state.humanSeat]} · ${VULN_NAMES[state.vuln]} vuln</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0.5">
+                            ${handHtml(state.hand, false)}
+                        </div>
+                    </div>`;
             }
 
             function resultHtml() {
@@ -424,98 +635,261 @@
                     contractLine = "Passed out";
                     trickLine = "no contract was reached";
                 }
-                const nextLabel = "Next board";
+                const st = state.stats || {};
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm p-3 sm:p-4">
-                        <div class="text-[10px] uppercase tracking-widest text-outline font-label mb-2">Board complete — scored versus par</div>
-                        <div class="flex flex-wrap items-center gap-x-8 gap-y-3">
-                            <div>
-                                <div class="font-headline font-bold text-lg text-on-surface">${contractLine}</div>
-                                <div class="text-sm text-on-surface-variant mt-0.5">${trickLine}</div>
-                                <div class="text-xs text-on-surface-variant mt-1 font-label">
-                                    Par (N-S): <span class="font-semibold">${scoreText(r.parNs)}</span>
-                                    &nbsp;·&nbsp; Your score (N-S): <span class="font-semibold">${scoreText(r.scoreNs)}</span>
-                                </div>
-                            </div>
-                            <div class="text-center px-6 py-2 rounded-xl bg-surface-container-low">
-                                <div class="text-[10px] uppercase tracking-widest text-outline font-label">IMPs vs par</div>
-                                <div class="text-4xl font-headline font-extrabold ${impsColor(r.imps)}">${signed(r.imps)}</div>
-                            </div>
-                            <div class="text-center px-4 py-2">
-                                <div class="text-[10px] uppercase tracking-widest text-outline font-label">Career average</div>
-                                <div class="text-2xl font-headline font-bold ${stats ? impsColor(stats.avgImps) : ""}">${stats ? signed(stats.avgImps.toFixed(2)) : "—"}</div>
-                                <div class="text-[11px] text-on-surface-variant font-label">${stats ? stats.boards + " boards" : ""}</div>
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 sm:px-4 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-2">
+                        <div class="min-w-0">
+                            <div class="font-headline font-bold text-base text-on-surface">${contractLine}</div>
+                            <div class="text-xs text-on-surface-variant mt-0.5">${trickLine}</div>
+                            <div class="text-[11px] text-on-surface-variant mt-0.5 font-label">
+                                Par (N-S) <span class="font-semibold">${scoreText(r.parNs)}</span>
+                                · Your score (N-S) <span class="font-semibold">${scoreText(r.scoreNs)}</span>
                             </div>
                         </div>
-                        <div class="flex flex-wrap items-center gap-3 mt-5">
-                            <button id="nextBoardBtn" class="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
-                                <span class="material-symbols-outlined text-sm">casino</span>
-                                ${nextLabel}
-                            </button>
-                            <span class="text-xs text-on-surface-variant">All four hands are shown at the table above.</span>
+                        <div class="text-center px-4 py-1 rounded-lg bg-surface-container-low">
+                            <div class="text-[9px] uppercase tracking-widest text-outline font-label">IMPs vs par</div>
+                            <div class="text-2xl font-headline font-extrabold leading-tight ${impsColor(r.imps)}">${signed(r.imps)}</div>
                         </div>
+                        <div class="text-center">
+                            <div class="text-[9px] uppercase tracking-widest text-outline font-label">Average</div>
+                            <div class="text-lg font-headline font-bold leading-tight ${impsColor(st.avgImps)}">${st.avgImps === undefined ? "—" : signed(st.avgImps.toFixed(2))}</div>
+                            <div class="text-[10px] text-on-surface-variant font-label">${st.boards || 0} boards</div>
+                        </div>
+                        <button id="nextBoardBtn" class="ml-auto shrink-0 flex items-center gap-2 px-5 py-2 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                            <span class="material-symbols-outlined text-sm">casino</span>
+                            Next board
+                        </button>
                     </div>`;
             }
 
-            function tableHtml() {
+            function spinner(msg) {
                 return `
-                    <div class="space-y-2.5">
-                        <div class="flex items-center justify-between gap-3">
-                            <div class="text-xs text-on-surface-variant font-label">
-                                Board ${stats ? stats.boards + (state.done ? 0 : 1) : 1} · you sit South, North is your partner
+                    <span class="material-symbols-outlined text-primary animate-spin">progress_activity</span>
+                    <span class="text-sm text-on-surface-variant font-label">${msg}</span>`;
+            }
+
+            function waitingHtml() {
+                const team = state.mode === "team";
+                const partnerSeat =
+                    team && state.seatNames
+                        ? state.seatNames[String(state.nextSeat)]
+                        : "";
+                let inner;
+                if (busy) {
+                    inner = spinner(
+                        team ? "Updating the table…" : "The bots are bidding…",
+                    );
+                } else if (partnerSeat) {
+                    inner = spinner(escapeHtml(partnerSeat) + " is thinking…");
+                } else if (state.yourTurn) {
+                    inner = `<span class="material-symbols-outlined text-outline">wifi_off</span>
+                             <span class="text-sm text-on-surface-variant font-label">Could not load your options.</span>
+                             <button id="retryBtn" class="ml-auto flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                                 <span class="material-symbols-outlined text-sm">refresh</span>
+                                 Retry
+                             </button>`;
+                } else {
+                    inner = spinner("Waiting for the bots to bid…");
+                }
+                return `
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 py-2.5 flex items-center gap-3">
+                        ${inner}
+                    </div>`;
+            }
+
+            function playHeaderHtml() {
+                const team = state.mode === "team";
+                let left, right;
+                if (team) {
+                    const partner =
+                        state.yourSeat === 2 ? state.partner : state.host;
+                    left = `Table · you &amp; ${partner ? escapeHtml(partner) : "waiting for partner"} vs E/W bots · board ${state.boardNo || "—"}`;
+                    right = `
+                        <span class="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-surface-container-low rounded font-label text-xs text-on-surface-variant">
+                            code <b class="text-on-surface tracking-widest">${state.code}</b>
+                            <button id="copyCodeBtn" title="Copy join code" class="material-symbols-outlined text-sm hover:text-on-surface">content_copy</button>
+                        </span>
+                        <button id="historyBtn" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                            <span class="material-symbols-outlined text-sm">history</span>Past boards
+                        </button>
+                        <button id="leaveBtn" title="Leave the table (it stays open)" class="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                            <span class="material-symbols-outlined text-sm">logout</span>Leave
+                        </button>`;
+                } else {
+                    left = `Board ${stats ? stats.boards + (state.done ? 0 : 1) : 1} · you sit South, North is your partner`;
+                    right = `
+                        <button id="historyBtn" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                            <span class="material-symbols-outlined text-sm">history</span>Past boards
+                        </button>
+                        <button id="abandonBtn" title="Abandon this board (not scored)" class="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                            <span class="material-symbols-outlined text-sm">restart_alt</span>New board
+                        </button>`;
+                }
+                return `
+                    <div class="flex items-center justify-between gap-2 shrink-0">
+                        <div class="text-xs text-on-surface-variant font-label truncate">${left}</div>
+                        <div class="flex items-center gap-1.5 shrink-0">${right}</div>
+                    </div>`;
+            }
+
+            function teamReadyHtml() {
+                if (state.waitingForPartner) {
+                    return `
+                        <div class="bg-white/95 rounded-lg border border-black/5 px-5 py-6 text-center max-w-sm m-auto">
+                            <span class="material-symbols-outlined text-primary text-4xl">group_add</span>
+                            <p class="font-headline font-bold text-on-surface mt-2">Waiting for your partner</p>
+                            <p class="text-xs text-on-surface-variant font-label mt-1">Share this join code, or send them the link below:</p>
+                            <div class="mt-3 flex items-center justify-center gap-2">
+                                <span class="font-headline font-extrabold text-2xl tracking-[0.2em] text-primary">${state.code}</span>
+                                <button id="copyCodeBtn" class="material-symbols-outlined text-primary hover:text-primary-dim" title="Copy join code">content_copy</button>
                             </div>
-                            <button id="abandonBtn" title="Abandon this board (not scored)" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
-                                <span class="material-symbols-outlined text-sm">restart_alt</span>
-                                New board
-                            </button>
-                        </div>
-                        <div id="tableBox" class="bg-surface-container-low rounded-xl border border-outline-variant/10 p-2 sm:p-3">
-                            <div class="grid grid-cols-3 gap-2 items-start max-w-3xl mx-auto">
+                            <p class="text-[11px] text-on-surface-variant font-label mt-3">They open Play → Join with code. The table keeps your game even if you both close the page.</p>
+                        </div>`;
+                }
+                return `
+                    <div class="bg-white/95 rounded-lg border border-black/5 px-5 py-6 text-center max-w-sm m-auto">
+                        <span class="material-symbols-outlined text-primary text-4xl">playing_cards</span>
+                        <p class="font-headline font-bold text-on-surface mt-2">Table ready</p>
+                        <p class="text-xs text-on-surface-variant font-label mt-1">${escapeHtml(state.partner)} is your North. Dealer and vulnerability follow the standard board rotation.</p>
+                        <button id="dealFirstBtn" class="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                            <span class="material-symbols-outlined text-sm">casino</span>Deal board 1
+                        </button>
+                    </div>`;
+            }
+
+            function tableView() {
+                const team = state.mode === "team";
+                let panel;
+                if (team && state.noBoard) {
+                    panel = "";
+                } else if (state.done) {
+                    panel = resultHtml();
+                } else if (
+                    busy ||
+                    !state.yourTurn ||
+                    (state.yourTurn && !state.legal)
+                ) {
+                    panel = waitingHtml();
+                } else {
+                    panel = biddingBoxHtml();
+                }
+                const tableBody =
+                    team && state.noBoard
+                        ? teamReadyHtml()
+                        : `
+                            <div class="grid grid-cols-3 gap-1.5 sm:gap-3 items-center max-w-3xl m-auto w-full">
+                                <div class="col-span-3 sm:hidden">${auctionCardHtml()}</div>
                                 <div></div>
                                 ${seatBox(0)}
                                 <div></div>
                                 ${seatBox(3)}
-                                <div class="row-span-1 flex items-center">${auctionHtml()}</div>
+                                <div class="flex items-center justify-center"><div class="hidden sm:block w-full">${auctionCardHtml()}</div></div>
                                 ${seatBox(1)}
                                 <div></div>
                                 ${seatBox(2)}
                                 <div></div>
-                            </div>
-                        </div>
-                        ${
-                            state.done
-                                ? resultHtml()
-                                : busy || !state.yourTurn
-                                  ? waitingHtml()
-                                  : biddingBoxHtml()
-                        }
-                    </div>`;
-            }
-
-            function waitingHtml() {
+                            </div>`;
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 py-2 flex items-center gap-3">
-                        ${
-                            busy
-                                ? `<span class="material-symbols-outlined text-primary animate-spin">progress_activity</span>
-                                   <span class="text-sm text-on-surface-variant font-label">The bots are bidding…</span>`
-                                : `<span class="material-symbols-outlined text-outline">wifi_off</span>
-                                   <span class="text-sm text-on-surface-variant font-label">Waiting for the bots to bid…</span>
-                                   <button id="retryBtn" class="ml-auto flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded font-label text-xs hover:bg-surface-container-high transition-colors">
-                                       <span class="material-symbols-outlined text-sm">refresh</span>
-                                       Retry
-                                   </button>`
-                        }
+                    <div class="flex-1 min-h-0 flex flex-col gap-2">
+                        ${playHeaderHtml()}
+                        <div id="tableBox" class="flex-1 min-h-0 felt-table rounded-xl border border-black/10 p-2 sm:p-3 flex flex-col overflow-y-auto">
+                            ${tableBody}
+                        </div>
+                        <div class="bottom-dock shrink-0 flex flex-col gap-2">
+                            ${state.noBoard ? "" : handStripHtml()}
+                            ${panel}
+                        </div>
                     </div>`;
             }
 
             function statsBarHtml() {
                 if (!stats || !stats.boards) return "";
                 return `
-                    <div class="flex flex-wrap items-center gap-x-5 gap-y-1 mb-2.5 text-xs font-label text-on-surface-variant">
+                    <div class="flex flex-wrap items-center gap-x-5 gap-y-1 mb-3 text-xs font-label text-on-surface-variant">
                         <span>Avg <b class="font-headline text-sm ${impsColor(stats.avgImps)}">${signed(stats.avgImps.toFixed(2))}</b> IMPs/board vs par</span>
                         <span>${stats.boards} boards</span>
                         <span>Total <b class="font-headline text-sm ${impsColor(stats.impsTotal)}">${signed(stats.impsTotal)}</b> IMPs</span>
+                    </div>`;
+            }
+
+            function soloCardHtml() {
+                return `
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm p-4 flex flex-col">
+                        <span class="material-symbols-outlined text-primary text-3xl">smart_toy</span>
+                        <div class="font-headline font-bold text-on-surface mt-2">Solo vs 3 bots</div>
+                        <p class="text-sm text-on-surface-variant mt-1 flex-1">
+                            You sit South; a bidding-dt bot fills every other seat. Each board is scored in IMPs against double-dummy par.
+                        </p>
+                        <button id="dealBtn" class="mt-4 inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                            <span class="material-symbols-outlined text-sm">casino</span>Deal a board
+                        </button>
+                    </div>`;
+            }
+
+            function teamCardHtml() {
+                return `
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm p-4 flex flex-col">
+                        <span class="material-symbols-outlined text-tertiary text-3xl">group</span>
+                        <div class="font-headline font-bold text-on-surface mt-2">
+                            Partner table
+                            <span class="ml-1 px-1.5 py-px rounded text-[9px] font-bold uppercase bg-tertiary-container/60 text-on-tertiary-container align-middle">2 players vs 2 bots</span>
+                        </div>
+                        <p class="text-sm text-on-surface-variant mt-1 flex-1">
+                            Team up with a partner (North–South) against the East/West bots. Tables stay open while you are disconnected, so you can run several games with the same partner and resume any time.
+                        </p>
+                        <div class="mt-4 flex flex-col gap-2">
+                            <button id="createTableBtn" class="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                                <span class="material-symbols-outlined text-sm">add</span>Create a table
+                            </button>
+                            <div class="flex gap-2">
+                                <input id="joinCode" maxlength="6" placeholder="Join code" autocomplete="off" class="unlock-input flex-1 !py-2 text-sm uppercase tracking-widest" />
+                                <button id="joinBtn" class="shrink-0 px-4 py-2 bg-surface-container text-on-surface rounded font-label text-sm hover:bg-surface-container-high transition-colors">Join</button>
+                            </div>
+                        </div>
+                    </div>`;
+            }
+
+            function teamGamesHtml() {
+                if (!games || games.length === 0) return "";
+                const rows = games
+                    .map((g) => {
+                        const other = g.yourSeat === 2 ? g.partner : g.host;
+                        const label = other
+                            ? escapeHtml(other)
+                            : "no partner yet";
+                        let status, cls;
+                        if (g.waitingForPartner) {
+                            status = "waiting for partner";
+                            cls = "bg-tertiary-container/50 text-on-tertiary-container";
+                        } else if (g.inProgress && g.yourTurn) {
+                            status = "your turn";
+                            cls = "bg-primary text-on-primary";
+                        } else if (g.inProgress) {
+                            status = g.boards
+                                ? "partner / bots to act"
+                                : "in progress";
+                            cls = "bg-surface-container text-on-surface-variant";
+                        } else {
+                            status = g.boards ? "board complete" : "ready to deal";
+                            cls = "bg-secondary-container text-on-secondary-container";
+                        }
+                        return `
+                        <div class="flex items-center gap-3 px-3 py-2 bg-surface-container-lowest border border-outline-variant/10 rounded-xl">
+                            <span class="material-symbols-outlined text-lg text-primary">group</span>
+                            <div class="min-w-0 flex-1">
+                                <div class="text-sm font-label text-on-surface truncate">You &amp; ${label}</div>
+                                <div class="text-[11px] text-on-surface-variant font-label">${g.boards} board${g.boards === 1 ? "" : "s"} · ${timeAgo(g.updated)}</div>
+                            </div>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap ${cls}">${status}</span>
+                            <button data-open-game="${g.id}" class="shrink-0 px-3 py-1.5 bg-primary text-on-primary rounded font-label text-xs hover:bg-primary-dim transition-colors">Resume</button>
+                            <button data-del-game="${g.id}" title="Delete table" class="shrink-0 material-symbols-outlined text-base text-on-surface-variant hover:text-error">delete</button>
+                        </div>`;
+                    })
+                    .join("");
+                return `
+                    <div class="mt-6">
+                        <div class="text-[10px] uppercase tracking-widest text-outline font-label mb-2">Your tables</div>
+                        <div class="space-y-2">${rows}</div>
                     </div>`;
             }
 
@@ -537,7 +911,12 @@
                     .join("");
                 return `
                     <div class="mt-8">
-                        <div class="text-[10px] uppercase tracking-widest text-outline font-label mb-2">Recent boards</div>
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-[10px] uppercase tracking-widest text-outline font-label">Recent solo boards</div>
+                            <button id="historyBtn" class="flex items-center gap-1 text-xs font-label text-primary hover:text-primary-dim">
+                                <span class="material-symbols-outlined text-sm">history</span>Review cards &amp; auctions
+                            </button>
+                        </div>
                         <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl overflow-x-auto">
                             <table class="w-full border-collapse min-w-[520px]">
                                 <thead><tr>
@@ -553,20 +932,15 @@
                     </div>`;
             }
 
-            function startCardHtml() {
+            function lobbyHtml() {
                 return `
-                    <div class="text-center py-14 bg-surface-container-lowest rounded-xl border border-outline-variant/10">
-                        <span class="material-symbols-outlined text-primary text-5xl mb-4">smart_toy</span>
-                        <p class="text-on-surface text-lg font-headline font-semibold">Take a seat at the bot table</p>
-                        <p class="text-sm text-on-surface-variant mt-2 max-w-md mx-auto">
-                            You play South with a bidding-dt bot as partner against two more bots.
-                            When the auction ends, the board is scored in IMPs against double-dummy par.
-                        </p>
-                        <button id="dealBtn" class="mt-6 inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
-                            <span class="material-symbols-outlined text-sm">casino</span>
-                            Deal a board
-                        </button>
-                    </div>`;
+                    ${statsBarHtml()}
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        ${soloCardHtml()}
+                        ${teamCardHtml()}
+                    </div>
+                    ${teamGamesHtml()}
+                    ${recentHtml()}`;
             }
 
             function loginCardHtml() {
@@ -574,7 +948,7 @@
                     <div class="text-center py-14 bg-surface-container-lowest rounded-xl border border-outline-variant/10">
                         <span class="material-symbols-outlined text-primary text-5xl mb-4">lock</span>
                         <p class="text-on-surface text-lg font-headline font-semibold">Log in to play</p>
-                        <p class="text-sm text-on-surface-variant mt-2">Your IMPs/board history versus the bots is kept for your account.</p>
+                        <p class="text-sm text-on-surface-variant mt-2">Solo history and persistent partner tables are kept for your account.</p>
                         <button id="loginBtn" class="mt-6 inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
                             <span class="material-symbols-outlined text-sm">login</span>
                             Log in
@@ -582,100 +956,322 @@
                     </div>`;
             }
 
+            // ---- board history overlay ----
+
+            function historyItemFromSolo(rec, idx) {
+                return {
+                    no: null,
+                    ts: rec.ts,
+                    dealer: rec.dealer,
+                    vuln: rec.vuln,
+                    calls: rec.calls || [],
+                    contract: rec.contract,
+                    tricks: rec.tricks,
+                    parNs: rec.parNs,
+                    scoreNs: rec.scoreNs,
+                    imps: rec.imps,
+                    hands: rec.hands || null,
+                };
+            }
+
+            function historyItemFromTeam(b) {
+                const r = b.result;
+                return {
+                    no: b.no,
+                    ts: null,
+                    dealer: b.dealer,
+                    vuln: b.vuln,
+                    calls: b.calls || [],
+                    contract:
+                        r && r.contract ? contractString(r.contract) : "passed out",
+                    tricks: r ? r.tricks : null,
+                    parNs: r ? r.parNs : 0,
+                    scoreNs: r ? r.scoreNs : 0,
+                    imps: r ? r.imps : 0,
+                    hands: b.hands || null,
+                };
+            }
+
+            async function openHistory() {
+                overlay = { items: null, detail: null, loading: true, error: false };
+                renderOverlay();
+                if (state && state.mode === "team") {
+                    try {
+                        const res = await fetch(
+                            `/api/play/team/${state.id}/history`,
+                        );
+                        if (res.ok) {
+                            const data = await res.json();
+                            overlay.items = (data.boards || [])
+                                .filter((b) => b.result)
+                                .map(historyItemFromTeam)
+                                .reverse();
+                        } else {
+                            overlay.error = true;
+                        }
+                    } catch (e) {
+                        overlay.error = true;
+                    }
+                } else {
+                    overlay.items = (stats && stats.recent
+                        ? stats.recent
+                        : []
+                    ).map(historyItemFromSolo);
+                }
+                overlay.loading = false;
+                renderOverlay();
+            }
+
+            function closeHistory() {
+                overlay = null;
+                renderOverlay();
+            }
+
+            function historyRowHtml(item, i) {
+                const label = item.no
+                    ? "Board " + item.no
+                    : timeAgo(item.ts) || "Board";
+                const resultTxt =
+                    item.tricks === null || item.tricks === undefined
+                        ? ""
+                        : ` · ${item.tricks} tricks`;
+                return `
+                    <button data-hist-item="${i}" class="w-full flex items-center gap-3 px-3 py-2 bg-surface-container-low rounded-lg text-left hover:bg-surface-container-high transition-colors">
+                        <span class="text-xs text-on-surface-variant font-label w-20 shrink-0">${label}</span>
+                        <span class="text-sm font-headline font-semibold text-on-surface min-w-0 truncate">${contractHtml(item.contract)}</span>
+                        <span class="text-xs text-on-surface-variant font-label hidden sm:inline">${VULN_NAMES[item.vuln]}${resultTxt}</span>
+                        <span class="ml-auto text-xs text-on-surface-variant font-label">par ${scoreText(item.parNs)}</span>
+                        <span class="text-sm font-headline font-bold ${impsColor(item.imps)} w-10 text-right">${signed(item.imps)}</span>
+                    </button>`;
+            }
+
+            function historyDetailHtml(item) {
+                const contractLine = contractHtml(item.contract);
+                const hands = item.hands
+                    ? `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+                           ${[0, 1, 2, 3]
+                               .map(
+                                   (s) => `
+                               <div class="bg-surface-container-low rounded-lg p-2">
+                                   <div class="text-[10px] uppercase tracking-widest text-outline font-label mb-1">${SEAT_NAMES[s]}${state && state.humanSeat === s ? " · you" : ""}</div>
+                                   <div class="space-y-0.5">${handHtml(item.hands[s], true)}</div>
+                               </div>`,
+                               )
+                               .join("")}
+                       </div>`
+                    : `<p class="text-xs text-on-surface-variant mt-3 italic">Cards were not recorded for this board.</p>`;
+                return `
+                    <div class="flex items-center gap-2 mb-3">
+                        <button id="histBackBtn" class="flex items-center gap-1 px-2 py-1 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high">
+                            <span class="material-symbols-outlined text-sm">arrow_back</span>All boards
+                        </button>
+                        <div class="font-headline font-bold text-on-surface min-w-0 truncate">${contractLine}</div>
+                        ${item.no ? `<span class="text-xs text-on-surface-variant font-label">· board ${item.no}</span>` : ""}
+                    </div>
+                    <div class="text-xs text-on-surface-variant font-label">
+                        ${SEAT_NAMES[item.dealer]} dealt · ${VULN_NAMES[item.vuln]} vuln
+                        ${item.tricks === null || item.tricks === undefined ? "" : ` · ${item.tricks} DD tricks`}
+                        · par ${scoreText(item.parNs)} · your score ${scoreText(item.scoreNs)}
+                        · <b class="${impsColor(item.imps)}">${signed(item.imps)} IMPs</b>
+                    </div>
+                    <div class="mt-3 bg-surface-container-lowest border border-outline-variant/10 rounded-lg p-2">
+                        ${auctionTableHtml(item.dealer, item.vuln, item.calls)}
+                    </div>
+                    ${hands}`;
+            }
+
+            function historyListHtml() {
+                let body;
+                if (overlay.loading) {
+                    body = `<div class="flex items-center gap-2 py-6 justify-center">${spinner("Loading boards…")}</div>`;
+                } else if (overlay.error) {
+                    body = `<p class="text-sm text-on-surface-variant italic py-6 text-center">Could not load the boards just now.</p>`;
+                } else if (!overlay.items || overlay.items.length === 0) {
+                    body = `<p class="text-sm text-on-surface-variant italic py-6 text-center">No completed boards yet.</p>`;
+                } else {
+                    body = `<div class="space-y-1.5">${overlay.items.map(historyRowHtml).join("")}</div>`;
+                }
+                return `
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="font-headline font-bold text-on-surface">Board history</div>
+                        <button id="histCloseBtn" class="material-symbols-outlined text-on-surface-variant hover:text-on-surface">close</button>
+                    </div>
+                    ${body}`;
+            }
+
+            function renderOverlay() {
+                let el = document.getElementById("histOverlay");
+                if (!overlay) {
+                    if (el) el.remove();
+                    return;
+                }
+                if (!el) {
+                    el = document.createElement("div");
+                    el.id = "histOverlay";
+                    document.body.appendChild(el);
+                }
+                el.className = "history-overlay";
+                el.innerHTML = `<div class="history-card">${
+                    overlay.detail === null
+                        ? historyListHtml()
+                        : historyDetailHtml(overlay.detail)
+                }</div>`;
+                el.onclick = (e) => {
+                    if (e.target === el) closeHistory();
+                };
+                const close = el.querySelector("#histCloseBtn");
+                if (close) close.onclick = closeHistory;
+                const back = el.querySelector("#histBackBtn");
+                if (back)
+                    back.onclick = () => {
+                        overlay.detail = null;
+                        renderOverlay();
+                    };
+                el.querySelectorAll("[data-hist-item]").forEach((btn) => {
+                    btn.onclick = () => {
+                        overlay.detail = overlay.items[parseInt(btn.dataset.histItem, 10)];
+                        renderOverlay();
+                    };
+                });
+            }
+
+            // ---- main render ----
+
             function render() {
                 const content = document.getElementById("main-content");
                 if (!content) return;
-                // Once a hand is running the page chrome gets out of the way:
-                // the intro header hides and the content padding shrinks so the
-                // table, South's cards and the bidding box fit one screen.
+                // While a table is open the page locks to the viewport: the
+                // intro header and lobby step aside, the felt flexes and the
+                // hand strip + bidder/result stay pinned below. Bidding,
+                // reading the score and dealing the next board never need
+                // page scrolling.
                 const header = content.previousElementSibling;
                 if (header && header.tagName === "HEADER") {
                     header.style.display = state ? "none" : "";
                 }
                 const wrap = content.parentElement;
+                const main = content.closest("main");
+                if (main) main.style.overflowY = state ? "hidden" : "";
                 if (wrap) {
-                    wrap.style.paddingTop = state ? "0.75rem" : "";
-                    wrap.style.paddingBottom = state ? "1.5rem" : "";
+                    wrap.style.height = state ? "100%" : "";
+                    wrap.style.display = state ? "flex" : "";
+                    wrap.style.flexDirection = state ? "column" : "";
+                    wrap.style.padding = state ? "0.75rem 1rem 0.75rem" : "";
                 }
+                content.className = state ? "flex-1 min-h-0 flex flex-col" : "";
+
                 if (!window.currentUser) {
                     content.innerHTML = loginCardHtml();
                     const lb = document.getElementById("loginBtn");
                     if (lb) lb.onclick = () => showAuthDialog("login");
+                    renderOverlay();
                     return;
                 }
-                let html = statsBarHtml();
-                if (!state) {
-                    html += startCardHtml();
-                } else {
-                    html += tableHtml();
-                }
-                html += recentHtml();
-                content.innerHTML = html;
+                content.innerHTML = state ? tableView() : lobbyHtml();
 
-                // A freshly dealt board scrolls to the center of the viewport.
-                if (state && state.id !== shownBoardId) {
-                    shownBoardId = state.id;
-                    const tbl = document.getElementById("tableBox");
-                    if (tbl)
-                        tbl.scrollIntoView({
-                            behavior: "smooth",
-                            block: "center",
-                        });
-                }
-
+                // lobby buttons
                 const deal = document.getElementById("dealBtn");
                 if (deal) deal.onclick = () => newBoard();
+                const create = document.getElementById("createTableBtn");
+                if (create) create.onclick = () => teamCreate();
+                const join = document.getElementById("joinBtn");
+                const joinInput = document.getElementById("joinCode");
+                if (join)
+                    join.onclick = () => teamJoin(joinInput && joinInput.value);
+                if (joinInput)
+                    joinInput.onkeydown = (e) => {
+                        if (e.key === "Enter") teamJoin(joinInput.value);
+                    };
+                content.querySelectorAll("[data-open-game]").forEach((btn) => {
+                    btn.onclick = () => teamOpen(btn.dataset.openGame);
+                });
+                content.querySelectorAll("[data-del-game]").forEach((btn) => {
+                    btn.onclick = () => teamDelete(btn.dataset.delGame);
+                });
+
+                // table buttons
+                const copy = document.getElementById("copyCodeBtn");
+                if (copy && state)
+                    copy.onclick = () => {
+                        navigator.clipboard
+                            .writeText(state.code)
+                            .then(() => showToast("Join code copied"))
+                            .catch(() => showToast(state.code));
+                    };
+                const history = document.getElementById("historyBtn");
+                if (history) history.onclick = openHistory;
+                const leave = document.getElementById("leaveBtn");
+                if (leave) leave.onclick = leaveTable;
+                const first = document.getElementById("dealFirstBtn");
+                if (first) first.onclick = teamNext;
                 const abandon = document.getElementById("abandonBtn");
                 if (abandon) abandon.onclick = () => newBoard();
                 const next = document.getElementById("nextBoardBtn");
-                if (next) next.onclick = () => newBoard();
+                if (next)
+                    next.onclick = () =>
+                        state && state.mode === "team"
+                            ? teamNext()
+                            : newBoard();
                 content.querySelectorAll("[data-call]").forEach((btn) => {
                     btn.onclick = () => makeCall(btn.dataset.call);
                 });
                 wireBidBox(document);
                 const retry = document.getElementById("retryBtn");
-                if (retry)
-                    retry.onclick = () => {
-                        autoRetries = 0;
-                        refreshBoard();
-                    };
+                if (retry) retry.onclick = () => refreshBoard(true);
 
-                // Recover a board that stalled mid-bot-turn (e.g. the sidecar
-                // hiccuped): re-fetch it, which re-advances server-side.
-                if (
-                    state &&
-                    !busy &&
-                    !state.done &&
-                    !state.yourTurn &&
-                    autoRetries < 4
-                ) {
-                    setTimeout(refreshBoard, 1500 + autoRetries * 1500);
-                }
+                renderOverlay();
+                schedulePoll();
             }
 
-            async function refreshBoard() {
-                if (!state || busy || state.done || state.yourTurn) return;
-                busy = true;
-                render();
-                try {
-                    const res = await fetch(
-                        "/api/play/" + encodeURIComponent(state.id),
-                    );
-                    await handleResponse(res);
-                } catch (e) {
-                    busy = false;
-                    render();
+            function schedulePoll() {
+                clearTimeout(pollTimer);
+                pollTimer = null;
+                if (!window.currentUser || busy) return;
+                if (state && state.mode === "team") {
+                    // Poll whenever the table can move without us: partner or
+                    // bots to act, a board just finished, or nobody joined yet.
+                    if (!(state.yourTurn && !state.done && !state.noBoard)) {
+                        pollTimer = setTimeout(() => refreshBoard(true), 3000);
+                    }
+                    return;
                 }
+                if (state) {
+                    // Solo: recover a board that stalled mid-bot-turn.
+                    if (
+                        !busy &&
+                        !state.done &&
+                        !state.yourTurn &&
+                        autoRetries < 4
+                    ) {
+                        pollTimer = setTimeout(
+                            refreshBoard,
+                            1500 + autoRetries * 1500,
+                        );
+                    }
+                    return;
+                }
+                // Lobby: keep the tables list fresh, but never while the
+                // join-code input is being used.
+                const joinInput = document.getElementById("joinCode");
+                if (joinInput && (joinInput.value || document.activeElement === joinInput))
+                    return;
+                if (games !== null) pollTimer = setTimeout(refreshLobby, 5000);
             }
 
             document.addEventListener("authchange", () => {
                 if (window.currentUser) {
-                    loadStatsAndResume();
+                    loadInitial();
                 } else {
                     state = null;
                     stats = null;
+                    games = null;
                     render();
                 }
+            });
+
+            document.addEventListener("visibilitychange", () => {
+                if (!document.hidden && state && window.currentUser && !busy)
+                    refreshBoard(true);
             });
 
             refreshAuthState();

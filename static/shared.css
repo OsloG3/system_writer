@@ -231,6 +231,85 @@
     }
 }
 
+/* ---- Play vs bots: table, cards, history ---- */
+
+/* Green felt for the table area */
+.felt-table {
+    background: radial-gradient(
+        ellipse at 50% 38%,
+        #1f7d4c 0%,
+        #15603a 55%,
+        #0b4428 100%
+    );
+    box-shadow: inset 0 4px 26px rgba(0, 0, 0, 0.35);
+}
+
+/* Face-down card strip for hidden hands */
+.card-back {
+    display: inline-block;
+    width: 7px;
+    height: 18px;
+    border-radius: 2px;
+    background: repeating-linear-gradient(
+        45deg,
+        #1e3a8a 0 2px,
+        #5b7bd5 2px 4px
+    );
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+/* Seat to act */
+.seat-active {
+    animation: seat-pulse 1.6s ease-in-out infinite;
+}
+@keyframes seat-pulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(56, 93, 160, 0.45);
+    }
+    50% {
+        box-shadow: 0 0 0 7px rgba(56, 93, 160, 0);
+    }
+}
+
+/* Bottom dock clears the iOS home indicator */
+.bottom-dock {
+    padding-bottom: max(0.25rem, env(safe-area-inset-bottom));
+}
+
+/* Board history overlay */
+.history-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 280;
+    background: rgba(12, 15, 15, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+.history-card {
+    background: #ffffff;
+    border-radius: 12px;
+    width: min(780px, 100%);
+    max-height: 88vh;
+    overflow-y: auto;
+    padding: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+}
+@media (max-width: 640px) {
+    .history-overlay {
+        padding: 0;
+    }
+    .history-card {
+        width: 100%;
+        height: 100%;
+        max-height: none;
+        border-radius: 0;
+        padding: 12px;
+    }
+}
+
 /* On touch devices there is no hover/focus, so keep node action buttons visible */
 @media (hover: none), (pointer: coarse) {
     .action-buttons {

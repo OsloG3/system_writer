@@ -96,6 +96,7 @@ func main() {
 	loadUsers()
 	loadSessions()
 	initPlay()
+	initTeam()
 
 	// API Endpoints
 	http.HandleFunc("POST /api/register", handleRegister)
@@ -114,6 +115,14 @@ func main() {
 	http.HandleFunc("GET /api/play/stats", handlePlayStats)
 	http.HandleFunc("GET /api/play/{id}", handlePlayGet)
 	http.HandleFunc("POST /api/play/{id}/call", handlePlayCall)
+	http.HandleFunc("POST /api/play/team/new", handleTeamNew)
+	http.HandleFunc("POST /api/play/team/join", handleTeamJoin)
+	http.HandleFunc("GET /api/play/team/list", handleTeamList)
+	http.HandleFunc("GET /api/play/team/{id}", handleTeamGet)
+	http.HandleFunc("POST /api/play/team/{id}/call", handleTeamCall)
+	http.HandleFunc("POST /api/play/team/{id}/next", handleTeamNext)
+	http.HandleFunc("GET /api/play/team/{id}/history", handleTeamHistory)
+	http.HandleFunc("DELETE /api/play/team/{id}", handleTeamDelete)
 
 	// Static/HTML Pages
 	http.HandleFunc("/edit/", serveHTML("static/edit.html"))

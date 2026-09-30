@@ -93,15 +93,16 @@ type PlayBoard struct {
 }
 
 type PlayRecord struct {
-	Ts       string   `json:"ts"`
-	Dealer   int      `json:"dealer"`
-	Vuln     int      `json:"vuln"`
-	Calls    []string `json:"calls"`
-	Contract string   `json:"contract"`
-	Tricks   *int     `json:"tricks"`
-	ParNS    int      `json:"parNs"`
-	ScoreNS  int      `json:"scoreNs"`
-	Imps     float64  `json:"imps"`
+	Ts       string    `json:"ts"`
+	Dealer   int       `json:"dealer"`
+	Vuln     int       `json:"vuln"`
+	Calls    []string  `json:"calls"`
+	Contract string    `json:"contract"`
+	Tricks   *int      `json:"tricks"`
+	ParNS    int       `json:"parNs"`
+	ScoreNS  int       `json:"scoreNs"`
+	Imps     float64   `json:"imps"`
+	Hands    [4]string `json:"hands,omitempty"` // all four hands, N,E,S,W
 }
 
 // PlayStats is the persisted per-user history (data/play_stats.json)
@@ -176,6 +177,7 @@ func recordPlayResult(b *PlayBoard) {
 		ParNS:    b.Result.ParNS,
 		ScoreNS:  b.Result.ScoreNS,
 		Imps:     b.Result.Imps,
+		Hands:    b.Hands,
 	}
 	s.Recent = append([]PlayRecord{rec}, s.Recent...)
 	if len(s.Recent) > playRecentMax {

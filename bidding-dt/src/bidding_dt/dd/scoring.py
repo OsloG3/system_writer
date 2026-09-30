@@ -30,12 +30,14 @@ def contract_score(level: int, denom: int, penalty: int, tricks: int,
             return -(100 if decl_vul else 50) * u
         if penalty == PENALTY_DOUBLE:
             if decl_vul:
-                return -200 * u
-            per = [100, 200, 200] + [300] * 10
+                per = [200] + [300] * 12
+            else:
+                per = [100, 200, 200] + [300] * 10
             return -sum(per[:u])
         if decl_vul:
-            return -400 * u
-        per = [200, 400, 400] + [600] * 10
+            per = [400] + [600] * 12
+        else:
+            per = [200, 400, 400] + [600] * 10
         return -sum(per[:u])
 
     trick_score = 20 * level if denom in _MINOR else 30 * level

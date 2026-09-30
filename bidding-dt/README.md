@@ -269,8 +269,7 @@ src/bidding_dt/
   always-pass bot); training deals are freshly sampled every iteration and
   `unique_deals` in the log verifies no re-use.
 - **Scoring** is an independent pure-python implementation (standard duplicate
-  tables, exhaustively cross-checked vs endplay except for endplay's
-  non-standard vul doubled/redoubled undertricks).
+  tables, exhaustively cross-checked vs endplay).
 - **DDS throughput** is the bottleneck: ~0.2 s/deal per 2 cores here; solve in
   batches (`calc_all_tables`, <=40/call), cache tables by deal, and put DDS on
   CPU workers next to a GPU trainer. `train_ppo` pipelines the solver against

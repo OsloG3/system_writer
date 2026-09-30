@@ -3,6 +3,7 @@ system_writer
 sw
 data/users.json
 data/sessions.json
+data/game_*.json
 data/*.tmp
 
 # editor/backup artifacts

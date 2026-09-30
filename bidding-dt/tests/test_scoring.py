@@ -48,17 +48,17 @@ C, D, H, S, N = 0, 1, 2, 3, 4
     ((4, S, 1, 7, False), -500),
     ((4, S, 1, 6, False), -800),
     ((4, S, 1, 9, True), -200),
-    ((4, S, 1, 8, True), -400),
-    ((4, S, 1, 7, True), -600),
-    ((4, S, 1, 6, True), -800),
+    ((4, S, 1, 8, True), -500),
+    ((4, S, 1, 7, True), -800),
+    ((4, S, 1, 6, True), -1100),
     # down redoubled
     ((4, S, 2, 9, False), -200),
     ((4, S, 2, 8, False), -600),
     ((4, S, 2, 7, False), -1000),
     ((4, S, 2, 6, False), -1600),
     ((4, S, 2, 9, True), -400),
-    ((4, S, 2, 8, True), -800),
-    ((4, S, 2, 7, True), -1200),
+    ((4, S, 2, 8, True), -1000),
+    ((4, S, 2, 7, True), -1600),
 ])
 def test_contract_score(args, expected):
     assert contract_score(*args) == expected
@@ -84,13 +84,7 @@ def test_declarer_is_vul(seat, vuln, expected):
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
 def test_cross_check_endplay_exhaustive():
-    """Cross-check against endplay's Contract.score.
-
-    endplay deviates from standard duplicate scoring for *vulnerable*
-    doubled/redoubled undertricks (it charges -200 then -300 each instead of
-    -200 each; likewise -400/-600 redoubled), so those combos are excluded
-    here and asserted against the standard table in test_contract_score.
-    """
+    """Cross-check against endplay's Contract.score over every contract."""
     denom_map = [T.Denom.clubs, T.Denom.diamonds, T.Denom.hearts,
                  T.Denom.spades, T.Denom.nt]
     pen_map = [T.Penalty.passed, T.Penalty.doubled, T.Penalty.redoubled]
@@ -101,12 +95,9 @@ def test_cross_check_endplay_exhaustive():
         for denom in range(5):
             for pen in range(3):
                 for tricks in range(0, 14):
-                    down = tricks < level + 6
                     for decl in (0, 1):  # one NS + one EW declarer
                         for vuln in range(4):
                             is_vul = declarer_is_vul(decl, vuln)
-                            if pen > 0 and down and is_vul:
-                                continue  # endplay scoring bug, see docstring
                             mine = contract_score(level, denom, pen, tricks, is_vul)
                             c = T.Contract(level=level, denom=denom_map[denom],
                                            declarer=players[decl],
@@ -115,6 +106,4 @@ def test_cross_check_endplay_exhaustive():
                             assert c.score(vuln_map[vuln]) == mine, (
                                 level, denom, pen, tricks, decl, vuln)
                             n += 1
-    # total combos minus skipped ones: pen(2) x denom(5) x down-counts
-    # (sum_{level} level+6 = 70) x vulnerable decl/vuln pairs (4 of 8)
-    assert n == 7 * 5 * 3 * 14 * 2 * 4 - 2 * 5 * 70 * 4
+    assert n == 7 * 5 * 3 * 14 * 2 * 4
