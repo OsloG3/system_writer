@@ -418,9 +418,8 @@ func handleTeamGet(w http.ResponseWriter, r *http.Request) {
 	}
 	if b := g.lastLocked(); b != nil && b.Result == nil {
 		before := len(b.Calls)
-		hadResult := b.Result != nil
 		err := g.advanceLocked(b)
-		if len(b.Calls) != before || (!hadResult && b.Result != nil) {
+		if len(b.Calls) != before || b.Result != nil {
 			if serr := saveTeamGameLocked(g); serr != nil {
 				log.Printf("Could not persist team game: %v", serr)
 			}
@@ -490,6 +489,7 @@ func handleTeamCall(w http.ResponseWriter, r *http.Request) {
 	b.Calls = append(b.Calls, call)
 	b.Legal = nil
 	b.LegalLen = -1
+	g.Updated = time.Now()
 	err = g.advanceLocked(b)
 	if serr := saveTeamGameLocked(g); serr != nil {
 		log.Printf("Could not persist team game: %v", serr)
@@ -539,6 +539,7 @@ func handleTeamNext(w http.ResponseWriter, r *http.Request) {
 	}
 	b := &TeamBoard{Hands: deal.Hands, Dealer: deal.Dealer, Vuln: deal.Vuln}
 	g.Boards = append(g.Boards, b)
+	g.Updated = time.Now()
 	if err := g.advanceLocked(b); err != nil {
 		if serr := saveTeamGameLocked(g); serr != nil {
 			log.Printf("Could not persist team game: %v", serr)

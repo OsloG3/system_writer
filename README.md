@@ -18,11 +18,16 @@ Two ways to play, both scored in IMPs versus double-dummy par:
   as you like with the same partner; both players review past boards (cards
   and auction) from the table's history.
 
-The bots are served by a small Python sidecar; start it first:
+The bots are served by a small Python sidecar; start it first (in the
+`bidding-dt` checkout, sibling or nested — torch and endplay come from the
+`cpu`/`cuda` and `rl` extras, so repeat the extras on the command):
 
 ```bash
-cd ../bidding-dt
-uv run python -m bidding_dt.play_server --ckpt runs/tiny/best.pt --port 8081
+uv run --extra cpu --extra rl python -m bidding_dt.play_server \
+    --ckpt runs/rl_tinyt/best.pt --port 8081
+# GPU box: --extra cuda instead of --extra cpu.
+# runs/ is gitignored, so copy a checkpoint (e.g. runs/rl_tinyt/best.pt)
+# to the server.
 ```
 
 Then run the site as usual (`go run .`) and open http://localhost:8080/play.

@@ -286,7 +286,11 @@
             }
 
             function leaveTable() {
-                localStorage.removeItem(TEAM_KEY);
+                if (state && state.mode === "team") {
+                    localStorage.removeItem(TEAM_KEY);
+                } else {
+                    localStorage.removeItem(BOARD_KEY);
+                }
                 state = null;
                 refreshLobby();
             }
@@ -329,6 +333,15 @@
             }
 
             async function refreshLobby() {
+                // Never re-render the lobby out from under someone typing a
+                // partner name: the poll fires on a timer armed before they
+                // started typing, so re-check at fire time as well.
+                const input = document.getElementById("partnerName");
+                if (input && (input.value || document.activeElement === input)) {
+                    clearTimeout(pollTimer);
+                    pollTimer = setTimeout(refreshLobby, 5000);
+                    return;
+                }
                 await loadGames();
                 render();
             }
@@ -350,6 +363,9 @@
                         if (res.ok) {
                             state = await res.json();
                             state.mode = "team";
+                            // A team table in progress outranks any stale
+                            // solo board left in storage.
+                            localStorage.removeItem(BOARD_KEY);
                             busy = false;
                             render();
                             return;
@@ -716,7 +732,10 @@
                         <button id="historyBtn" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
                             <span class="material-symbols-outlined text-sm">history</span>Past boards
                         </button>
-                        <button id="abandonBtn" title="Abandon this board (not scored)" class="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                        <button id="leaveBtn" title="Leave this board (not scored)" class="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                            <span class="material-symbols-outlined text-sm">logout</span>Leave
+                        </button>
+                        <button id="abandonBtn" title="Abandon this board and deal a new solo board" class="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
                             <span class="material-symbols-outlined text-sm">restart_alt</span>New board
                         </button>`;
                 }
@@ -1150,6 +1169,21 @@
                     renderOverlay();
                     return;
                 }
+                // The lobby re-renders on polls and busy toggles; keep what
+                // the user is typing in the partner box (value, caret and
+                // focus) across the innerHTML swap.
+                const prevInput = document.getElementById("partnerName");
+                const keepPartner =
+                    prevInput && state === null
+                        ? {
+                              value: prevInput.value,
+                              focused: document.activeElement === prevInput,
+                              sel: [
+                                  prevInput.selectionStart,
+                                  prevInput.selectionEnd,
+                              ],
+                          }
+                        : null;
                 content.innerHTML = state ? tableView() : lobbyHtml();
 
                 // lobby buttons
@@ -1159,6 +1193,18 @@
                 if (create) create.onclick = () => teamCreate();
                 const partnerInput = document.getElementById("partnerName");
                 if (partnerInput) {
+                    if (keepPartner) {
+                        partnerInput.value = keepPartner.value;
+                        if (keepPartner.focused) {
+                            partnerInput.focus();
+                            try {
+                                partnerInput.setSelectionRange(
+                                    keepPartner.sel[0],
+                                    keepPartner.sel[1],
+                                );
+                            } catch (e) {}
+                        }
+                    }
                     partnerInput.onkeydown = (e) => {
                         if (e.key === "Enter") teamCreate();
                     };
@@ -1229,15 +1275,10 @@
                     }
                     return;
                 }
-                // Lobby: keep the tables list fresh, but never while the
-                // partner-name input is being used.
-                const partnerInput = document.getElementById("partnerName");
-                if (
-                    partnerInput &&
-                    (partnerInput.value ||
-                        document.activeElement === partnerInput)
-                )
-                    return;
+                // Lobby: keep the tables list fresh. refreshLobby re-checks
+                // the partner-name input at fire time and skips the render
+                // (re-arming) while it is being used, so arming here is
+                // always safe.
                 if (games !== null) pollTimer = setTimeout(refreshLobby, 5000);
             }
 
