@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"log"
@@ -18,16 +17,16 @@ import (
 // ---- Partner tables: two humans (N/S) vs the East/West bots ----
 //
 // The host sits South, the partner sits North; East and West are the same
-// bidding-dt bots as in solo play. Every table is persisted to disk
-// (data/game_<id>.json) so a game keeps its state while both players are
-// disconnected and survives server restarts. A player can keep any number of
-// tables open with the same partner and resume each one from the play lobby.
+// bidding-dt bots as in solo play. A table is opened by naming the partner's
+// account, so either player can find it in their table list and no link is
+// needed. Every table is persisted to disk (data/game_<id>.json) so a game
+// keeps its state while both players are disconnected and survives server
+// restarts. A player can keep any number of tables open with the same partner
+// and resume each one from the play lobby.
 
 const (
-	teamSouthSeat    = 2 // host
-	teamNorthSeat    = 0 // partner
-	joinCodeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
-	joinCodeLen      = 6
+	teamSouthSeat = 2 // host
+	teamNorthSeat = 0 // partner
 )
 
 var (
@@ -50,9 +49,8 @@ type TeamBoard struct {
 type TeamGame struct {
 	mu      sync.Mutex   `json:"-"`
 	ID      string       `json:"id"`
-	Code    string       `json:"code"` // short join code shared with the partner
-	Host    string       `json:"host"` // username sitting South
-	Partner string       `json:"partner"`
+	Host    string       `json:"host"`    // username sitting South
+	Partner string       `json:"partner"` // username sitting North
 	Boards  []*TeamBoard `json:"boards"`
 	Created time.Time    `json:"created"`
 	Updated time.Time    `json:"updated"`
@@ -250,18 +248,16 @@ func (g *TeamGame) scoreLocked(b *TeamBoard) error {
 func (g *TeamGame) stateLocked(username string) map[string]any {
 	seat := g.seatLocked(username)
 	st := map[string]any{
-		"mode":              "team",
-		"id":                g.ID,
-		"code":              g.Code,
-		"host":              g.Host,
-		"partner":           g.Partner,
-		"yourSeat":          seat,
-		"humanSeat":         seat,
-		"bots":              botLabels(),
-		"seatNames":         map[string]string{"0": g.Partner, "2": g.Host},
-		"waitingForPartner": g.Partner == "",
-		"totalBoards":       len(g.Boards),
-		"stats":             g.statsLocked(),
+		"mode":        "team",
+		"id":          g.ID,
+		"host":        g.Host,
+		"partner":     g.Partner,
+		"yourSeat":    seat,
+		"humanSeat":   seat,
+		"bots":        botLabels(),
+		"seatNames":   map[string]string{"0": g.Partner, "2": g.Host},
+		"totalBoards": len(g.Boards),
+		"stats":       g.statsLocked(),
 	}
 	b := g.lastLocked()
 	if b == nil {
@@ -297,17 +293,37 @@ func (g *TeamGame) stateLocked(username string) map[string]any {
 
 // ---- Handlers ----
 
-// POST /api/play/team/new - opens a table and returns the join code
+// POST /api/play/team/new - opens a table with a named partner account
 func handleTeamNew(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
 	if username == "" {
 		return
 	}
 	limitBody(w, r, maxBodyAuth)
+	var body struct {
+		Partner string `json:"partner"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	partner := strings.ToLower(strings.TrimSpace(body.Partner))
+	if partner == "" {
+		jsonError(w, http.StatusBadRequest, "enter your partner's username")
+		return
+	}
+	if partner == username {
+		jsonError(w, http.StatusBadRequest, "pick a different partner")
+		return
+	}
+	if !userExists(partner) {
+		jsonError(w, http.StatusNotFound, "no account named "+partner)
+		return
+	}
 	g := &TeamGame{
 		ID:      generateID(),
-		Code:    newJoinCode(),
 		Host:    username,
+		Partner: partner,
 		Boards:  []*TeamBoard{},
 		Created: time.Now(),
 		Updated: time.Now(),
@@ -324,53 +340,6 @@ func handleTeamNew(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, st)
 }
 
-// POST /api/play/team/join - partner joins an open table by its code
-func handleTeamJoin(w http.ResponseWriter, r *http.Request) {
-	username := requireLogin(w, r)
-	if username == "" {
-		return
-	}
-	limitBody(w, r, maxBodyAuth)
-	var body struct {
-		Code string `json:"code"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid JSON")
-		return
-	}
-	code := strings.ToUpper(strings.TrimSpace(body.Code))
-	if code == "" {
-		jsonError(w, http.StatusBadRequest, "missing join code")
-		return
-	}
-	teamMu.Lock()
-	var g *TeamGame
-	for _, x := range teamGames {
-		if x.Code == code {
-			g = x
-			break
-		}
-	}
-	teamMu.Unlock()
-	if g == nil {
-		jsonError(w, http.StatusNotFound, "no table with that code")
-		return
-	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.Partner == "" {
-		g.Partner = username
-		g.Updated = time.Now()
-	} else if g.Partner != username {
-		jsonError(w, http.StatusConflict, "that table already has a partner")
-		return
-	}
-	if err := saveTeamGameLocked(g); err != nil {
-		log.Printf("Could not persist team game: %v", err)
-	}
-	writeJSON(w, g.stateLocked(username))
-}
-
 // GET /api/play/team/list - the tables this user is part of
 func handleTeamList(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
@@ -385,17 +354,15 @@ func handleTeamList(w http.ResponseWriter, r *http.Request) {
 	teamMu.Unlock()
 
 	type gameSummary struct {
-		ID                string    `json:"id"`
-		Code              string    `json:"code"`
-		Host              string    `json:"host"`
-		Partner           string    `json:"partner"`
-		YourSeat          int       `json:"yourSeat"`
-		Boards            int       `json:"boards"`
-		ImpsTotal         float64   `json:"impsTotal"`
-		InProgress        bool      `json:"inProgress"`
-		YourTurn          bool      `json:"yourTurn"`
-		WaitingForPartner bool      `json:"waitingForPartner"`
-		Updated           time.Time `json:"updated"`
+		ID         string    `json:"id"`
+		Host       string    `json:"host"`
+		Partner    string    `json:"partner"`
+		YourSeat   int       `json:"yourSeat"`
+		Boards     int       `json:"boards"`
+		ImpsTotal  float64   `json:"impsTotal"`
+		InProgress bool      `json:"inProgress"`
+		YourTurn   bool      `json:"yourTurn"`
+		Updated    time.Time `json:"updated"`
 	}
 	out := []gameSummary{}
 	for _, g := range all {
@@ -406,9 +373,8 @@ func handleTeamList(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		s := gameSummary{
-			ID: g.ID, Code: g.Code, Host: g.Host, Partner: g.Partner,
-			YourSeat: seat, WaitingForPartner: g.Partner == "",
-			Updated: g.Updated,
+			ID: g.ID, Host: g.Host, Partner: g.Partner,
+			YourSeat: seat, Updated: g.Updated,
 		}
 		for _, b := range g.Boards {
 			if b.Result != nil {
@@ -557,10 +523,6 @@ func handleTeamNext(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusForbidden, "not part of this table")
 		return
 	}
-	if g.Partner == "" {
-		jsonError(w, http.StatusConflict, "waiting for a partner to join")
-		return
-	}
 	if b := g.lastLocked(); b != nil && b.Result == nil {
 		jsonError(w, http.StatusConflict, "the current board is still in progress")
 		return
@@ -661,29 +623,4 @@ func handleTeamDelete(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Could not remove team game file: %v", err)
 	}
 	writeJSON(w, map[string]bool{"ok": true})
-}
-
-// newJoinCode returns an unused 6-character code (no I/L/O/0/1 confusion).
-func newJoinCode() string {
-	for {
-		raw := make([]byte, joinCodeLen)
-		rand.Read(raw)
-		code := make([]byte, joinCodeLen)
-		for i := range code {
-			code[i] = joinCodeAlphabet[int(raw[i])%len(joinCodeAlphabet)]
-		}
-		s := string(code)
-		teamMu.Lock()
-		used := false
-		for _, g := range teamGames {
-			if g.Code == s {
-				used = true
-				break
-			}
-		}
-		teamMu.Unlock()
-		if !used {
-			return s
-		}
-	}
 }

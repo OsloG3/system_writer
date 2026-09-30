@@ -42,6 +42,7 @@
             let state = null; // active table: a solo board or a team game view
             let stats = null; // solo career stats { boards, impsTotal, avgImps, recent }
             let games = null; // team tables this user is part of
+            let allUsers = []; // account names, for the partner autocomplete
             let busy = false; // a request is in flight (bots thinking)
             let autoRetries = 0; // failed auto-recovery attempts in a row
             let bidLevelSel = null; // bidding-box selection, kept across renders
@@ -110,7 +111,7 @@
                             .join(" ");
                         return `<div class="flex items-baseline gap-1 min-w-0">
                             <span class="w-4 shrink-0 ${small ? "text-xs" : "text-base"} leading-none" style="${color}">${sym}</span>
-                            <span class="font-headline font-semibold ${small ? "text-[11px]" : "text-sm sm:text-base"} tracking-wide text-on-surface">${cards || "—"}</span>
+                            <span class="font-headline font-semibold ${small ? "text-[11px] leading-[15px]" : "text-sm sm:text-base"} tracking-wide text-on-surface">${cards || "—"}</span>
                         </div>`;
                     })
                     .join("");
@@ -253,18 +254,15 @@
                     return;
                 }
                 if (busy) return;
-                await post("/api/play/team/new");
-            }
-
-            async function teamJoin(code) {
-                code = String(code || "")
+                const input = document.getElementById("partnerName");
+                const partner = ((input && input.value) || "")
                     .trim()
-                    .toUpperCase();
-                if (!code) {
-                    showToast("Enter a join code", true);
+                    .toLowerCase();
+                if (!partner) {
+                    showToast("Enter your partner's username", true);
                     return;
                 }
-                await post("/api/play/team/join", { code: code });
+                await post("/api/play/team/new", { partner: partner });
             }
 
             async function teamOpen(id) {
@@ -323,6 +321,13 @@
                 } catch (e) {}
             }
 
+            async function loadUsers() {
+                try {
+                    const res = await fetch("/api/users");
+                    if (res.ok) allUsers = (await res.json()).users || [];
+                } catch (e) {}
+            }
+
             async function refreshLobby() {
                 await loadGames();
                 render();
@@ -334,13 +339,7 @@
                     if (res.ok) stats = await res.json();
                 } catch (e) {}
                 await loadGames();
-
-                const join = new URLSearchParams(location.search).get("join");
-                if (join && window.currentUser) {
-                    history.replaceState(null, "", "/play");
-                    await teamJoin(join);
-                    return;
-                }
+                await loadUsers();
 
                 const tid = localStorage.getItem(TEAM_KEY);
                 if (tid) {
@@ -417,14 +416,14 @@
                 }
                 let hand;
                 if (state.done && state.hands) {
-                    hand = `<div class="mt-1.5 space-y-0.5">${handHtml(state.hands[seat], true)}</div>`;
+                    hand = `<div class="mt-1 space-y-0">${handHtml(state.hands[seat], true)}</div>`;
                 } else if (isHuman) {
                     hand = `<div class="mt-1.5 text-[10px] font-label text-on-surface-variant">your cards below</div>`;
                 } else {
                     hand = hiddenHandHtml();
                 }
                 return `
-                    <div class="bg-white/95 border ${active ? "border-primary seat-active" : "border-black/5"} rounded-lg px-2 py-1.5 min-w-0 transition-all">
+                    <div class="bg-surface-container-lowest border ${active ? "border-primary seat-active" : "border-outline-variant/10"} rounded-lg px-2 py-1 min-w-0 transition-all">
                         <div class="flex items-center gap-1.5">
                             <span class="material-symbols-outlined text-base hidden sm:inline ${isHuman ? "text-tertiary" : "text-primary"}">${isHuman ? "person" : "smart_toy"}</span>
                             <span class="font-headline font-bold text-xs sm:text-sm text-on-surface truncate">${SEAT_NAMES[seat]}</span>
@@ -485,7 +484,7 @@
 
             function auctionCardHtml() {
                 return `
-                    <div class="bg-white/95 border border-black/5 rounded-lg shadow-sm px-1.5 sm:px-3 py-1.5 w-full">
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-lg shadow-sm px-1.5 sm:px-3 py-1.5 w-full">
                         <div class="text-[9px] uppercase tracking-widest text-outline font-label mb-0.5 text-center truncate">
                             Auction · dealer ${SEAT_NAMES[state.dealer][0]} · vuln ${VULN_NAMES[state.vuln]}
                         </div>
@@ -610,7 +609,7 @@
                             <span class="text-[10px] uppercase tracking-widest text-outline font-label">Your hand</span>
                             <span class="text-[10px] text-on-surface-variant font-label">${SEAT_NAMES[state.humanSeat]} · ${VULN_NAMES[state.vuln]} vuln</span>
                         </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0.5">
+                        <div class="grid grid-cols-1 gap-y-0.5">
                             ${handHtml(state.hand, false)}
                         </div>
                     </div>`;
@@ -637,7 +636,7 @@
                 }
                 const st = state.stats || {};
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 sm:px-4 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-2">
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 sm:px-4 py-2 flex flex-wrap items-center gap-x-6 gap-y-2">
                         <div class="min-w-0">
                             <div class="font-headline font-bold text-base text-on-surface">${contractLine}</div>
                             <div class="text-xs text-on-surface-variant mt-0.5">${trickLine}</div>
@@ -703,12 +702,8 @@
                 if (team) {
                     const partner =
                         state.yourSeat === 2 ? state.partner : state.host;
-                    left = `Table · you &amp; ${partner ? escapeHtml(partner) : "waiting for partner"} vs E/W bots · board ${state.boardNo || "—"}`;
+                    left = `Table · you &amp; ${escapeHtml(partner)} vs E/W bots · board ${state.boardNo || "—"}`;
                     right = `
-                        <span class="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-surface-container-low rounded font-label text-xs text-on-surface-variant">
-                            code <b class="text-on-surface tracking-widest">${state.code}</b>
-                            <button id="copyCodeBtn" title="Copy join code" class="material-symbols-outlined text-sm hover:text-on-surface">content_copy</button>
-                        </span>
                         <button id="historyBtn" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
                             <span class="material-symbols-outlined text-sm">history</span>Past boards
                         </button>
@@ -733,24 +728,11 @@
             }
 
             function teamReadyHtml() {
-                if (state.waitingForPartner) {
-                    return `
-                        <div class="bg-white/95 rounded-lg border border-black/5 px-5 py-6 text-center max-w-sm m-auto">
-                            <span class="material-symbols-outlined text-primary text-4xl">group_add</span>
-                            <p class="font-headline font-bold text-on-surface mt-2">Waiting for your partner</p>
-                            <p class="text-xs text-on-surface-variant font-label mt-1">Share this join code, or send them the link below:</p>
-                            <div class="mt-3 flex items-center justify-center gap-2">
-                                <span class="font-headline font-extrabold text-2xl tracking-[0.2em] text-primary">${state.code}</span>
-                                <button id="copyCodeBtn" class="material-symbols-outlined text-primary hover:text-primary-dim" title="Copy join code">content_copy</button>
-                            </div>
-                            <p class="text-[11px] text-on-surface-variant font-label mt-3">They open Play → Join with code. The table keeps your game even if you both close the page.</p>
-                        </div>`;
-                }
                 return `
-                    <div class="bg-white/95 rounded-lg border border-black/5 px-5 py-6 text-center max-w-sm m-auto">
+                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl px-5 py-6 text-center max-w-sm m-auto">
                         <span class="material-symbols-outlined text-primary text-4xl">playing_cards</span>
                         <p class="font-headline font-bold text-on-surface mt-2">Table ready</p>
-                        <p class="text-xs text-on-surface-variant font-label mt-1">${escapeHtml(state.partner)} is your North. Dealer and vulnerability follow the standard board rotation.</p>
+                        <p class="text-xs text-on-surface-variant font-label mt-1">You &amp; ${escapeHtml(state.partner)} vs the East/West bots. Dealer and vulnerability follow the standard board rotation.</p>
                         <button id="dealFirstBtn" class="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
                             <span class="material-symbols-outlined text-sm">casino</span>Deal board 1
                         </button>
@@ -777,7 +759,7 @@
                     team && state.noBoard
                         ? teamReadyHtml()
                         : `
-                            <div class="grid grid-cols-3 gap-1.5 sm:gap-3 items-center max-w-3xl m-auto w-full">
+                            <div class="grid grid-cols-3 gap-1 sm:gap-2 items-center max-w-3xl m-auto w-full">
                                 <div class="col-span-3 sm:hidden">${auctionCardHtml()}</div>
                                 <div></div>
                                 ${seatBox(0)}
@@ -789,16 +771,22 @@
                                 ${seatBox(2)}
                                 <div></div>
                             </div>`;
+                const dock = state.noBoard
+                    ? ""
+                    : (() => {
+                          const strip = handStripHtml();
+                          return `<div class="bottom-dock shrink-0 flex flex-col sm:flex-row gap-2">
+                           ${strip ? `<div class="flex-1 min-w-0">${strip}</div>` : ""}
+                           <div class="flex-1 min-w-0">${panel}</div>
+                       </div>`;
+                      })();
                 return `
-                    <div class="flex-1 min-h-0 flex flex-col gap-2">
+                    <div class="flex-1 min-h-0 flex flex-col gap-1.5">
                         ${playHeaderHtml()}
-                        <div id="tableBox" class="flex-1 min-h-0 felt-table rounded-xl border border-black/10 p-2 sm:p-3 flex flex-col overflow-y-auto">
+                        <div id="tableBox" class="flex-1 min-h-0 flex flex-col overflow-y-auto">
                             ${tableBody}
                         </div>
-                        <div class="bottom-dock shrink-0 flex flex-col gap-2">
-                            ${state.noBoard ? "" : handStripHtml()}
-                            ${panel}
-                        </div>
+                        ${dock}
                     </div>`;
             }
 
@@ -838,13 +826,11 @@
                             Team up with a partner (North–South) against the East/West bots. Tables stay open while you are disconnected, so you can run several games with the same partner and resume any time.
                         </p>
                         <div class="mt-4 flex flex-col gap-2">
+                            <input id="partnerName" list="partnerList" placeholder="Partner username" autocomplete="off" class="unlock-input !py-2 text-sm" />
+                            <datalist id="partnerList"></datalist>
                             <button id="createTableBtn" class="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
                                 <span class="material-symbols-outlined text-sm">add</span>Create a table
                             </button>
-                            <div class="flex gap-2">
-                                <input id="joinCode" maxlength="6" placeholder="Join code" autocomplete="off" class="unlock-input flex-1 !py-2 text-sm uppercase tracking-widest" />
-                                <button id="joinBtn" class="shrink-0 px-4 py-2 bg-surface-container text-on-surface rounded font-label text-sm hover:bg-surface-container-high transition-colors">Join</button>
-                            </div>
                         </div>
                     </div>`;
             }
@@ -858,10 +844,7 @@
                             ? escapeHtml(other)
                             : "no partner yet";
                         let status, cls;
-                        if (g.waitingForPartner) {
-                            status = "waiting for partner";
-                            cls = "bg-tertiary-container/50 text-on-tertiary-container";
-                        } else if (g.inProgress && g.yourTurn) {
+                        if (g.inProgress && g.yourTurn) {
                             status = "your turn";
                             cls = "bg-primary text-on-primary";
                         } else if (g.inProgress) {
@@ -1141,7 +1124,7 @@
                 const content = document.getElementById("main-content");
                 if (!content) return;
                 // While a table is open the page locks to the viewport: the
-                // intro header and lobby step aside, the felt flexes and the
+                // intro header and lobby step aside, the table area flexes and the
                 // hand strip + bidder/result stay pinned below. Bidding,
                 // reading the score and dealing the next board never need
                 // page scrolling.
@@ -1174,14 +1157,18 @@
                 if (deal) deal.onclick = () => newBoard();
                 const create = document.getElementById("createTableBtn");
                 if (create) create.onclick = () => teamCreate();
-                const join = document.getElementById("joinBtn");
-                const joinInput = document.getElementById("joinCode");
-                if (join)
-                    join.onclick = () => teamJoin(joinInput && joinInput.value);
-                if (joinInput)
-                    joinInput.onkeydown = (e) => {
-                        if (e.key === "Enter") teamJoin(joinInput.value);
+                const partnerInput = document.getElementById("partnerName");
+                if (partnerInput) {
+                    partnerInput.onkeydown = (e) => {
+                        if (e.key === "Enter") teamCreate();
                     };
+                }
+                const partnerList = document.getElementById("partnerList");
+                if (partnerList)
+                    partnerList.innerHTML = allUsers
+                        .filter((u) => u !== window.currentUser)
+                        .map((u) => `<option value="${escapeHtml(u)}"></option>`)
+                        .join("");
                 content.querySelectorAll("[data-open-game]").forEach((btn) => {
                     btn.onclick = () => teamOpen(btn.dataset.openGame);
                 });
@@ -1190,14 +1177,6 @@
                 });
 
                 // table buttons
-                const copy = document.getElementById("copyCodeBtn");
-                if (copy && state)
-                    copy.onclick = () => {
-                        navigator.clipboard
-                            .writeText(state.code)
-                            .then(() => showToast("Join code copied"))
-                            .catch(() => showToast(state.code));
-                    };
                 const history = document.getElementById("historyBtn");
                 if (history) history.onclick = openHistory;
                 const leave = document.getElementById("leaveBtn");
@@ -1251,9 +1230,13 @@
                     return;
                 }
                 // Lobby: keep the tables list fresh, but never while the
-                // join-code input is being used.
-                const joinInput = document.getElementById("joinCode");
-                if (joinInput && (joinInput.value || document.activeElement === joinInput))
+                // partner-name input is being used.
+                const partnerInput = document.getElementById("partnerName");
+                if (
+                    partnerInput &&
+                    (partnerInput.value ||
+                        document.activeElement === partnerInput)
+                )
                     return;
                 if (games !== null) pollTimer = setTimeout(refreshLobby, 5000);
             }

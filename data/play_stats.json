@@ -332,6 +332,41 @@
       }
     ]
   },
+  "rl3": {
+    "boards": 1,
+    "impsTotal": 11,
+    "recent": [
+      {
+        "ts": "2026-09-30T10:14:37Z",
+        "dealer": 0,
+        "vuln": 0,
+        "calls": [
+          "P",
+          "1D",
+          "1H",
+          "1S",
+          "P",
+          "3D",
+          "P",
+          "4S",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "4S by W",
+        "tricks": 11,
+        "parNs": -990,
+        "scoreNs": -450,
+        "imps": 11,
+        "hands": [
+          "32.64.9874.AJ976",
+          "84.A8.AKQJ52.K85",
+          "K65.QJT9732.T6.Q",
+          "AQJT97.K5.3.T432"
+        ]
+      }
+    ]
+  },
   "rl_small_test": {
     "boards": 21,
     "impsTotal": 2,

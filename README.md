@@ -11,12 +11,12 @@ Two ways to play, both scored in IMPs versus double-dummy par:
   `data/play_stats.json`; the recent boards can be reviewed with all four
   hands and the full auction.
 - **Partner table** — two humans (host South, partner North) against the
-  East/West bots. Tables are persistent: games are stored in
-  `data/game_<id>.json`, keep running while both players are offline and
-  survive server restarts. Open as many tables as you like with the same
-  partner; the partner joins with the 6-character code from the host (or a
-  `/play?join=CODE` link) and both players review past boards (cards and
-  auction) from the table's history.
+  East/West bots. Open a table by naming your partner's account; it appears
+  in both players' table lists, so no invite link is needed. Tables are
+  persistent: games are stored in `data/game_<id>.json`, keep running while
+  both players are offline and survive server restarts. Open as many tables
+  as you like with the same partner; both players review past boards (cards
+  and auction) from the table's history.
 
 The bots are served by a small Python sidecar; start it first:
 

@@ -231,18 +231,7 @@
     }
 }
 
-/* ---- Play vs bots: table, cards, history ---- */
-
-/* Green felt for the table area */
-.felt-table {
-    background: radial-gradient(
-        ellipse at 50% 38%,
-        #1f7d4c 0%,
-        #15603a 55%,
-        #0b4428 100%
-    );
-    box-shadow: inset 0 4px 26px rgba(0, 0, 0, 0.35);
-}
+/* ---- Play vs bots: cards, history ---- */
 
 /* Face-down card strip for hidden hands */
 .card-back {
