@@ -31,7 +31,6 @@
                 subtitle:
                     "A random sequence from the root down to a leaf is picked flashcard style. Recall what each bid shows, then reveal the answer.",
             });
-
             const id = window.location.pathname.split("/").pop();
             document.getElementById("viewLink").href = "/view/" + id;
             document.getElementById("editLink").href = "/edit/" + id;
@@ -77,9 +76,15 @@
             function renderControls() {
                 const content = document.getElementById("main-content");
                 content.innerHTML = `
-                    <div class="flex flex-wrap items-center gap-3 mb-6">
-                        <label for="scopeSelect" class="text-xs uppercase tracking-widest text-outline font-label">Scope</label>
-                        <select id="scopeSelect" class="text-sm rounded-lg border-outline-variant/30 bg-surface-container-lowest text-on-surface"></select>
+                    <div class="game-panel pop-in flex flex-wrap items-center gap-3 px-4 py-3 mb-5">
+                        <label for="scopeSelect" class="text-[10px] uppercase tracking-[0.2em] text-outline font-label font-bold flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-sm text-[#d4a017]">filter_alt</span>Scope
+                        </label>
+                        <select id="scopeSelect" class="text-sm rounded-xl border-outline-variant/30 bg-surface-container-lowest text-on-surface px-3 py-2 font-label shadow-sm"></select>
+                        <div class="ml-auto flex items-center gap-2 min-w-[140px]">
+                            <div class="xp-bar flex-1"><div id="deckBar" class="xp-bar-fill" style="width:0%"></div></div>
+                            <span id="deckCount" class="text-[10px] font-label font-semibold text-on-surface-variant whitespace-nowrap"></span>
+                        </div>
                     </div>
                     <div id="card-area"></div>
                 `;
@@ -176,11 +181,13 @@
 
             function renderEmptyDeck() {
                 document.getElementById("card-area").innerHTML = `
-                    <div class="text-center py-16 bg-surface-container-lowest rounded-xl border border-outline-variant/10">
-                        <span class="material-symbols-outlined text-outline-variant text-5xl mb-4">style</span>
-                        <p class="text-on-surface-variant text-lg">No cards to practice in this scope.</p>
-                        <p class="text-sm text-on-surface-variant mt-2">
-                            Cards are root-to-leaf sequences whose nodes have descriptions. Add some in the <a href="/edit/${id}" class="text-primary">editor</a>.
+                    <div class="game-panel pop-in py-12 px-6 text-center">
+                        <div class="card-fan-deco">
+                            <span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span>
+                        </div>
+                        <p class="text-on-surface-variant text-lg font-headline font-bold mt-2">No cards to practice in this scope.</p>
+                        <p class="text-sm text-on-surface-variant mt-2 max-w-md mx-auto leading-relaxed">
+                            Cards are root-to-leaf sequences whose nodes have descriptions. Add some in the <a href="/edit/${id}" class="text-[#2b7a4b] font-semibold">editor</a>.
                         </p>
                     </div>
                 `;
@@ -192,20 +199,22 @@
                 const sequence = currentCard.path
                     .map(
                         (n) => `
-                        <div class="px-3 py-1.5 bg-surface-container rounded-lg">
-                            <span class="font-headline font-bold text-on-surface text-sm">${colorSuits(
+                        <div class="pcard-holder px-3 py-1.5 rounded-xl bg-surface-container border border-black/10 shadow-[0_2px_0_rgba(0,0,0,0.08)]">
+                            <span class="font-headline font-extrabold text-on-surface text-sm">${colorSuits(
                                 n.name,
                             )}</span>
                         </div>`,
                     )
-                    .join('<span class="text-outline-variant px-0.5">–</span>');
+                    .join('<span class="text-outline-variant px-0.5 material-symbols-outlined text-sm">arrow_forward</span>');
 
                 area.innerHTML = `
-                    <div class="bg-surface-container-lowest rounded-xl border border-outline-variant/10 shadow-sm p-5 sm:p-8 min-h-[260px]">
-                        <div class="text-[10px] uppercase tracking-widest text-outline font-label mb-3">
+                    <div class="game-panel pop-in relative p-5 sm:p-8 min-h-[260px] overflow-hidden">
+                        <span class="absolute top-3 left-4 font-headline font-extrabold text-2xl text-[#17252a] select-none pointer-events-none">♠</span>
+                        <span class="absolute bottom-3 right-4 font-headline font-extrabold text-2xl text-[#c0392b] rotate-180 select-none pointer-events-none">♥</span>
+                        <div class="text-[10px] uppercase tracking-[0.2em] text-outline font-label font-bold mb-3 mt-1 text-center">
                             Sequence — what does each bid show?
                         </div>
-                        <div class="flex flex-wrap items-center gap-y-2 mb-4">
+                        <div class="flex flex-wrap items-center justify-center gap-y-2 mb-4">
                             ${sequence}
                         </div>
                         <div id="answer" class="practice-answer"></div>
@@ -261,11 +270,11 @@
                 if (!bar) return;
                 if (!revealed) {
                     bar.innerHTML = `
-                        <button id="revealBtn" class="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                        <button id="revealBtn" class="btn-gold flex items-center gap-2 px-7 py-3 rounded-xl font-label text-sm font-bold">
                             <span class="material-symbols-outlined text-sm">visibility</span>
                             Show answer
                         </button>
-                        <button id="skipBtn" class="px-4 py-2.5 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">
+                        <button id="skipBtn" class="px-5 py-3 bg-surface-container text-on-surface-variant rounded-xl font-label text-sm font-semibold hover:bg-surface-container-high transition-colors">
                             Skip
                         </button>
                     `;
@@ -273,11 +282,11 @@
                     document.getElementById("skipBtn").onclick = nextCard;
                 } else {
                     bar.innerHTML = `
-                        <button id="againBtn" class="flex items-center gap-2 px-5 py-2.5 bg-error-container text-on-error-container rounded font-label text-sm hover:brightness-95 transition-all">
+                        <button id="againBtn" class="flex items-center gap-2 px-6 py-3 rounded-xl font-label text-sm font-bold text-white bg-gradient-to-b from-[#e2543f] to-[#b03226] shadow-[0_3px_0_rgba(120,30,20,0.6)] hover:brightness-105 transition-all active:translate-y-0.5 active:shadow-none">
                             <span class="material-symbols-outlined text-sm">close</span>
                             Again
                         </button>
-                        <button id="goodBtn" class="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                        <button id="goodBtn" class="flex items-center gap-2 px-6 py-3 rounded-xl font-label text-sm font-bold text-white bg-gradient-to-b from-[#37b26a] to-[#1e7d47] shadow-[0_3px_0_rgba(13,77,43,0.6)] hover:brightness-105 transition-all active:translate-y-0.5 active:shadow-none">
                             <span class="material-symbols-outlined text-sm">check</span>
                             Got it
                         </button>
@@ -295,8 +304,18 @@
                 const seen = stats.good + stats.again;
                 const pct =
                     seen > 0 ? Math.round((stats.good / seen) * 100) : null;
+                const bar = document.getElementById("deckBar");
+                if (bar) {
+                    const progress = Math.min(
+                        Math.round((deckPos / deck.length) * 100),
+                        100,
+                    );
+                    bar.style.width = progress + "%";
+                }
+                const count = document.getElementById("deckCount");
+                if (count) count.innerText = `${deckPos}/${deck.length} cards`;
                 meta.innerHTML = `Card ${deckPos} of ${deck.length} · Reviewed ${seen}${
-                    pct !== null ? ` · ${pct}% recalled` : ""
+                    pct !== null ? ` · <b class="${pct >= 70 ? "text-[#1e7d47]" : "text-[#b03226]"}">${pct}% recalled</b>` : ""
                 } <span class="text-outline-variant ml-3 hidden md:inline">Space: reveal / got it · M: again · S: skip</span>`;
             }
 

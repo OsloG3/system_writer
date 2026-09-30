@@ -43,12 +43,14 @@
 
                 if (trees.length === 0) {
                     content.innerHTML = `
-                        <div class="text-center py-16">
-                            <span class="material-symbols-outlined text-outline-variant text-6xl mb-4">account_tree</span>
-                            <p class="text-on-surface-variant text-lg font-body">No collections yet.</p>
-                            <p class="text-on-surface-variant text-sm font-body mt-2">${
+                        <div class="game-panel pop-in py-14 px-6 text-center">
+                            <div class="card-fan-deco">
+                                <span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span>
+                            </div>
+                            <p class="text-on-surface-variant text-lg font-headline font-bold mt-2">No collections yet.</p>
+                            <p class="text-on-surface-variant text-sm font-body mt-2 max-w-sm mx-auto leading-relaxed">${
                                 window.currentUser
-                                    ? 'Click "New Collection" to get started.'
+                                    ? 'Hit "New Collection" to deal your first system.'
                                     : "Create an account to build your first system."
                             }</p>
                         </div>
@@ -61,35 +63,37 @@
                         ${trees
                             .map(
                                 (t) => `
-                            <div class="tree-list-item flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border border-outline-variant/10 bg-surface-container-lowest">
-                                <div class="flex items-center gap-3 min-w-0">
-                                    <span class="material-symbols-outlined text-primary text-xl">account_tree</span>
+                            <div class="tree-list-item game-panel game-panel-hover flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4">
+                                <div class="flex items-center gap-3.5 min-w-0">
+                                    <span class="flex items-center justify-center w-11 h-11 rounded-2xl bg-gradient-to-b from-[#5b8def] to-[#2a5193] shadow-[0_3px_0_rgba(0,0,0,0.22)] shrink-0">
+                                        <span class="material-symbols-outlined text-xl text-white" style="font-variation-settings:'FILL' 1;">account_tree</span>
+                                    </span>
                                     <div class="min-w-0">
-                                        <span class="font-headline font-semibold text-on-surface truncate block">${colorSuits(t.name)}</span>
+                                        <span class="font-headline font-extrabold text-on-surface truncate block">${colorSuits(t.name)}</span>
                                         <span class="text-xs text-on-surface-variant font-label">by ${t.owner ? escapeHtml(t.owner) : "<em>unclaimed</em>"}${
                                             treeCanEdit(t) && !treeIsOwner(t)
-                                                ? ' <span class="text-primary">· you can edit</span>'
+                                                ? ' <span class="text-[#2b7a4b] font-semibold">· you can edit</span>'
                                                 : ""
                                         }</span>
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-2 flex-wrap shrink-0">
-                                    <a href="/practice/${t.id}" title="Practice" class="flex items-center gap-1 px-3 py-1.5 bg-primary text-on-primary rounded text-xs font-label hover:bg-primary-dim transition-colors no-underline">
+                                    <a href="/practice/${t.id}" title="Practice" class="btn-gold flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-label font-bold no-underline">
                                         <span class="material-symbols-outlined text-sm">school</span>
                                         Practice
                                     </a>
-                                    <a href="/view/${t.id}" title="View" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded text-xs font-label hover:bg-surface-container-high transition-colors no-underline">
+                                    <a href="/view/${t.id}" title="View" class="flex items-center gap-1.5 px-4 py-2 bg-surface-container text-on-surface rounded-xl text-xs font-label font-semibold hover:bg-surface-container-high transition-colors no-underline">
                                         <span class="material-symbols-outlined text-sm">visibility</span>
                                         View
                                     </a>
-                                    <button onclick="duplicateTree('${t.id}')" title="Create your own copy of this system" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded text-xs font-label hover:bg-surface-container-high transition-colors">
+                                    <button onclick="duplicateTree('${t.id}')" title="Create your own copy of this system" class="flex items-center gap-1.5 px-4 py-2 bg-surface-container text-on-surface rounded-xl text-xs font-label font-semibold hover:bg-surface-container-high transition-colors">
                                         <span class="material-symbols-outlined text-sm">content_copy</span>
                                         Copy
                                     </button>
                                     ${
                                         treeCanEdit(t)
                                             ? `
-                                    <a href="/edit/${t.id}" title="Edit" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface rounded text-xs font-label hover:bg-surface-container-high transition-colors no-underline">
+                                    <a href="/edit/${t.id}" title="Edit" class="flex items-center gap-1.5 px-4 py-2 bg-surface-container text-on-surface rounded-xl text-xs font-label font-semibold hover:bg-surface-container-high transition-colors no-underline">
                                         <span class="material-symbols-outlined text-sm">edit</span>
                                         Edit
                                     </a>`
@@ -98,8 +102,8 @@
                                     ${
                                         treeIsOwner(t)
                                             ? `
-                                    <button onclick="deleteTree('${t.id}')" title="Delete" class="flex items-center gap-1 px-2 py-1.5 bg-error-container/40 text-on-error-container rounded text-xs font-label hover:bg-error-container transition-colors">
-                                        <span class="material-symbols-outlined text-sm">delete</span>
+                                    <button onclick="deleteTree('${t.id}')" title="Delete" class="flex items-center justify-center w-9 h-9 bg-error-container/30 text-on-error-container rounded-xl text-xs font-label hover:bg-error-container/70 transition-colors">
+                                        <span class="material-symbols-outlined text-base">delete</span>
                                     </button>`
                                             : ""
                                     }
@@ -146,14 +150,16 @@
                 overlay.className = "unlock-overlay";
                 overlay.innerHTML = `
                     <div class="unlock-card">
-                        <span class="material-symbols-outlined text-primary text-3xl mb-2">account_tree</span>
-                        <h2 class="font-headline font-bold text-on-surface text-lg mb-1">New system</h2>
+                        <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-b from-[#5b8def] to-[#2a5193] mb-3 shadow-[0_3px_0_rgba(0,0,0,0.25)]">
+                            <span class="material-symbols-outlined text-2xl text-white" style="font-variation-settings:'FILL' 1;">account_tree</span>
+                        </span>
+                        <h2 class="font-headline font-extrabold text-on-surface text-lg mb-1">New system</h2>
                         <p class="text-sm text-on-surface-variant mb-4">Give your bidding system a name.</p>
                         <form id="createForm">
                             <input id="createName" type="text" placeholder="System name" autocomplete="off" class="unlock-input" />
                             <div class="flex justify-end gap-2 mt-4">
-                                <button type="button" id="createCancel" class="px-4 py-2 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">Cancel</button>
-                                <button type="submit" class="px-4 py-2 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">Create</button>
+                                <button type="button" id="createCancel" class="px-4 py-2.5 bg-surface-container text-on-surface-variant rounded-xl font-label text-sm hover:bg-surface-container-high transition-colors">Cancel</button>
+                                <button type="submit" class="btn-gold px-5 py-2.5 rounded-xl font-label text-sm font-bold">Create</button>
                             </div>
                         </form>
                     </div>

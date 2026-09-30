@@ -3,12 +3,14 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,10 +25,18 @@ import (
 // keeps its state while both players are disconnected and survives server
 // restarts. A player can keep any number of tables open with the same partner
 // and resume each one from the play lobby.
+//
+// A match is teamMatchLen boards, all dealt up front when either player
+// starts it. Every board runs its own auction: each player may call on any
+// board where it is their turn, switching between boards freely instead of
+// playing them in order. A new match can be started once every board of the
+// current one is finished; board numbering and the dealer/vulnerability
+// rotation simply continue.
 
 const (
 	teamSouthSeat = 2 // host
 	teamNorthSeat = 0 // partner
+	teamMatchLen  = 8 // boards per match
 )
 
 var (
@@ -47,13 +57,14 @@ type TeamBoard struct {
 
 // TeamGame is a persistent two-player table.
 type TeamGame struct {
-	mu      sync.Mutex   `json:"-"`
-	ID      string       `json:"id"`
-	Host    string       `json:"host"`    // username sitting South
-	Partner string       `json:"partner"` // username sitting North
-	Boards  []*TeamBoard `json:"boards"`
-	Created time.Time    `json:"created"`
-	Updated time.Time    `json:"updated"`
+	mu         sync.Mutex   `json:"-"`
+	ID         string       `json:"id"`
+	Host       string       `json:"host"`    // username sitting South
+	Partner    string       `json:"partner"` // username sitting North
+	Boards     []*TeamBoard `json:"boards"`
+	MatchStart int          `json:"matchStart"` // index of the first board of the current match
+	Created    time.Time    `json:"created"`
+	Updated    time.Time    `json:"updated"`
 }
 
 // Standard 16-board duplicate rotation: the dealer moves N,E,S,W while the
@@ -119,15 +130,6 @@ func (g *TeamGame) seatLocked(username string) int {
 		return teamNorthSeat
 	}
 	return -1
-}
-
-// lastLocked returns the current board (the last one), or nil before the
-// first deal. Callers must hold g.mu.
-func (g *TeamGame) lastLocked() *TeamBoard {
-	if len(g.Boards) == 0 {
-		return nil
-	}
-	return g.Boards[len(g.Boards)-1]
 }
 
 func auctionFinished(calls []string) bool {
@@ -243,9 +245,26 @@ func (g *TeamGame) scoreLocked(b *TeamBoard) error {
 	return nil
 }
 
-// stateLocked renders the client-visible table for one member. Callers must
-// hold g.mu.
-func (g *TeamGame) stateLocked(username string) map[string]any {
+// boardAtLocked returns the board with the given 1-based number, or nil.
+// Callers must hold g.mu.
+func (g *TeamGame) boardAtLocked(no int) *TeamBoard {
+	if no < 1 || no > len(g.Boards) {
+		return nil
+	}
+	return g.Boards[no-1]
+}
+
+// matchStartIdx is the index of the first board of the current match.
+func (g *TeamGame) matchStartIdx() int { return min(g.MatchStart, len(g.Boards)) }
+
+// stateLocked renders the client-visible table for one member: identity
+// fields, a summary of every board of the current match (for the board
+// switcher), and the full state of the selected board flattened on top.
+// boardNo is a 1-based board number; 0 (or out of match) lets the server
+// pick a default: the first board waiting for this player, else the first
+// unfinished board, else the last board of the match. Callers must hold
+// g.mu.
+func (g *TeamGame) stateLocked(username string, boardNo int) map[string]any {
 	seat := g.seatLocked(username)
 	st := map[string]any{
 		"mode":        "team",
@@ -259,12 +278,57 @@ func (g *TeamGame) stateLocked(username string) map[string]any {
 		"totalBoards": len(g.Boards),
 		"stats":       g.statsLocked(),
 	}
-	b := g.lastLocked()
-	if b == nil {
+	start := g.matchStartIdx()
+	summaries := make([]map[string]any, 0, len(g.Boards)-start)
+	matchDone, matchImps := len(g.Boards) > start, 0.0
+	firstYour, firstOpen, last := 0, 0, 0
+	for i, b := range g.Boards[start:] {
+		no := start + i + 1
+		sum := map[string]any{"no": no, "dealer": b.Dealer, "vuln": b.Vuln}
+		if b.Result != nil {
+			sum["done"] = true
+			sum["imps"] = b.Result.Imps
+			sum["contract"] = b.Result.Contract.String()
+			matchImps += b.Result.Imps
+		} else {
+			sum["done"] = false
+			matchDone = false
+			next := (b.Dealer + len(b.Calls)) % 4
+			yt := seat >= 0 && next == seat
+			sum["nextSeat"] = next
+			sum["yourTurn"] = yt
+			if firstYour == 0 && yt {
+				firstYour = no
+			}
+			if firstOpen == 0 {
+				firstOpen = no
+			}
+		}
+		last = no
+		summaries = append(summaries, sum)
+	}
+	st["boards"] = summaries
+	st["matchDone"] = matchDone
+	st["matchImps"] = matchImps
+
+	sel := boardNo
+	if sel <= start || sel > len(g.Boards) {
+		switch {
+		case firstYour > 0:
+			sel = firstYour
+		case firstOpen > 0:
+			sel = firstOpen
+		default:
+			sel = last
+		}
+	}
+	st["boardSel"] = sel
+	if sel == 0 {
 		st["noBoard"] = true
 		return st
 	}
-	st["boardNo"] = len(g.Boards)
+	b := g.Boards[sel-1]
+	st["boardNo"] = sel
 	st["dealer"] = b.Dealer
 	st["vuln"] = b.Vuln
 	st["calls"] = callsOrEmpty(b.Calls)
@@ -283,8 +347,7 @@ func (g *TeamGame) stateLocked(username string) map[string]any {
 		st["hand"] = b.Hands[seat]
 	}
 	if yourTurn {
-		legal, err := g.legalLocked(b)
-		if err == nil {
+		if legal, err := g.legalLocked(b); err == nil {
 			st["legal"] = legal
 		}
 	}
@@ -335,7 +398,7 @@ func handleTeamNew(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Could not persist team game: %v", err)
 	}
 	g.mu.Lock()
-	st := g.stateLocked(username)
+	st := g.stateLocked(username, 0)
 	g.mu.Unlock()
 	writeJSON(w, st)
 }
@@ -372,29 +435,31 @@ func handleTeamList(w http.ResponseWriter, r *http.Request) {
 			g.mu.Unlock()
 			continue
 		}
-		s := gameSummary{
-			ID: g.ID, Host: g.Host, Partner: g.Partner,
-			YourSeat: seat, Updated: g.Updated,
+	s := gameSummary{
+		ID: g.ID, Host: g.Host, Partner: g.Partner,
+		YourSeat: seat, Updated: g.Updated,
+	}
+	for _, b := range g.Boards {
+		if b.Result != nil {
+			s.Boards++
+			s.ImpsTotal += b.Result.Imps
+			continue
 		}
-		for _, b := range g.Boards {
-			if b.Result != nil {
-				s.Boards++
-				s.ImpsTotal += b.Result.Imps
-			}
+		s.InProgress = true
+		if (b.Dealer+len(b.Calls))%4 == seat {
+			s.YourTurn = true
 		}
-		if b := g.lastLocked(); b != nil && b.Result == nil {
-			s.InProgress = true
-			s.YourTurn = (b.Dealer+len(b.Calls))%4 == seat
-		}
-		g.mu.Unlock()
+	}
+	g.mu.Unlock()
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Updated.After(out[j].Updated) })
 	writeJSON(w, map[string]any{"games": out})
 }
 
-// GET /api/play/team/{id} - table state for the polling client; also nudges
-// stalled bot turns after a sidecar hiccup
+// GET /api/play/team/{id}?board=N - table state for the polling client with
+// board N selected (0/absent = server default). Also advances every board
+// whose bots owe calls, recovering stalled turns after a sidecar hiccup.
 func handleTeamGet(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
 	if username == "" {
@@ -416,23 +481,29 @@ func handleTeamGet(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusForbidden, "not part of this table")
 		return
 	}
-	if b := g.lastLocked(); b != nil && b.Result == nil {
-		before := len(b.Calls)
-		err := g.advanceLocked(b)
-		if len(b.Calls) != before || b.Result != nil {
-			if serr := saveTeamGameLocked(g); serr != nil {
-				log.Printf("Could not persist team game: %v", serr)
-			}
+	boardNo, _ := strconv.Atoi(r.URL.Query().Get("board"))
+	changed := false
+	for _, b := range g.Boards[g.matchStartIdx():] {
+		if b.Result != nil {
+			continue
 		}
-		if err != nil {
-			writeJSON(w, g.stateLocked(username)) // return what we have; client retries
-			return
+		before := len(b.Calls)
+		if err := g.advanceLocked(b); err != nil {
+			log.Printf("team board advance: %v", err)
+		}
+		if len(b.Calls) != before || b.Result != nil {
+			changed = true
 		}
 	}
-	writeJSON(w, g.stateLocked(username))
+	if changed {
+		if serr := saveTeamGameLocked(g); serr != nil {
+			log.Printf("Could not persist team game: %v", serr)
+		}
+	}
+	writeJSON(w, g.stateLocked(username, boardNo))
 }
 
-// POST /api/play/team/{id}/call - the human's call for their seat
+// POST /api/play/team/{id}/call - the human's call on one board of the match
 func handleTeamCall(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
 	if username == "" {
@@ -445,7 +516,8 @@ func handleTeamCall(w http.ResponseWriter, r *http.Request) {
 	}
 	limitBody(w, r, maxBodyAuth)
 	var body struct {
-		Call string `json:"call"`
+		Call  string `json:"call"`
+		Board int    `json:"board"` // 1-based board number
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		jsonError(w, http.StatusBadRequest, "invalid JSON")
@@ -468,13 +540,13 @@ func handleTeamCall(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusForbidden, "not part of this table")
 		return
 	}
-	b := g.lastLocked()
+	b := g.boardAtLocked(body.Board)
 	if b == nil || b.Result != nil {
-		jsonError(w, http.StatusConflict, "no board in progress")
+		jsonError(w, http.StatusConflict, "no such board, or it is finished")
 		return
 	}
 	if next := (b.Dealer + len(b.Calls)) % 4; next != seat {
-		jsonError(w, http.StatusConflict, "not your turn")
+		jsonError(w, http.StatusConflict, fmt.Sprintf("not your turn on board %d", body.Board))
 		return
 	}
 	legal, err := g.legalLocked(b)
@@ -498,11 +570,13 @@ func handleTeamCall(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
 		return
 	}
-	writeJSON(w, g.stateLocked(username))
+	writeJSON(w, g.stateLocked(username, body.Board))
 }
 
-// POST /api/play/team/{id}/next - deal the next board (either member)
-func handleTeamNext(w http.ResponseWriter, r *http.Request) {
+// POST /api/play/team/{id}/start - deal a fresh teamMatchLen-board match (either
+// member). All boards are dealt up front, each auction running independently;
+// the players bid them in any order they like.
+func handleTeamStart(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
 	if username == "" {
 		return
@@ -523,34 +597,46 @@ func handleTeamNext(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusForbidden, "not part of this table")
 		return
 	}
-	if b := g.lastLocked(); b != nil && b.Result == nil {
-		jsonError(w, http.StatusConflict, "the current board is still in progress")
-		return
+	for _, b := range g.Boards {
+		if b.Result == nil {
+			jsonError(w, http.StatusConflict, "the current match is still in progress")
+			return
+		}
 	}
-	dealer, vuln := teamRotation(len(g.Boards))
-	var deal struct {
+	// Deal the whole match first; only commit once every board is in hand so
+	// a sidecar failure mid-deal cannot leave a partial match behind.
+	start := len(g.Boards)
+	type dealT struct {
 		Hands  [4]string `json:"hands"`
 		Dealer int       `json:"dealer"`
 		Vuln   int       `json:"vuln"`
 	}
-	if err := botPost("/deal", map[string]any{"dealer": dealer, "vuln": vuln}, &deal, botTimeout); err != nil {
-		jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
-		return
-	}
-	b := &TeamBoard{Hands: deal.Hands, Dealer: deal.Dealer, Vuln: deal.Vuln}
-	g.Boards = append(g.Boards, b)
-	g.Updated = time.Now()
-	if err := g.advanceLocked(b); err != nil {
-		if serr := saveTeamGameLocked(g); serr != nil {
-			log.Printf("Could not persist team game: %v", serr)
+	deals := make([]dealT, 0, teamMatchLen)
+	for i := 0; i < teamMatchLen; i++ {
+		dealer, vuln := teamRotation(start + i)
+		var d dealT
+		if err := botPost("/deal", map[string]any{"dealer": dealer, "vuln": vuln}, &d, botTimeout); err != nil {
+			jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
+			return
 		}
-		jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
-		return
+		deals = append(deals, d)
 	}
+	g.MatchStart = start
+	for _, d := range deals {
+		b := &TeamBoard{Hands: d.Hands, Dealer: d.Dealer, Vuln: d.Vuln}
+		g.Boards = append(g.Boards, b)
+		// Bots open every board whose dealer is E/W; boards dealt to a human
+		// dealer simply wait. A failure here leaves the board waiting on a
+		// bot turn, which polling recovers.
+		if err := g.advanceLocked(b); err != nil {
+			log.Printf("team start board advance: %v", err)
+		}
+	}
+	g.Updated = time.Now()
 	if err := saveTeamGameLocked(g); err != nil {
 		log.Printf("Could not persist team game: %v", err)
 	}
-	writeJSON(w, g.stateLocked(username))
+	writeJSON(w, g.stateLocked(username, 0))
 }
 
 // GET /api/play/team/{id}/history - every board of the table with hands and

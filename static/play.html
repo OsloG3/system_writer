@@ -28,7 +28,7 @@
                 badge: "Play",
                 title: "Play vs Bots",
                 subtitle:
-                    "Deal a solo board against three bidding-dt bots, or open a persistent partner table for two humans (North–South) against the East/West bots. Every board is scored in IMPs versus double-dummy par.",
+                    "Deal a solo board against three bidding-dt bots, or open a persistent partner table for two humans (North–South) against the East/West bots: an 8-board match dealt up front and bid in parallel. Every board is scored in IMPs versus double-dummy par.",
             });
 
             const SEAT_NAMES = ["North", "East", "South", "West"];
@@ -98,20 +98,36 @@
                 return n > 0 ? "+" + n : String(n);
             }
 
+            // A hand rendered as little playing cards per suit.
             function handHtml(handStr, small) {
                 const parts = String(handStr || "").split("."); // S,H,D,C
-                return [["S", "♠"], ["H", "♥"], ["D", "♦"], ["C", "♣"]]
-                    .map(([ch, sym], i) => {
-                        const color =
-                            ch === "H" || ch === "D"
-                                ? "color:#b91c1c;"
-                                : "color:#15803d;";
-                        const cards = escapeHtml(parts[i] || "—")
-                            .split("")
-                            .join(" ");
-                        return `<div class="flex items-baseline gap-1 min-w-0">
-                            <span class="w-4 shrink-0 ${small ? "text-xs" : "text-base"} leading-none" style="${color}">${sym}</span>
-                            <span class="font-headline font-semibold ${small ? "text-[11px] leading-[15px]" : "text-sm sm:text-base"} tracking-wide text-on-surface">${cards || "—"}</span>
+                const suits = [
+                    ["S", "♠", "blk"],
+                    ["H", "♥", "red"],
+                    ["D", "♦", "red"],
+                    ["C", "♣", "blk"],
+                ];
+                return suits
+                    .map(([ch, sym, col], i) => {
+                        const cards = (parts[i] || "").split("");
+                        const tiles = cards.length
+                            ? cards
+                                  .map((c, j) => {
+                                      const ten =
+                                          c === "T"
+                                              ? "font-size:9px;letter-spacing:-0.08em;"
+                                              : "";
+                                      return `<span class="pcard ${col}${small ? " pcard-sm" : ""}" style="--ci:${j * 0.018}s"><span class="r" style="${ten}">${c === "T" ? "10" : escapeHtml(c)}</span><span class="s">${sym}</span></span>`;
+                                  })
+                                  .join("")
+                            : `<span class="text-outline-variant text-xs font-label px-1">—</span>`;
+                        const suitColor =
+                            col === "red"
+                                ? "color:#c0392b;"
+                                : "color:#17252a;";
+                        return `<div class="flex items-center gap-1.5 min-w-0">
+                            <span class="w-4 shrink-0 ${small ? "text-xs" : "text-base"} leading-none" style="${suitColor}">${sym}</span>
+                            <span class="flex flex-wrap gap-[2px]">${tiles}</span>
                         </div>`;
                     })
                     .join("");
@@ -120,8 +136,8 @@
             function hiddenHandHtml() {
                 let cards = "";
                 for (let i = 0; i < 13; i++)
-                    cards += `<span class="card-back"></span>`;
-                return `<div class="mt-1.5 flex gap-[2px] overflow-hidden">${cards}</div>`;
+                    cards += `<span class="card-back" style="--ci:${i}"></span>`;
+                return `<div class="card-fan mt-1 overflow-hidden">${cards}</div>`;
             }
 
             function impsColor(imps) {
@@ -171,16 +187,29 @@
                     return;
                 }
                 if (data.mode === "team") {
+                    // The team table polls continuously (other boards can
+                    // move without this one changing); skip the re-render
+                    // when the whole state is identical so a bid in progress
+                    // is never disturbed.
+                    const changed =
+                        !state ||
+                        state.mode !== "team" ||
+                        state.id !== data.id ||
+                        JSON.stringify(state) !== JSON.stringify(data);
                     state = data;
                     localStorage.setItem(TEAM_KEY, data.id);
                     localStorage.removeItem(BOARD_KEY);
-                } else {
-                    data.mode = "solo";
-                    state = data;
-                    localStorage.setItem(BOARD_KEY, data.id);
-                    localStorage.removeItem(TEAM_KEY);
-                    if (data.stats) stats = data.stats;
+                    busy = false;
+                    autoRetries = 0;
+                    if (changed) render();
+                    else schedulePoll();
+                    return;
                 }
+                data.mode = "solo";
+                state = data;
+                localStorage.setItem(BOARD_KEY, data.id);
+                localStorage.removeItem(TEAM_KEY);
+                if (data.stats) stats = data.stats;
                 busy = false;
                 autoRetries = 0;
                 render();
@@ -216,11 +245,14 @@
 
             async function makeCall(call) {
                 if (!state || busy || state.done || !state.yourTurn) return;
-                const path =
-                    state.mode === "team"
-                        ? `/api/play/team/${state.id}/call`
-                        : `/api/play/${state.id}/call`;
-                await post(path, { call: call });
+                if (state.mode === "team") {
+                    await post(`/api/play/team/${state.id}/call`, {
+                        call: call,
+                        board: state.boardSel,
+                    });
+                } else {
+                    await post(`/api/play/${state.id}/call`, { call: call });
+                }
             }
 
             async function refreshBoard(force) {
@@ -233,18 +265,51 @@
                 )
                     return;
                 if (!force && state.mode === "solo" && state.done) return;
+                // Team tables poll continuously; while the selected board is
+                // waiting for this player, fetch quietly instead of flashing
+                // a spinner over the bidding box.
+                const quiet =
+                    state.mode === "team" && state.yourTurn && !state.done;
                 busy = true;
-                render();
+                if (!quiet) render();
                 try {
                     const path =
                         state.mode === "team"
-                            ? `/api/play/team/${state.id}`
+                            ? `/api/play/team/${state.id}` +
+                              (state.boardSel
+                                  ? `?board=${state.boardSel}`
+                                  : "")
                             : `/api/play/${state.id}`;
                     const res = await fetch(path);
                     await handleResponse(res);
                 } catch (e) {
                     busy = false;
                     render();
+                }
+            }
+
+            // POST /start: deal a fresh 8-board match (table ready screen or
+            // after a match completes)
+            async function teamStart() {
+                if (!state || state.mode !== "team" || busy) return;
+                await post(`/api/play/team/${state.id}/start`);
+            }
+
+            // Switch the table view to another board of the match. The
+            // current board stays on screen while loading (no busy render).
+            async function teamSelectBoard(no) {
+                if (!state || state.mode !== "team" || busy) return;
+                if (no === state.boardSel) return;
+                busy = true;
+                try {
+                    const res = await fetch(
+                        `/api/play/team/${state.id}?board=${no}`,
+                    );
+                    await handleResponse(res);
+                } catch (e) {
+                    busy = false;
+                    showToast("Network error", true);
+                    schedulePoll();
                 }
             }
 
@@ -409,44 +474,58 @@
 
             function seatBox(seat) {
                 const isHuman = state.humanSeat === seat;
+                const named = state.seatNames
+                    ? state.seatNames[String(seat)]
+                    : "";
                 const active = !state.done && state.nextSeat === seat;
                 const dealer = state.dealer === seat;
                 const vulChip = seatIsVul(seat, state.vuln)
-                    ? `<span class="px-1 py-px rounded text-[9px] font-bold uppercase bg-error-container/60 text-on-error-container">vul</span>`
+                    ? `<span class="px-1.5 py-px rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-[#b03226] text-white">vul</span>`
                     : "";
                 const dealerChip = dealer
-                    ? `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-tertiary-container text-on-tertiary-container text-[9px] font-bold border border-white/60" title="Dealer">D</span>`
+                    ? `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gradient-to-b from-gold-light to-gold text-on-gold text-[9px] font-extrabold border border-black/25" title="Dealer">D</span>`
                     : "";
+                const coinCls = isHuman
+                    ? "avatar-you"
+                    : named
+                      ? "avatar-partner"
+                      : "avatar-bot";
+                const coinInitial = isHuman
+                    ? window.currentUser || "?"
+                    : (named || "?");
+                const coinInner = isHuman || named
+                    ? escapeHtml(coinInitial[0].toUpperCase())
+                    : `<span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' 1;">smart_toy</span>`;
                 let status = "";
                 if (active) {
-                    const partner =
-                        state.mode === "team" &&
-                        state.seatNames &&
-                        state.seatNames[String(seat)];
                     const label = isHuman
                         ? "your turn"
-                        : partner
+                        : named
                           ? "partner to act"
                           : "bot thinking…";
-                    status = `<span class="flex items-center gap-1 text-[10px] ${isHuman ? "text-primary font-label font-semibold" : "text-on-surface-variant"}">${busy && !isHuman ? '<span class="material-symbols-outlined text-xs animate-spin">progress_activity</span>' : ""}${label}</span>`;
+                    status = `<span class="flex items-center gap-1 text-[10px] ${isHuman ? "text-[#1e7d47] font-label font-bold" : "text-on-surface-variant font-label"}">${busy && !isHuman ? '<span class="material-symbols-outlined text-xs animate-spin">progress_activity</span>' : ""}${label}</span>`;
                 }
                 let hand;
                 if (state.done && state.hands) {
                     hand = `<div class="mt-1 space-y-0">${handHtml(state.hands[seat], true)}</div>`;
                 } else if (isHuman) {
-                    hand = `<div class="mt-1.5 text-[10px] font-label text-on-surface-variant">your cards below</div>`;
+                    hand = `<div class="mt-1 text-[10px] font-label text-on-surface-variant">your cards below</div>`;
                 } else {
                     hand = hiddenHandHtml();
                 }
                 return `
-                    <div class="bg-surface-container-lowest border ${active ? "border-primary seat-active" : "border-outline-variant/10"} rounded-lg px-2 py-1 min-w-0 transition-all">
-                        <div class="flex items-center gap-1.5">
-                            <span class="material-symbols-outlined text-base hidden sm:inline ${isHuman ? "text-tertiary" : "text-primary"}">${isHuman ? "person" : "smart_toy"}</span>
-                            <span class="font-headline font-bold text-xs sm:text-sm text-on-surface truncate">${SEAT_NAMES[seat]}</span>
-                            ${vulChip}${dealerChip}
+                    <div class="player-plate ${active ? "seat-active" : ""} px-2.5 py-1.5 min-w-0">
+                        <div class="flex items-center gap-2">
+                            <span class="avatar-coin ${coinCls}">${coinInner}</span>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="font-headline font-extrabold text-xs sm:text-sm text-on-surface truncate">${SEAT_NAMES[seat]}</span>
+                                    ${vulChip}${dealerChip}
+                                </div>
+                                <div class="text-[10px] text-on-surface-variant font-label truncate">${seatSub(seat)}</div>
+                            </div>
                         </div>
-                        <div class="text-[10px] text-on-surface-variant font-label truncate">${seatSub(seat)}</div>
-                        <div class="min-h-[13px] mt-0.5">${status}</div>
+                        <div class="min-h-[14px] mt-0.5">${status}</div>
                         ${hand}
                     </div>`;
             }
@@ -500,16 +579,18 @@
 
             function auctionCardHtml() {
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-lg shadow-sm px-1.5 sm:px-3 py-1.5 w-full">
-                        <div class="text-[9px] uppercase tracking-widest text-outline font-label mb-0.5 text-center truncate">
+                    <div class="bg-white/95 backdrop-blur border border-black/15 rounded-xl shadow-[0_4px_14px_rgba(0,0,0,0.25)] px-1.5 sm:px-3 py-1.5 w-full">
+                        <div class="flex items-center justify-center gap-1.5 text-[9px] uppercase tracking-[0.18em] text-[#8a6d1d] font-label mb-0.5 text-center truncate">
+                            <span class="material-symbols-outlined text-[11px]">gavel</span>
                             Auction · dealer ${SEAT_NAMES[state.dealer][0]} · vuln ${VULN_NAMES[state.vuln]}
                         </div>
                         ${auctionTableHtml(state.dealer, state.vuln, state.calls)}
                     </div>`;
             }
 
-            // Compact bidding pad: levels on top, strains + Bid, then
-            // Pass/X/XX, all in one tight card. Rebuilt in place on selection.
+            // Compact bidding pad styled like a real bridge bidding box:
+            // card-like level/strain tiles, green Pass, red Double, blue
+            // Redouble. Rebuilt in place on selection.
             function bidBoxInnerHtml() {
                 const legal = new Set(state.legal || []);
                 const levels = [];
@@ -528,22 +609,15 @@
                         : "";
                 const canBid = token && legal.has(token) && !busy;
 
-                const selCls = "bg-primary text-on-primary shadow-sm";
-                const idleCls =
-                    "bg-surface-container text-on-surface hover:bg-surface-container-high";
-                const disCls = "opacity-25 cursor-not-allowed saturate-0";
-                const levelBtn = (l) => {
-                    const on = l === bidLevelSel;
-                    return `<button data-level="${l}" ${busy ? "disabled" : ""} class="h-8 rounded font-headline font-bold text-sm transition-colors ${on ? selCls : idleCls} ${busy ? disCls : ""}">${l}</button>`;
-                };
+                const levelBtn = (l) =>
+                    `<button data-level="${l}" ${busy ? "disabled" : ""} class="bid-tile ${l === bidLevelSel ? "selected" : ""}">${l}</button>`;
                 const strainBtn = (d) => {
                     const ok = legal.has(bidLevelSel + d);
-                    const on = ok && d === bidStrainSel;
-                    return `<button data-strain="${d}" ${ok && !busy ? "" : "disabled"} class="h-8 rounded font-headline font-bold text-sm transition-colors ${on ? selCls : idleCls} ${ok && !busy ? "" : disCls}">${colorSuits(SUIT_SYMBOL[d])}</button>`;
+                    return `<button data-strain="${d}" ${ok && !busy ? "" : "disabled"} class="bid-tile ${ok && d === bidStrainSel ? "selected" : ""}">${colorSuits(SUIT_SYMBOL[d])}</button>`;
                 };
                 const special = (t, label, cls) => {
                     const ok = legal.has(t) && !busy;
-                    return `<button data-call="${t}" ${ok ? "" : "disabled"} class="h-9 rounded font-label text-xs font-semibold transition-colors ${cls} ${ok ? "" : disCls}">${label}</button>`;
+                    return `<button data-call="${t}" ${ok ? "" : "disabled"} class="bid-tile ${cls}" style="height:2.6rem;font-family:Inter,sans-serif;font-size:12px;font-weight:800;letter-spacing:0.02em;">${label}</button>`;
                 };
                 const bidLabel = canBid
                     ? "Bid " +
@@ -552,7 +626,7 @@
                 return `
                     <div class="w-full max-w-lg mx-auto">
                         <div class="flex items-baseline justify-between mb-1.5">
-                            <span class="text-[10px] uppercase tracking-widest text-outline font-label">Your call</span>
+                            <span class="text-[10px] uppercase tracking-[0.2em] text-outline font-label font-bold">Your call</span>
                             <span class="text-[11px] font-label text-on-surface-variant">${
                                 token
                                     ? "selected " +
@@ -564,24 +638,24 @@
                                     : "pick a level and a strain"
                             }</span>
                         </div>
-                        <div class="grid grid-cols-7 gap-1 mb-1">
+                        <div class="grid grid-cols-7 gap-1.5 mb-1.5">
                             ${levels.map(levelBtn).join("")}
                         </div>
-                        <div class="grid grid-cols-6 gap-1 mb-1">
+                        <div class="grid grid-cols-6 gap-1.5 mb-2">
                             ${SUIT_ORDER.map(strainBtn).join("")}
-                            <button id="bidBtn" ${canBid ? "" : "disabled"} class="h-8 rounded font-label text-xs font-bold transition-colors ${canBid ? "bg-tertiary-container text-on-tertiary-container hover:bg-tertiary-fixed-dim" : "bg-surface-container text-on-surface " + disCls}">${bidLabel}</button>
+                            <button id="bidBtn" ${canBid ? "" : "disabled"} class="bid-tile btn-gold" style="font-family:Inter,sans-serif;font-size:12px;font-weight:800;">${bidLabel}</button>
                         </div>
-                        <div class="grid grid-cols-3 gap-1">
-                            ${special("P", "Pass", "bg-surface-container text-on-surface hover:bg-surface-container-high")}
-                            ${special("X", "Double", "bg-error-container/40 text-on-error-container hover:bg-error-container/70")}
-                            ${special("XX", "Redouble", "bg-tertiary-container/50 text-on-tertiary-container hover:bg-tertiary-container/80")}
+                        <div class="grid grid-cols-3 gap-1.5">
+                            ${special("P", "Pass", "btn-pass")}
+                            ${special("X", "Double", "btn-dbl")}
+                            ${special("XX", "Redouble", "btn-rdbl")}
                         </div>
                     </div>`;
             }
 
             function biddingBoxHtml() {
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 py-2.5">
+                    <div class="game-panel px-3 py-2.5">
                         <span id="bidBox" class="block">${bidBoxInnerHtml()}</span>
                     </div>`;
             }
@@ -620,12 +694,12 @@
             function handStripHtml() {
                 if (!state || state.done || !state.hand) return "";
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 py-2">
+                    <div class="game-panel px-3 py-2">
                         <div class="flex items-center justify-between mb-1">
-                            <span class="text-[10px] uppercase tracking-widest text-outline font-label">Your hand</span>
+                            <span class="text-[10px] uppercase tracking-[0.2em] text-outline font-label font-bold">Your hand</span>
                             <span class="text-[10px] text-on-surface-variant font-label">${SEAT_NAMES[state.humanSeat]} · ${VULN_NAMES[state.vuln]} vuln</span>
                         </div>
-                        <div class="grid grid-cols-1 gap-y-0.5">
+                        <div class="grid grid-cols-1 gap-y-1">
                             ${handHtml(state.hand, false)}
                         </div>
                     </div>`;
@@ -644,35 +718,52 @@
                     const need = c.level + 6;
                     const margin = r.tricks - need;
                     const made = margin >= 0;
-                    contractLine = `${c.level}${SUIT_SYMBOL[c.denom]}${pen ? '<span class="text-error font-semibold">' + escapeHtml(pen) + "</span>" : ""} by ${SEAT_NAMES[c.declarer]} (${side})`;
+                    contractLine = `${c.level}${SUIT_SYMBOL[c.denom]}${pen ? '<span class="text-[#b03226] font-bold">' + escapeHtml(pen) + "</span>" : ""} by ${SEAT_NAMES[c.declarer]} (${side})`;
                     trickLine = `${r.tricks} double-dummy tricks — ${made ? "made " + (margin > 0 ? "+" + margin : "exactly") : margin + " down"}`;
                 } else {
                     contractLine = "Passed out";
                     trickLine = "no contract was reached";
                 }
                 const st = state.stats || {};
+                const won = r.imps > 0;
+                const lost = r.imps < 0;
+                const trophyCls = won
+                    ? "bg-[#37b26a]/15 text-[#1e7d47]"
+                    : lost
+                      ? "bg-[#e2543f]/15 text-[#b03226]"
+                      : "bg-surface-container text-on-surface-variant";
+                const trophyIcon = won
+                    ? "emoji_events"
+                    : lost
+                      ? "trending_down"
+                      : "balance";
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 sm:px-4 py-2 flex flex-wrap items-center gap-x-6 gap-y-2">
-                        <div class="min-w-0">
-                            <div class="font-headline font-bold text-base text-on-surface">${contractLine}</div>
-                            <div class="text-xs text-on-surface-variant mt-0.5">${trickLine}</div>
-                            <div class="text-[11px] text-on-surface-variant mt-0.5 font-label">
-                                Par (N-S) <span class="font-semibold">${scoreText(r.parNs)}</span>
-                                · Your score (N-S) <span class="font-semibold">${scoreText(r.scoreNs)}</span>
+                    <div class="game-panel pop-in ${won ? "result-glow-pos" : lost ? "result-glow-neg" : ""} px-3 sm:px-4 py-2.5 flex flex-wrap items-center gap-x-6 gap-y-2">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="flex items-center justify-center w-11 h-11 rounded-2xl ${trophyCls} shrink-0">
+                                <span class="material-symbols-outlined text-2xl">${trophyIcon}</span>
+                            </span>
+                            <div class="min-w-0">
+                                <div class="font-headline font-extrabold text-base text-on-surface">${contractLine}</div>
+                                <div class="text-xs text-on-surface-variant mt-0.5">${trickLine}</div>
+                                <div class="text-[11px] text-on-surface-variant mt-0.5 font-label">
+                                    Par (N-S) <span class="font-semibold">${scoreText(r.parNs)}</span>
+                                    · Your score (N-S) <span class="font-semibold">${scoreText(r.scoreNs)}</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="text-center px-4 py-1 rounded-lg bg-surface-container-low">
-                            <div class="text-[9px] uppercase tracking-widest text-outline font-label">IMPs vs par</div>
-                            <div class="text-2xl font-headline font-extrabold leading-tight ${impsColor(r.imps)}">${signed(r.imps)}</div>
+                        <div class="text-center px-4 py-1 rounded-2xl bg-surface-container-low">
+                            <div class="text-[9px] uppercase tracking-[0.2em] text-outline font-label font-bold">IMPs vs par</div>
+                            <div class="victory-imps text-3xl font-headline font-extrabold leading-tight ${impsColor(r.imps)}">${signed(r.imps)}</div>
                         </div>
                         <div class="text-center">
                             <div class="text-[9px] uppercase tracking-widest text-outline font-label">Average</div>
-                            <div class="text-lg font-headline font-bold leading-tight ${impsColor(st.avgImps)}">${st.avgImps === undefined ? "—" : signed(st.avgImps.toFixed(2))}</div>
+                            <div class="text-lg font-headline font-extrabold leading-tight ${impsColor(st.avgImps)}">${st.avgImps === undefined ? "—" : signed(st.avgImps.toFixed(2))}</div>
                             <div class="text-[10px] text-on-surface-variant font-label">${st.boards || 0} boards</div>
                         </div>
-                        <button id="nextBoardBtn" class="ml-auto shrink-0 flex items-center gap-2 px-5 py-2 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
-                            <span class="material-symbols-outlined text-sm">casino</span>
-                            Next board
+                        <button id="nextBoardBtn" class="btn-gold ml-auto shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-xl font-label text-sm font-bold">
+                            <span class="material-symbols-outlined text-sm">${state.mode === "team" && state.matchDone ? "restart_alt" : "casino"}</span>
+                            ${state.mode === "team" && state.matchDone ? "Start next match" : "Next board"}
                         </button>
                     </div>`;
             }
@@ -706,10 +797,86 @@
                 } else {
                     inner = spinner("Waiting for the bots to bid…");
                 }
+                // On a table, other boards of the match may already be
+                // waiting for this player while the selected one is quiet.
+                const otherYours =
+                    team &&
+                    !state.done &&
+                    (state.boards || []).find(
+                        (b) => !b.done && b.yourTurn && b.no !== state.boardSel,
+                    );
+                if (otherYours) {
+                    inner += `<button data-board="${otherYours.no}" class="ml-auto shrink-0 flex items-center gap-1 px-3 py-1.5 btn-gold rounded-xl font-label text-xs font-bold">
+                        <span class="material-symbols-outlined text-sm">touch_app</span>Board ${otherYours.no} awaits your call
+                    </button>`;
+                }
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm px-3 py-2.5 flex items-center gap-3">
+                    <div class="game-panel px-3 py-2.5 flex items-center gap-3 flex-wrap">
                         ${inner}
                     </div>`;
+            }
+
+            // Chips for every board of the current match: click to switch.
+            // Done boards carry their IMPs; boards waiting for this player
+            // pulse green so parallel bidding is discoverable. A little XP
+            // bar tracks match progress.
+            function boardStripHtml() {
+                if (state.mode !== "team" || !state.boards) return "";
+                const list = state.boards;
+                if (!list.length) return "";
+                const chips = list
+                    .map((b) => {
+                        let cls = "";
+                        let right = "";
+                        if (b.done) {
+                            right = `<span class="font-extrabold ${impsColor(b.imps)}">${signed(b.imps)}</span>`;
+                        } else if (b.yourTurn) {
+                            cls = "chip-your-turn";
+                            right = `<span class="material-symbols-outlined text-[13px] leading-none" style="font-variation-settings:'FILL' 1;">touch_app</span>`;
+                        }
+                        const sel = b.no === state.boardSel ? "chip-selected" : "";
+                        const title = b.done
+                            ? `Board ${b.no} · ${b.contract || "passed out"} · ${signed(b.imps)} IMPs`
+                            : `Board ${b.no} · dealer ${SEAT_NAMES[b.dealer][0]} · vuln ${VULN_NAMES[b.vuln]}` +
+                              (b.yourTurn ? " · your turn" : "");
+                        return `<button data-board="${b.no}" title="${title}" class="board-chip ${cls} ${sel}">
+                            <span>${b.no}</span>${right}
+                        </button>`;
+                    })
+                    .join("");
+                const done = list.filter((b) => b.done).length;
+                const pct = Math.round((done / list.length) * 100);
+                const waiting = list.filter((b) => !b.done && b.yourTurn)
+                    .length;
+                return `
+                    <div class="flex items-center gap-1.5 flex-wrap shrink-0 min-w-0">
+                        ${chips}
+                        ${waiting > 0 ? `<span class="text-[10px] text-[#1e7d47] font-label font-bold ml-1 whitespace-nowrap">${waiting} board${waiting === 1 ? "" : "s"} to bid</span>` : ""}
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                        <div class="xp-bar flex-1 min-w-[80px] max-w-[240px]"><div class="xp-bar-fill" style="width:${pct}%"></div></div>
+                        <span class="text-[10px] font-label font-semibold text-on-surface-variant whitespace-nowrap">${done}/${list.length} boards</span>
+                    </div>`;
+            }
+
+            // The next board to jump to from a finished one: prefer a board
+            // waiting for this player, else the next unfinished board.
+            function nextTeamBoardTarget() {
+                const list = state.boards || [];
+                if (!list.length) return null;
+                const idx = Math.max(
+                    list.findIndex((b) => b.no === state.boardSel),
+                    0,
+                );
+                for (let pass = 0; pass < 2; pass++) {
+                    for (let k = 1; k <= list.length; k++) {
+                        const b = list[(idx + k) % list.length];
+                        if (b.done) continue;
+                        if (pass === 0 && !b.yourTurn) continue;
+                        return b.no;
+                    }
+                }
+                return null;
             }
 
             function playHeaderHtml() {
@@ -718,24 +885,28 @@
                 if (team) {
                     const partner =
                         state.yourSeat === 2 ? state.partner : state.host;
-                    left = `Table · you &amp; ${escapeHtml(partner)} vs E/W bots · board ${state.boardNo || "—"}`;
+                    const list = state.boards || [];
+                    const done = list.filter((b) => b.done).length;
+                    left = state.noBoard
+                        ? `Table · you &amp; ${escapeHtml(partner)} vs E/W bots · waiting to start`
+                        : `Table · you &amp; ${escapeHtml(partner)} vs E/W bots · match ${done}/${list.length} boards · <span class="${impsColor(state.matchImps)}">${signed(state.matchImps || 0)} IMPs</span>`;
                     right = `
-                        <button id="historyBtn" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                        <button id="historyBtn" class="flex items-center gap-1 px-3.5 py-1.5 bg-white text-on-surface-variant rounded-full border border-black/10 font-label text-xs font-semibold hover:text-on-surface hover:border-black/20 shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-all">
                             <span class="material-symbols-outlined text-sm">history</span>Past boards
                         </button>
-                        <button id="leaveBtn" title="Leave the table (it stays open)" class="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                        <button id="leaveBtn" title="Leave the table (it stays open)" class="shrink-0 flex items-center gap-1 px-3.5 py-1.5 bg-white text-on-surface-variant rounded-full border border-black/10 font-label text-xs font-semibold hover:text-[#b03226] hover:border-[#b03226]/30 shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-all">
                             <span class="material-symbols-outlined text-sm">logout</span>Leave
                         </button>`;
                 } else {
                     left = `Board ${stats ? stats.boards + (state.done ? 0 : 1) : 1} · you sit South, North is your partner`;
                     right = `
-                        <button id="historyBtn" class="flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                        <button id="historyBtn" class="flex items-center gap-1 px-3.5 py-1.5 bg-white text-on-surface-variant rounded-full border border-black/10 font-label text-xs font-semibold hover:text-on-surface hover:border-black/20 shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-all">
                             <span class="material-symbols-outlined text-sm">history</span>Past boards
                         </button>
-                        <button id="leaveBtn" title="Leave this board (not scored)" class="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                        <button id="leaveBtn" title="Leave this board (not scored)" class="shrink-0 flex items-center gap-1 px-3.5 py-1.5 bg-white text-on-surface-variant rounded-full border border-black/10 font-label text-xs font-semibold hover:text-[#b03226] hover:border-[#b03226]/30 shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-all">
                             <span class="material-symbols-outlined text-sm">logout</span>Leave
                         </button>
-                        <button id="abandonBtn" title="Abandon this board and deal a new solo board" class="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-xs hover:bg-surface-container-high transition-colors">
+                        <button id="abandonBtn" title="Abandon this board and deal a new solo board" class="shrink-0 flex items-center gap-1 px-3.5 py-1.5 btn-gold rounded-full font-label text-xs font-bold">
                             <span class="material-symbols-outlined text-sm">restart_alt</span>New board
                         </button>`;
                 }
@@ -748,13 +919,25 @@
 
             function teamReadyHtml() {
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl px-5 py-6 text-center max-w-sm m-auto">
-                        <span class="material-symbols-outlined text-primary text-4xl">playing_cards</span>
-                        <p class="font-headline font-bold text-on-surface mt-2">Table ready</p>
-                        <p class="text-xs text-on-surface-variant font-label mt-1">You &amp; ${escapeHtml(state.partner)} vs the East/West bots. Dealer and vulnerability follow the standard board rotation.</p>
-                        <button id="dealFirstBtn" class="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
-                            <span class="material-symbols-outlined text-sm">casino</span>Deal board 1
+                    <div class="game-panel pop-in max-w-sm mx-auto mt-6 px-6 py-8 text-center border-2 border-dashed border-[#2b7a4b]/40">
+                        <span class="flex items-center justify-center w-16 h-16 mx-auto rounded-full bg-gradient-to-b from-gold-light to-gold shadow-[0_3px_0_rgba(0,0,0,0.3)]">
+                            <span class="material-symbols-outlined text-3xl text-on-gold" style="font-variation-settings:'FILL' 1;">playing_cards</span>
+                        </span>
+                        <p class="font-headline font-extrabold text-xl text-on-surface mt-3">Table ready</p>
+                        <p class="text-xs text-on-surface-variant font-label mt-1.5 leading-relaxed">You &amp; ${escapeHtml(state.partner)} vs the East/West bots. An 8-board match is dealt all at once — every board runs its own auction, and you bid them in any order, switching freely between them.</p>
+                        <button id="dealFirstBtn" class="btn-gold mt-5 inline-flex items-center gap-2 px-6 py-3 rounded-xl font-label text-sm font-bold">
+                            <span class="material-symbols-outlined text-sm">casino</span>Start 8-board match
                         </button>
+                    </div>`;
+            }
+
+            function dealingHtml() {
+                return `
+                    <div class="game-panel pop-in max-w-sm mx-auto mt-6 px-6 py-10 flex flex-col items-center gap-3">
+                        <div class="card-fan-deco">
+                            <span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span>
+                        </div>
+                        ${spinner("Dealing the 8 boards and letting the bots open…")}
                     </div>`;
             }
 
@@ -776,19 +959,23 @@
                 }
                 const tableBody =
                     team && state.noBoard
-                        ? teamReadyHtml()
+                        ? busy
+                            ? dealingHtml()
+                            : teamReadyHtml()
                         : `
-                            <div class="grid grid-cols-3 gap-1 sm:gap-2 items-center max-w-3xl m-auto w-full">
-                                <div class="col-span-3 sm:hidden">${auctionCardHtml()}</div>
-                                <div></div>
-                                ${seatBox(0)}
-                                <div></div>
-                                ${seatBox(3)}
-                                <div class="flex items-center justify-center"><div class="hidden sm:block w-full">${auctionCardHtml()}</div></div>
-                                ${seatBox(1)}
-                                <div></div>
-                                ${seatBox(2)}
-                                <div></div>
+                            <div class="felt w-full max-w-3xl mx-auto px-2 py-3 sm:px-5 sm:py-4">
+                                <div class="grid grid-cols-3 gap-1.5 sm:gap-3 items-center max-w-3xl m-auto w-full relative">
+                                    <div class="col-span-3 sm:hidden">${auctionCardHtml()}</div>
+                                    <div></div>
+                                    ${seatBox(0)}
+                                    <div></div>
+                                    ${seatBox(3)}
+                                    <div class="flex items-center justify-center"><div class="hidden sm:block w-full">${auctionCardHtml()}</div></div>
+                                    ${seatBox(1)}
+                                    <div></div>
+                                    ${seatBox(2)}
+                                    <div></div>
+                                </div>
                             </div>`;
                 const dock = state.noBoard
                     ? ""
@@ -802,6 +989,7 @@
                 return `
                     <div class="flex-1 min-h-0 flex flex-col gap-1.5">
                         ${playHeaderHtml()}
+                        ${boardStripHtml()}
                         <div id="tableBox" class="flex-1 min-h-0 flex flex-col overflow-y-auto">
                             ${tableBody}
                         </div>
@@ -812,22 +1000,24 @@
             function statsBarHtml() {
                 if (!stats || !stats.boards) return "";
                 return `
-                    <div class="flex flex-wrap items-center gap-x-5 gap-y-1 mb-3 text-xs font-label text-on-surface-variant">
-                        <span>Avg <b class="font-headline text-sm ${impsColor(stats.avgImps)}">${signed(stats.avgImps.toFixed(2))}</b> IMPs/board vs par</span>
-                        <span>${stats.boards} boards</span>
-                        <span>Total <b class="font-headline text-sm ${impsColor(stats.impsTotal)}">${signed(stats.impsTotal)}</b> IMPs</span>
+                    <div class="flex flex-wrap items-center gap-2 mb-4">
+                        <span class="stat-pill"><span class="material-symbols-outlined text-base text-[#d4a017]">military_tech</span>Avg <b class="font-headline text-sm ${impsColor(stats.avgImps)}">${signed(stats.avgImps.toFixed(2))}</b> IMPs/board vs par</span>
+                        <span class="stat-pill"><span class="material-symbols-outlined text-base text-[#2b7a4b]">style</span><b class="font-headline text-sm">${stats.boards}</b> boards</span>
+                        <span class="stat-pill"><span class="material-symbols-outlined text-base text-[#2a5193]">trending_up</span>Total <b class="font-headline text-sm ${impsColor(stats.impsTotal)}">${signed(stats.impsTotal)}</b> IMPs</span>
                     </div>`;
             }
 
             function soloCardHtml() {
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm p-4 flex flex-col">
-                        <span class="material-symbols-outlined text-primary text-3xl">smart_toy</span>
-                        <div class="font-headline font-bold text-on-surface mt-2">Solo vs 3 bots</div>
-                        <p class="text-sm text-on-surface-variant mt-1 flex-1">
+                    <div class="game-panel game-panel-hover p-5 flex flex-col">
+                        <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-b from-[#5b8def] to-[#2a5193] shadow-[0_3px_0_rgba(0,0,0,0.25)]">
+                            <span class="material-symbols-outlined text-2xl text-white" style="font-variation-settings:'FILL' 1;">smart_toy</span>
+                        </span>
+                        <div class="font-headline font-extrabold text-on-surface mt-3 text-lg">Solo vs 3 bots</div>
+                        <p class="text-sm text-on-surface-variant mt-1.5 flex-1 leading-relaxed">
                             You sit South; a bidding-dt bot fills every other seat. Each board is scored in IMPs against double-dummy par.
                         </p>
-                        <button id="dealBtn" class="mt-4 inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                        <button id="dealBtn" class="btn-gold mt-4 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-label text-sm font-bold">
                             <span class="material-symbols-outlined text-sm">casino</span>Deal a board
                         </button>
                     </div>`;
@@ -835,19 +1025,21 @@
 
             function teamCardHtml() {
                 return `
-                    <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl shadow-sm p-4 flex flex-col">
-                        <span class="material-symbols-outlined text-tertiary text-3xl">group</span>
-                        <div class="font-headline font-bold text-on-surface mt-2">
+                    <div class="game-panel game-panel-hover p-5 flex flex-col">
+                        <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-b from-[#43b78d] to-[#1c5535] shadow-[0_3px_0_rgba(0,0,0,0.25)]">
+                            <span class="material-symbols-outlined text-2xl text-white" style="font-variation-settings:'FILL' 1;">group</span>
+                        </span>
+                        <div class="font-headline font-extrabold text-on-surface mt-3 text-lg">
                             Partner table
-                            <span class="ml-1 px-1.5 py-px rounded text-[9px] font-bold uppercase bg-tertiary-container/60 text-on-tertiary-container align-middle">2 players vs 2 bots</span>
+                            <span class="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-gold/90 text-on-gold align-middle">2 players vs 2 bots</span>
                         </div>
-                        <p class="text-sm text-on-surface-variant mt-1 flex-1">
-                            Team up with a partner (North–South) against the East/West bots. Tables stay open while you are disconnected, so you can run several games with the same partner and resume any time.
+                        <p class="text-sm text-on-surface-variant mt-1.5 flex-1 leading-relaxed">
+                            Team up with a partner (North–South) against the East/West bots. Each match is 8 boards dealt all at once — bid them in any order, switching between boards as the auctions unfold. Tables stay open while you are disconnected.
                         </p>
                         <div class="mt-4 flex flex-col gap-2">
-                            <input id="partnerName" list="partnerList" placeholder="Partner username" autocomplete="off" class="unlock-input !py-2 text-sm" />
+                            <input id="partnerName" list="partnerList" placeholder="Partner username" autocomplete="off" class="unlock-input !py-2.5 text-sm" />
                             <datalist id="partnerList"></datalist>
-                            <button id="createTableBtn" class="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                            <button id="createTableBtn" class="btn-gold inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-label text-sm font-bold">
                                 <span class="material-symbols-outlined text-sm">add</span>Create a table
                             </button>
                         </div>
@@ -865,26 +1057,32 @@
                         let status, cls;
                         if (g.inProgress && g.yourTurn) {
                             status = "your turn";
-                            cls = "bg-primary text-on-primary";
+                            cls = "bg-gradient-to-b from-[#37b26a] to-[#1e7d47] text-white";
                         } else if (g.inProgress) {
                             status = g.boards
-                                ? "partner / bots to act"
+                                ? "match in progress"
                                 : "in progress";
                             cls = "bg-surface-container text-on-surface-variant";
                         } else {
-                            status = g.boards ? "board complete" : "ready to deal";
-                            cls = "bg-secondary-container text-on-secondary-container";
+                            status = g.boards
+                                ? "match complete"
+                                : "ready to start";
+                            cls = "bg-gold/20 text-[#8a6d1d]";
                         }
                         return `
-                        <div class="flex items-center gap-3 px-3 py-2 bg-surface-container-lowest border border-outline-variant/10 rounded-xl">
-                            <span class="material-symbols-outlined text-lg text-primary">group</span>
+                        <div class="game-panel flex items-center gap-3 px-3 py-2.5">
+                            <span class="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-b from-[#43b78d] to-[#1c5535] shrink-0">
+                                <span class="material-symbols-outlined text-lg text-white" style="font-variation-settings:'FILL' 1;">group</span>
+                            </span>
                             <div class="min-w-0 flex-1">
-                                <div class="text-sm font-label text-on-surface truncate">You &amp; ${label}</div>
+                                <div class="text-sm font-label font-semibold text-on-surface truncate">You &amp; ${label}</div>
                                 <div class="text-[11px] text-on-surface-variant font-label">${g.boards} board${g.boards === 1 ? "" : "s"} · ${timeAgo(g.updated)}</div>
                             </div>
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap ${cls}">${status}</span>
-                            <button data-open-game="${g.id}" class="shrink-0 px-3 py-1.5 bg-primary text-on-primary rounded font-label text-xs hover:bg-primary-dim transition-colors">Resume</button>
-                            <button data-del-game="${g.id}" title="Delete table" class="shrink-0 material-symbols-outlined text-base text-on-surface-variant hover:text-error">delete</button>
+                            <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider whitespace-nowrap ${cls}">${status}</span>
+                            <button data-open-game="${g.id}" class="btn-gold shrink-0 px-4 py-2 rounded-xl font-label text-xs font-bold">Resume</button>
+                            <button data-del-game="${g.id}" title="Delete table" class="shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-on-surface-variant hover:bg-[#e2543f]/15 hover:text-[#b03226] transition-colors">
+                                <span class="material-symbols-outlined text-base">delete</span>
+                            </button>
                         </div>`;
                     })
                     .join("");
@@ -914,12 +1112,14 @@
                 return `
                     <div class="mt-8">
                         <div class="flex items-center justify-between mb-2">
-                            <div class="text-[10px] uppercase tracking-widest text-outline font-label">Recent solo boards</div>
-                            <button id="historyBtn" class="flex items-center gap-1 text-xs font-label text-primary hover:text-primary-dim">
-                                <span class="material-symbols-outlined text-sm">history</span>Review cards &amp; auctions
+                            <div class="text-[10px] uppercase tracking-[0.2em] text-outline font-label font-bold flex items-center gap-1.5">
+                                <span class="material-symbols-outlined text-sm text-[#d4a017]">history</span>Recent solo boards
+                            </div>
+                            <button id="historyBtn" class="flex items-center gap-1 text-xs font-label font-semibold text-[#2b7a4b] hover:text-[#1e7d47]">
+                                <span class="material-symbols-outlined text-sm">style</span>Review cards &amp; auctions
                             </button>
                         </div>
-                        <div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl overflow-x-auto">
+                        <div class="game-panel overflow-x-auto">
                             <table class="w-full border-collapse min-w-[520px]">
                                 <thead><tr>
                                     <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-outline font-label">When</th>
@@ -947,11 +1147,13 @@
 
             function loginCardHtml() {
                 return `
-                    <div class="text-center py-14 bg-surface-container-lowest rounded-xl border border-outline-variant/10">
-                        <span class="material-symbols-outlined text-primary text-5xl mb-4">lock</span>
-                        <p class="text-on-surface text-lg font-headline font-semibold">Log in to play</p>
-                        <p class="text-sm text-on-surface-variant mt-2">Solo history and persistent partner tables are kept for your account.</p>
-                        <button id="loginBtn" class="mt-6 inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">
+                    <div class="game-panel pop-in py-12 px-6 text-center">
+                        <div class="card-fan-deco">
+                            <span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span>
+                        </div>
+                        <p class="text-on-surface text-xl font-headline font-extrabold mt-2">Log in to play</p>
+                        <p class="text-sm text-on-surface-variant mt-2 max-w-sm mx-auto leading-relaxed">Solo history and persistent partner tables are kept for your account. Climb the IMP ladder.</p>
+                        <button id="loginBtn" class="btn-gold mt-6 inline-flex items-center gap-2 px-7 py-3 rounded-xl font-label text-sm font-bold">
                             <span class="material-symbols-outlined text-sm">login</span>
                             Log in
                         </button>
@@ -1228,15 +1430,28 @@
                 const leave = document.getElementById("leaveBtn");
                 if (leave) leave.onclick = leaveTable;
                 const first = document.getElementById("dealFirstBtn");
-                if (first) first.onclick = teamNext;
+                if (first) first.onclick = teamStart;
                 const abandon = document.getElementById("abandonBtn");
                 if (abandon) abandon.onclick = () => newBoard();
                 const next = document.getElementById("nextBoardBtn");
                 if (next)
-                    next.onclick = () =>
-                        state && state.mode === "team"
-                            ? teamNext()
-                            : newBoard();
+                    next.onclick = () => {
+                        if (!state) return;
+                        if (state.mode === "team") {
+                            if (state.matchDone) {
+                                teamStart();
+                                return;
+                            }
+                            const target = nextTeamBoardTarget();
+                            if (target) teamSelectBoard(target);
+                        } else {
+                            newBoard();
+                        }
+                    };
+                content.querySelectorAll("[data-board]").forEach((btn) => {
+                    btn.onclick = () =>
+                        teamSelectBoard(parseInt(btn.dataset.board, 10));
+                });
                 content.querySelectorAll("[data-call]").forEach((btn) => {
                     btn.onclick = () => makeCall(btn.dataset.call);
                 });
@@ -1253,11 +1468,11 @@
                 pollTimer = null;
                 if (!window.currentUser || busy) return;
                 if (state && state.mode === "team") {
-                    // Poll whenever the table can move without us: partner or
-                    // bots to act, a board just finished, or nobody joined yet.
-                    if (!(state.yourTurn && !state.done && !state.noBoard)) {
-                        pollTimer = setTimeout(() => refreshBoard(true), 3000);
-                    }
+                    // Always poll the table: the partner may act on another
+                    // board of the match while the selected one is quiet.
+                    // handleResponse skips the re-render when nothing
+                    // actually changed.
+                    pollTimer = setTimeout(() => refreshBoard(true), 3000);
                     return;
                 }
                 if (state) {

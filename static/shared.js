@@ -20,7 +20,7 @@ if (typeof tailwind !== 'undefined') {
                     "on-tertiary-fixed": "#402d00",
                     primary: "#385da0",
                     "secondary-fixed": "#c9e7f7",
-                    background: "#f9f9f9",
+                    background: "#f2f2ee",
                     "tertiary-container": "#fec330",
                     "inverse-primary": "#93b6ff",
                     "surface-container-highest": "#dde4e5",
@@ -56,6 +56,16 @@ if (typeof tailwind !== 'undefined') {
                     "secondary-dim": "#3a5764",
                     "tertiary-fixed-dim": "#efb520",
                     "on-primary": "#f7f7ff",
+                    // game palette
+                    felt: "#2b7a4b",
+                    "felt-dark": "#1c5535",
+                    "felt-deep": "#0f3a24",
+                    gold: "#d4a017",
+                    "gold-light": "#f2ca4c",
+                    "on-gold": "#241a02",
+                    ink: "#10161e",
+                    "ink-light": "#1a2432",
+                    "ink-lighter": "#263447",
                 },
                 fontFamily: {
                     headline: ["Manrope"],
@@ -63,15 +73,31 @@ if (typeof tailwind !== 'undefined') {
                     label: ["Inter"],
                 },
                 borderRadius: {
-                    DEFAULT: "0.125rem",
-                    lg: "0.25rem",
-                    xl: "0.5rem",
+                    DEFAULT: "0.1875rem",
+                    lg: "0.375rem",
+                    xl: "0.75rem",
+                    "2xl": "1rem",
                     full: "0.75rem",
                 },
             },
         },
     };
 }
+
+// Suit-spade favicon for every page
+(function () {
+    const link = document.createElement("link");
+    link.rel = "icon";
+    link.href =
+        "data:image/svg+xml," +
+        encodeURIComponent(
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>" +
+            "<rect width='24' height='24' rx='5' fill='#10161e'/>" +
+            "<path d='M12 3.5 5.2 10.4c-1.7 1.8-1.5 4.4.2 5.6 1.4.9 3 .6 4-.4l-1.1 4h7.4l-1.1-4c1 1 2.6 1.3 4 .4 1.7-1.2 1.9-3.8.2-5.6L12 3.5z' fill='#f2ca4c'/>" +
+            "</svg>",
+        );
+    document.head.appendChild(link);
+})();
 
 // Escape a string for safe insertion into innerHTML
 function escapeHtml(text) {
@@ -134,16 +160,16 @@ function applyAuthUI() {
     if (authArea) {
         authArea.innerHTML = window.currentUser
             ? `<div class="flex items-center gap-1.5 sm:gap-2">
-                    <span class="hidden md:flex items-center gap-1 px-2 py-1 bg-surface-container-low rounded-full text-xs font-label text-on-surface-variant">
-                        <span class="material-symbols-outlined text-sm">person</span>
+                    <span class="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-white/10 border border-white/15 rounded-full text-xs font-label text-white/85">
+                        <span class="flex items-center justify-center w-4 h-4 rounded-full bg-gradient-to-b from-gold-light to-gold text-on-gold text-[9px] font-headline font-extrabold">${escapeHtml(window.currentUser[0] || "?").toUpperCase()}</span>
                         ${escapeHtml(window.currentUser)}
                     </span>
-                    <button onclick="logoutNow()" title="Log out" class="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">
+                    <button onclick="logoutNow()" title="Log out" class="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-white/10 border border-white/15 text-white/80 rounded font-label text-sm hover:bg-white/20 hover:text-white transition-colors">
                         <span class="material-symbols-outlined text-sm">logout</span>
                         <span class="hidden sm:inline">Log out</span>
                     </button>
                </div>`
-            : `<button onclick="showAuthDialog('login')" title="Log in" class="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-tertiary-container/40 text-on-tertiary-container rounded font-label text-sm hover:bg-tertiary-container/70 transition-colors">
+            : `<button onclick="showAuthDialog('login')" title="Log in" class="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 bg-gradient-to-b from-gold-light to-gold text-on-gold rounded-full font-label text-sm font-semibold hover:brightness-105 shadow-[0_2px_0_rgba(0,0,0,0.35)] transition-all active:translate-y-px active:shadow-none">
                     <span class="material-symbols-outlined text-sm">login</span>
                     <span class="hidden sm:inline">Log in</span>
                </button>`;
@@ -474,12 +500,12 @@ async function deleteCurrentTree() {
 function renderLayout(options) {
     // options: { mode: 'view' | 'edit' | 'practice' | 'play' | 'index', title: '', titleId: '', subtitle: '', badge: '', badgeColor: '' }
     const mode = options.mode || 'index';
-    const badgeColor = options.badgeColor || (mode === 'edit' ? 'bg-primary-container text-on-primary-container' : 'bg-tertiary-container text-on-tertiary-container');
+    const badgeColor = options.badgeColor || 'bg-gold/90 text-on-gold';
     const modeLabel = mode === 'edit' ? 'Edit Mode' : mode === 'view' ? 'View Mode' : mode === 'practice' ? 'Practice Mode' : mode === 'play' ? 'Play Mode' : 'Home';
 
-    const btnGhost = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-surface-container-highest text-on-surface rounded font-label text-sm hover:bg-surface-container-high transition-colors no-underline";
-    const btnPrimary = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors no-underline";
-    const btnDanger = "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-error-container/30 text-on-error-container rounded font-label text-sm hover:bg-error-container/60 transition-colors";
+    const btnGhost = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-white text-ink rounded font-label text-sm hover:bg-white/90 shadow-sm transition-all no-underline active:translate-y-px";
+    const btnPrimary = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-gradient-to-b from-gold-light to-gold text-on-gold rounded font-label text-sm hover:brightness-105 shadow-[0_2px_0_rgba(0,0,0,0.3)] transition-all no-underline active:translate-y-px active:shadow-none";
+    const btnDanger = "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-error-container/40 text-on-error-container rounded font-label text-sm hover:bg-error-container/70 transition-all active:translate-y-px";
     const deleteBtn = `
         <button onclick="deleteCurrentTree()" title="Delete system" data-owner-required style="display:none;" class="${btnDanger}">
             <span class="material-symbols-outlined text-sm">delete</span>
@@ -543,83 +569,100 @@ function renderLayout(options) {
         `;
     }
 
-    const navActive = "text-[#2F5597] font-bold border-b-2 border-[#2F5597] pb-1 cursor-pointer duration-200 ease-in-out no-underline";
-    const navIdle = "text-[#2d3435]/60 hover:text-[#2d3435] pb-1 cursor-pointer duration-200 ease-in-out no-underline";
-    const sideActive = "text-[#2F5597] border-l-4 border-[#7a5a00] pl-4 bg-[#ffffff]/50";
-    const sideIdle = "text-[#2d3435] opacity-70 hover:opacity-100 pl-5 hover:bg-[#e4e9ea] dark:hover:bg-slate-800";
-    const sideLink = "flex items-center h-10 cursor-pointer transition-all duration-300 ease-out font-inter text-xs uppercase tracking-widest no-underline";
+    const navBase = "flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-headline font-bold text-sm tracking-tight transition-all no-underline";
+    const navActive = `${navBase} bg-white/12 text-gold-light shadow-[inset_0_0_0_1px_rgba(242,202,76,0.35)]`;
+    const navIdle = `${navBase} text-white/60 hover:text-white hover:bg-white/10`;
+
+    const sideBase = "flex items-center gap-3 h-11 px-4 mx-3 rounded-xl font-label text-xs uppercase tracking-widest transition-all no-underline";
+    const sideActive = `${sideBase} bg-white/10 text-gold-light shadow-[inset_0_0_0_1px_rgba(242,202,76,0.3)]`;
+    const sideIdle = `${sideBase} text-white/55 hover:text-white hover:bg-white/8`;
+    const sideLink = "flex items-center cursor-pointer";
+
+    const sideAction = mode === 'play' ? `
+        <button onclick="newBoard(); closeSidebar();" class="mt-5 w-full py-2.5 bg-gradient-to-b from-gold-light to-gold text-on-gold rounded-xl font-label text-xs font-bold tracking-widest uppercase flex items-center justify-center gap-2 shadow-[0_3px_0_rgba(0,0,0,0.45)] hover:brightness-105 transition-all active:translate-y-0.5 active:shadow-none">
+            <span class="material-symbols-outlined text-sm">casino</span>
+            New Board
+        </button>
+    ` : mode === 'index' ? `
+        <button onclick="createTree(); closeSidebar();" class="mt-5 w-full py-2.5 bg-gradient-to-b from-gold-light to-gold text-on-gold rounded-xl font-label text-xs font-bold tracking-widest uppercase flex items-center justify-center gap-2 shadow-[0_3px_0_rgba(0,0,0,0.45)] hover:brightness-105 transition-all active:translate-y-0.5 active:shadow-none">
+            <span class="material-symbols-outlined text-sm">add</span>
+            New Collection
+        </button>
+    ` : mode === 'edit' ? `
+        <button onclick="addNewRoot(); closeSidebar();" data-edit-required style="display:none;" class="mt-5 w-full py-2.5 bg-gradient-to-b from-gold-light to-gold text-on-gold rounded-xl font-label text-xs font-bold tracking-widest uppercase flex items-center justify-center gap-2 shadow-[0_3px_0_rgba(0,0,0,0.45)] hover:brightness-105 transition-all active:translate-y-0.5 active:shadow-none">
+            <span class="material-symbols-outlined text-sm">add</span>
+            New Root Node
+        </button>
+    ` : '';
 
     return `
-        <!-- TopAppBar -->
-        <header class="fixed top-0 z-50 bg-[#ffffff] dark:bg-slate-950 flex justify-between items-center px-3 sm:px-6 h-16 w-full border-b border-outline-variant/10">
-            <div class="flex items-center gap-2 sm:gap-8 min-w-0">
-                <button id="menuBtn" onclick="toggleSidebar()" aria-label="Open menu" title="Menu" class="md:hidden flex items-center justify-center w-9 h-9 shrink-0 rounded text-on-surface-variant hover:bg-surface-container transition-colors">
+        <!-- TopAppBar: game HUD -->
+        <header class="fixed top-0 z-50 bg-gradient-to-b from-ink to-ink-light text-white flex justify-between items-center px-3 sm:px-6 h-16 w-full border-b-2 border-black/40 shadow-[0_2px_12px_rgba(0,0,0,0.35)]">
+            <div class="flex items-center gap-2 sm:gap-6 min-w-0">
+                <button id="menuBtn" onclick="toggleSidebar()" aria-label="Open menu" title="Menu" class="md:hidden flex items-center justify-center w-9 h-9 shrink-0 rounded-full text-white/70 hover:bg-white/10 transition-colors">
                     <span class="material-symbols-outlined">menu</span>
                 </button>
-                <a href="/" class="font-manrope font-bold text-lg sm:text-xl text-[#2d3435] dark:text-slate-100 no-underline truncate">
-                    Atheneum
+                <a href="/" class="flex items-center gap-2.5 no-underline shrink-0 group">
+                    <span class="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-b from-gold-light to-gold shadow-[0_2px_0_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.4)] group-hover:scale-105 transition-transform">
+                        <span class="text-ink text-lg font-headline font-extrabold leading-none select-none">A</span>
+                    </span>
+                    <span class="font-headline font-extrabold text-lg sm:text-xl text-white tracking-tight">Atheneum</span>
                 </a>
-                <nav class="hidden md:flex items-center gap-6 font-manrope tracking-tight text-sm">
-                    <a class="${mode === 'play' ? navIdle : navActive}" href="/">Collections</a>
-                    <a class="${mode === 'play' ? navActive : navIdle}" href="/play">Play</a>
+                <nav class="hidden md:flex items-center gap-2 font-headline tracking-tight text-sm">
+                    <a class="${mode === 'play' ? navIdle : navActive}" href="/">
+                        <span class="material-symbols-outlined text-base">account_tree</span>
+                        Collections
+                    </a>
+                    <a class="${mode === 'play' ? navActive : navIdle}" href="/play">
+                        <span class="material-symbols-outlined text-base">casino</span>
+                        Play
+                    </a>
                 </nav>
             </div>
-            <div class="flex items-center gap-1.5 sm:gap-4 shrink-0">
+            <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
                 <div id="authArea" class="flex items-center"></div>
-                <div class="hidden lg:flex items-center bg-surface-container-low px-3 py-1 rounded-full text-xs font-label text-on-surface-variant">
-                    <span class="w-2 h-2 rounded-full ${mode === 'edit' ? 'bg-tertiary' : 'bg-primary'} mr-2"></span>
+                <div class="hidden lg:flex items-center bg-white/10 px-3 py-1 rounded-full text-xs font-label text-white/70 border border-white/10">
+                    <span class="w-2 h-2 rounded-full bg-gold mr-2 animate-pulse-dot"></span>
                     ${modeLabel}
                 </div>
                 ${headerActions ? `
-                    <div class="hidden sm:block h-6 w-[1px] bg-outline-variant/30"></div>
-                    <div class="flex items-center gap-1.5 sm:gap-3">
+                    <div class="hidden sm:block h-6 w-[1px] bg-white/15"></div>
+                    <div class="flex items-center gap-1.5 sm:gap-2.5">
                         ${headerActions}
                     </div>
                 ` : ''}
             </div>
         </header>
         <div class="app-shell flex pt-16">
-            <!-- SideNavBar (slide-in drawer on small screens) -->
+            <!-- SideNavBar: game menu -->
             <div id="sidebarBackdrop" onclick="closeSidebar()"></div>
-            <aside id="sidebar" class="w-64 bg-[#ebeeef] dark:bg-slate-900 flex flex-col h-full py-8 gap-y-2 border-r-0">
-                <div class="px-6 mb-8">
-                    <h2 class="font-manrope font-semibold text-[#2d3435] dark:text-slate-200">Library</h2>
-                    <p class="text-[10px] uppercase tracking-widest text-outline-variant">Personal Workspace</p>
-                    ${mode === 'edit' ? `
-                        <button onclick="addNewRoot(); closeSidebar();" data-edit-required style="display:none;" class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2">
-                            <span class="material-symbols-outlined text-sm">add</span>
-                            New Root Node
-                        </button>
-                    ` : mode === 'index' ? `
-                        <button onclick="createTree(); closeSidebar();" class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2">
-                            <span class="material-symbols-outlined text-sm">add</span>
-                            New Collection
-                        </button>
-                    ` : mode === 'play' ? `
-                        <button onclick="newBoard(); closeSidebar();" class="mt-6 w-full py-2 bg-gradient-to-br from-primary to-primary-dim text-on-primary rounded font-label text-xs tracking-wider uppercase flex items-center justify-center gap-2">
-                            <span class="material-symbols-outlined text-sm">casino</span>
-                            New Board
-                        </button>
-                    ` : ''}
+            <aside id="sidebar" class="w-64 bg-gradient-to-b from-ink to-ink-light text-white flex flex-col h-full py-6 gap-y-1 border-r-2 border-black/30">
+                <div class="px-6 mb-2">
+                    <h2 class="font-headline font-bold text-white tracking-tight">Library</h2>
+                    <p class="text-[10px] uppercase tracking-[0.25em] text-gold/80 font-label">Personal Workspace</p>
+                    ${sideAction}
                 </div>
-                <nav class="flex-grow space-y-1">
+                <nav class="flex-grow space-y-1 overflow-y-auto">
                     <a href="/" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' ? sideIdle : sideActive}">
-                        <span class="material-symbols-outlined mr-3 text-lg">account_tree</span>
+                        <span class="material-symbols-outlined text-lg">account_tree</span>
                         Collections
                     </a>
                     <a href="/play" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' ? sideActive : sideIdle}">
-                        <span class="material-symbols-outlined mr-3 text-lg">smart_toy</span>
+                        <span class="material-symbols-outlined text-lg">casino</span>
                         Play vs Bots
                     </a>
                 </nav>
+                <div class="px-6 pt-4 mt-4 border-t border-white/10 text-[10px] text-white/35 font-label tracking-[0.2em] uppercase">
+                    Bid · Practice · Conquer
+                </div>
             </aside>
             <!-- Main Content Area -->
             <main class="flex-grow overflow-y-auto bg-background min-w-0">
-                <div class="max-w-4xl mx-auto p-4 sm:p-6 md:p-12">
-                    <header class="mb-8 md:mb-12">
+                <div class="max-w-4xl mx-auto p-4 sm:p-6 md:p-12 page-enter">
+                    <header class="mb-8 md:mb-10">
                         ${options.badge ? `
                             <div class="flex items-center gap-3 mb-4">
-                                <span class="px-2 py-0.5 ${badgeColor} text-[10px] font-bold rounded uppercase tracking-tighter">${options.badge}</span>
+                                <span class="inline-flex items-center px-3 py-1 ${badgeColor} text-[10px] font-extrabold rounded-full uppercase tracking-[0.15em] shadow-sm">${options.badge}</span>
                             </div>
                         ` : ''}
                         ${options.title ? `

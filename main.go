@@ -119,7 +119,7 @@ func main() {
 	http.HandleFunc("GET /api/play/team/list", handleTeamList)
 	http.HandleFunc("GET /api/play/team/{id}", handleTeamGet)
 	http.HandleFunc("POST /api/play/team/{id}/call", handleTeamCall)
-	http.HandleFunc("POST /api/play/team/{id}/next", handleTeamNext)
+	http.HandleFunc("POST /api/play/team/{id}/start", handleTeamStart)
 	http.HandleFunc("GET /api/play/team/{id}/history", handleTeamHistory)
 	http.HandleFunc("DELETE /api/play/team/{id}", handleTeamDelete)
 
