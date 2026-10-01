@@ -23,9 +23,11 @@ class RLConfig:
     # after the first divergence of the two auctions.
     team_weight: float = 1.0
     par_weight: float = 0.25       # par term = 1/4 of the per-IMP team reward
-    rollout_temp: float = 1.0      # >1 flattens rollout sampling so self-play
-                                   # tables diverge (PPO recomputes logprobs
-                                   # at the same temperature)
+    rollout_temp: float = 1.0      # exploration "heat" for the hot seats: >1
+                                    # flattens their rollout sampling so the two
+                                    # tables diverge (greedy seats are untempered;
+                                    # PPO recomputes hot-seat logprobs at the same
+                                    # temperature)
     # ppo
     lr: float = 1e-4
     weight_decay: float = 0.01

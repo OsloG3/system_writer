@@ -5,11 +5,14 @@ two-table team reward: every deal is played twice (same dealer/vuln), and
 the IMP swing between the tables -- credited only to calls at/after the
 first point where the two auctions diverge -- is the primary signal, with
 the double-dummy par-diff IMPs added at a quarter of the per-IMP weight.
-In league mode the learner team sits N-S at one table and E-W at the other
-against a frozen league opponent; otherwise both tables are pure self-play
-(sampling temperature supplies the auction variance). A KL anchor to the
-frozen BC policy and an entropy bonus are annealed to zero so the pair can
-diverge from human systems and form its own agreements.
+In league mode the learner team sits N-S at the open table and E-W at the
+closed one against a frozen league opponent, with South (open) and West
+(closed) the "hot" learner seats; in pure self-play one policy acts for every
+seat with E+S hot at the open table and N+W hot at the closed table. Only the
+hot seats sample at the rollout temperature (the heat) and are learned from --
+their partners bid greedily -- and a KL anchor to the frozen BC policy plus an
+entropy bonus are annealed to zero so the pair can diverge from human systems
+and form its own agreements.
 
 The league (rl/league.py) pools frozen snapshots of the learner with any
 external models: BC (supervised) checkpoints, other RL runs, the random

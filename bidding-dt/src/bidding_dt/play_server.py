@@ -16,10 +16,12 @@ Endpoints (all JSON):
     POST /score   -> {"imps", "par_ns", "score_ns", "tricks", "contract"}
                      body: /bid body; IMPs are N-S view vs double-dummy par
 
-Run:
+Run (torch + endplay come from the cpu/cuda and rl extras, so repeat them):
 
-    uv run python -m bidding_dt.play_server --ckpt runs/tiny/best.pt --port 8081
-    # multiple named models: --ckpt bc=runs/tiny/best.pt --ckpt rl=runs/rl_tinyt/best.pt
+    uv run --extra cpu --extra rl python -m bidding_dt.play_server \
+        --ckpt runs/rl_tinyt/best.pt --port 8081
+    # on a GPU box use --extra cuda; repeatable names:
+    # --ckpt bc=<path> --ckpt rl=<path>
 """
 
 import argparse
@@ -28,15 +30,27 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import numpy as np
+try:
+    import numpy as np
 
-from .bid import auction_over, load_model, predict, random_deal, seat_to_act
+    from .bid import auction_over, load_model, predict, random_deal, seat_to_act
+    from .dd.reward import deal_reward
+    from .dd.solver import TableCache
+except ImportError as e:  # torch / endplay / numpy not installed
+    raise SystemExit(
+        f"bidding_dt.play_server is missing a dependency ({e.name or e}).\n"
+        "The server needs torch and endplay, which live in the cpu/cuda and\n"
+        "rl extras. Start it so the extras are kept, e.g.:\n"
+        "  uv run --extra cpu --extra rl python -m bidding_dt.play_server "
+        "--ckpt <checkpoint> --port 8081\n"
+        "  (use --extra cuda instead of --extra cpu on a GPU machine, and\n"
+        "   copy a checkpoint first: runs/ is gitignored)"
+    ) from e
+
 from .data.hands import encode_hand
 from .data.legal import legal_mask
 from .data.parse import MAX_CALLS
 from .data.vocab import CALL_PAD, DENOMS, VOCAB_SIZE, call_to_id, id_to_call
-from .dd.reward import deal_reward
-from .dd.solver import TableCache
 
 MAX_BODY = 64 << 10
 

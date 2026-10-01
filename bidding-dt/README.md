@@ -55,6 +55,11 @@ The `rl` extra pulls in [endplay](https://github.com/ThorvaldAagaard/endplay)
 pipeline works without it. The `plot` extra adds matplotlib for
 `bidding_dt.rl.plot` (already present via endplay).
 
+`uv run` re-syncs the environment on every invocation: running it without the
+extras you installed removes them again. Either repeat the extras on the
+command (`uv run --extra cpu --extra rl python -m ...`) or activate the venv
+first (`source .venv/bin/activate`), which keeps everything installed.
+
 ## Usage
 
 ```bash
@@ -83,7 +88,11 @@ uv run python -m bidding_dt.bid --ckpt runs/small/best.pt \
 #    /deal /legal /bid /score (JSON; par scoring via the DD solver, tables
 #    cached in cache/dd_play.sqlite). Repeat --ckpt to load several named
 #    models ([name=]path); the first is the default.
-uv run python -m bidding_dt.play_server --ckpt runs/tiny/best.pt --port 8081
+#    Needs torch (cpu/cuda extra) and endplay (rl extra), so repeat the
+#    extras here. `runs/` is gitignored: copy a checkpoint to the server.
+uv run --extra cpu --extra rl python -m bidding_dt.play_server \
+    --ckpt runs/rl_tinyt/best.pt --port 8081
+# on a GPU box: --extra cuda instead of --extra cpu
 
 # tests
 uv run pytest

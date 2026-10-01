@@ -282,6 +282,62 @@ def test_play_team_deals_sampling_diverges(tmp_path):
     cache.close()
 
 
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_play_team_deals_selfplay_hot_seats(tmp_path):
+    """Self-play: E+S are the hot (recorded) seats at the open table and N+W
+    at the closed table; the greedy partner seats are never recorded, so only
+    the heat-playing bots learn. Each seat is hot at exactly one table, so all
+    four seats appear in the buffer, and the heat makes the tables diverge."""
+    from bidding_dt.dd.solver import TableCache
+    rng = np.random.default_rng(21)
+    deals = random_deals(rng, 6)
+    dealer = rng.integers(0, 4, 6)
+    vuln = rng.integers(0, 4, 6)
+    model = tiny_model(seed=23).eval()
+    cache = TableCache(tmp_path / "dd.sqlite")
+    torch.manual_seed(29)
+    roll = play_team_deals(model, deals, dealer, vuln, torch.device("cpu"),
+                           cache=cache, greedy=False, temp=1.3)
+    b = roll.n_deals
+    di = np.asarray(roll.buf.deal_idx)
+    seat = np.asarray(roll.buf.seat)
+    open_rows = di < b
+    # open table records only E(1)/S(2); closed table records only N(0)/W(3)
+    assert set(seat[open_rows].tolist()) <= {1, 2}
+    assert set(seat[~open_rows].tolist()) <= {0, 3}
+    # each seat is hot at exactly one table -> all four show up across deals
+    assert set(seat.tolist()) == {0, 1, 2, 3}
+    assert roll.diverged.any()
+    cache.close()
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_play_team_deals_league_hot_seats(tmp_path):
+    """League: only South (open table) and West (closed table) are hot and
+    recorded. The learner's partner (North open / East closed) plays the same
+    policy greedily and the frozen opponent holds the rest -- neither is
+    recorded, so only the heat seats are rewarded and learn."""
+    from bidding_dt.dd.solver import TableCache
+    rng = np.random.default_rng(31)
+    deals = random_deals(rng, 6)
+    dealer = rng.integers(0, 4, 6)
+    vuln = rng.integers(0, 4, 6)
+    model = tiny_model(seed=37).eval()
+    cache = TableCache(tmp_path / "dd.sqlite")
+    torch.manual_seed(41)
+    roll = play_team_deals(model, deals, dealer, vuln, torch.device("cpu"),
+                           cache=cache, opponent=UniformPolicy(),
+                           greedy=False, temp=1.3)
+    b = roll.n_deals
+    di = np.asarray(roll.buf.deal_idx)
+    seat = np.asarray(roll.buf.seat)
+    open_rows = di < b
+    # every deal records South(2) at the open table and West(3) at the closed
+    assert set(seat[open_rows].tolist()) == {2}
+    assert set(seat[~open_rows].tolist()) == {3}
+    cache.close()
+
+
 def _toy_buffer(n, seed=0):
     """n synthetic buffer rows of mixed lengths (no endplay needed)."""
     buf = RolloutBuffer()
