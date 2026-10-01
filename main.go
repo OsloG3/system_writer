@@ -97,6 +97,7 @@ func main() {
 	loadSessions()
 	initPlay()
 	initTeam()
+	initAlerts()
 
 	// API Endpoints
 	http.HandleFunc("POST /api/register", handleRegister)

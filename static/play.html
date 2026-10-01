@@ -268,6 +268,45 @@
             }
             .cb-call-x { background: #c0392b; color: #fff; }
             .cb-call-xx { background: #2a51b0; color: #fff; }
+            .cb-chipwrap {
+                position: relative;
+                display: inline-flex;
+                cursor: pointer;
+            }
+            .cb-alertdot {
+                position: absolute;
+                top: -5px;
+                right: -7px;
+                width: 13px;
+                height: 13px;
+                border-radius: 50%;
+                background: #f2ca4c;
+                color: #1b1f27;
+                font: 800 9px/13px Inter, sans-serif;
+                font-style: normal;
+                text-align: center;
+            }
+            .cb-alertbox {
+                background: #1b2330;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 0.8rem;
+                padding: 0.45rem 0.7rem;
+                color: #cbd5e1;
+                font-family: Inter, sans-serif;
+                font-size: 0.72rem;
+                line-height: 1.45;
+                display: flex;
+                align-items: baseline;
+                gap: 0.45rem;
+            }
+            .cb-alertbox .material-symbols-outlined {
+                font-size: 15px;
+                color: #f2ca4c;
+                flex-shrink: 0;
+                align-self: center;
+            }
+            .cb-alertbox b { color: #fff; }
+            .cb-alertbox .dim { color: #8fa0b5; }
             .cb-q {
                 display: flex;
                 align-items: center;
@@ -327,6 +366,7 @@
                 gap: 0.4rem;
             }
             .cb-tile {
+                position: relative;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -356,6 +396,7 @@
                 box-shadow: none;
             }
             .cb-pass {
+                position: relative;
                 margin-left: auto;
                 display: inline-flex;
                 align-items: center;
@@ -371,6 +412,19 @@
                 letter-spacing: 0.03em;
                 box-shadow: 0 3px 0 #3c6b39;
             }
+            .cb-pct {
+                position: absolute;
+                top: 0;
+                right: 1px;
+                padding: 2px;
+                font: 700 8px/1.4 Inter, sans-serif;
+                font-style: normal;
+                color: rgba(0, 0, 0, 0.5);
+                cursor: help;
+            }
+            .cb-tile-x .cb-pct,
+            .cb-tile-xx .cb-pct,
+            .cb-pass .cb-pct { color: rgba(255, 255, 255, 0.75); }
             .cb-pass:disabled {
                 opacity: 0.4;
             }
@@ -575,6 +629,10 @@
                         "w e"
                         "s s";
                 }
+                .cb-dg-n,
+                .cb-dg-s {
+                    justify-self: center;
+                }
                 .cb-dg-line { font-size: 0.72rem; }
             }
 
@@ -767,20 +825,114 @@
                 return Math.floor(hrs / 24) + "d ago";
             }
 
-            function cbChip(c) {
-                if (c === "P") return `<span class="cb-call cb-call-p">pass</span>`;
-                if (c === "X") return `<span class="cb-call cb-call-x">X</span>`;
-                if (c === "XX") return `<span class="cb-call cb-call-xx">XX</span>`;
-                const sym = c[1] === "N" ? "NT" : SUIT_SYMBOL[c[1]];
-                return `<span class="cb-call cb-call-${TILE_CLS[c[1]]}">${c[0]}<b style="font-size:.75rem;">${sym}</b></span>`;
+            // ---- Bid alerts (from the bot model's self-play tree) ----
+            // state.alerts parallels state.calls (null for human seats and
+            // unseen positions); state.optionAlerts parallels state.legal.
+            const ALERT_SUITS = ["♠", "♥", "♦", "♣"]; // S,H,D,C server order
+
+            function callLabel(c) {
+                if (!c) return "";
+                if (c === "P") return "pass";
+                if (c === "X") return "double";
+                if (c === "XX") return "redouble";
+                return c[0] + (c[1] === "N" ? "NT" : SUIT_SYMBOL[c[1]]);
             }
 
-            function auctionHtml(dealer, vuln, calls, pending, youSeat) {
+            function alertText(a) {
+                if (!a) return "";
+                const suits = a.suits
+                    .map((r, i) => `${ALERT_SUITS[i]} ${r[0]}–${r[1]}`)
+                    .join(" · ");
+                const pct =
+                    a.pct > 0
+                        ? ` · picked ${(a.pct * 100).toFixed(1)}% here`
+                        : "";
+                return `${a.hcp[0]}–${a.hcp[1]} HCP · ${suits} · ${a.n.toLocaleString()} self-play deals${pct}`;
+            }
+
+            function alertBoxLine(label, text, dim) {
+                return `<span class="material-symbols-outlined">campaign</span>` +
+                    `<span>${dim ? `<span class="dim">${escapeHtml(text)}</span>` : `${label ? `<b>${escapeHtml(label)}</b> — ` : ""}${escapeHtml(text)}`}</span>`;
+            }
+
+            function setAlertBox(html) {
+                const el = document.getElementById("alertBox");
+                if (el) el.innerHTML = html;
+            }
+
+            function hasAlertData() {
+                if (!state) return false;
+                return (
+                    (state.alerts || []).some(Boolean) ||
+                    (state.optionAlerts || []).some(Boolean)
+                );
+            }
+
+            // Default box content: the alert of the most recent bot bid, so
+            // every bid the bots make is announced as it lands.
+            function defaultAlertLine() {
+                const list = (state && state.calls) || [];
+                for (let i = list.length - 1; i >= 0; i--) {
+                    const a = state.alerts && state.alerts[i];
+                    if (a) {
+                        const seat = SEAT_NAMES[(state.dealer + i) % 4];
+                        return alertBoxLine(
+                            `${seat} · ${callLabel(list[i])}`,
+                            alertText(a),
+                        );
+                    }
+                }
+                return alertBoxLine(
+                    "",
+                    "Bid alerts: tap a marked bid to see what it promises; hover or tap % on your own options.",
+                    true,
+                );
+            }
+
+            function showOptAlert(c) {
+                if (!state) return;
+                const i = (state.legal || []).indexOf(c);
+                const a =
+                    i >= 0 && state.optionAlerts
+                        ? state.optionAlerts[i]
+                        : null;
+                if (a) setAlertBox(alertBoxLine(`Your ${callLabel(c)}`, alertText(a)));
+            }
+
+            function optionAlertMap() {
+                const m = {};
+                if (!state || !state.legal) return m;
+                state.legal.forEach((c, i) => {
+                    const a = state.optionAlerts && state.optionAlerts[i];
+                    if (a) m[c] = a;
+                });
+                return m;
+            }
+
+            function alertBoxHtml() {
+                if (!hasAlertData()) return "";
+                return `<div id="alertBox" class="cb-alertbox">${defaultAlertLine()}</div>`;
+            }
+
+            function cbChip(c, alertIdx) {
+                let chip;
+                if (c === "P") chip = `<span class="cb-call cb-call-p">pass</span>`;
+                else if (c === "X") chip = `<span class="cb-call cb-call-x">X</span>`;
+                else if (c === "XX") chip = `<span class="cb-call cb-call-xx">XX</span>`;
+                else {
+                    const sym = c[1] === "N" ? "NT" : SUIT_SYMBOL[c[1]];
+                    chip = `<span class="cb-call cb-call-${TILE_CLS[c[1]]}">${c[0]}<b style="font-size:.75rem;">${sym}</b></span>`;
+                }
+                if (alertIdx === null || alertIdx === undefined) return chip;
+                return `<span class="cb-chipwrap" data-alert-call="${alertIdx}" title="What this bid showed">${chip}<i class="cb-alertdot">!</i></span>`;
+            }
+
+            function auctionHtml(dealer, vuln, calls, pending, youSeat, alerts) {
                 const cols = [0, 1, 2, 3].map((k) => (dealer + k) % 4);
                 const list = calls || [];
                 const rows = [];
                 for (let i = 0; i < list.length; i += 4)
-                    rows.push(list.slice(i, i + 4).map((c) => ({ c })));
+                    rows.push(list.slice(i, i + 4).map((c, j) => ({ c, i: i + j })));
                 if (pending !== null && pending !== undefined) {
                     const pos = (pending - dealer + 4) % 4;
                     let r = Math.floor(list.length / 4);
@@ -810,13 +962,18 @@
                                   row
                                       .map(
                                           (cell) =>
-                                              `<div class="cb-auc-cell">${
-                                                  cell.q
-                                                      ? `<span class="cb-q">?</span>`
-                                                      : cell.c
-                                                        ? cbChip(cell.c)
-                                                        : ""
-                                              }</div>`,
+                                               `<div class="cb-auc-cell">${
+                                                   cell.q
+                                                       ? `<span class="cb-q">?</span>`
+                                                       : cell.c
+                                                         ? cbChip(
+                                                               cell.c,
+                                                               alerts && alerts[cell.i]
+                                                                   ? cell.i
+                                                                   : null,
+                                                           )
+                                                         : ""
+                                               }</div>`,
                                       )
                                       .join("") +
                                   `</div>`,
@@ -1142,20 +1299,36 @@
                     })
                     .join("");
                 const l = bidLevelSel;
+                const opt = optionAlertMap();
+                const optBits = (c) => {
+                    const a = opt[c];
+                    if (!a) return { t: "", b: "" };
+                    return {
+                        t: ` title="${escapeHtml(alertText(a))}"`,
+                        b:
+                            a.pct > 0
+                                ? `<i class="cb-pct">${Math.round(a.pct * 100)}%</i>`
+                                : "",
+                    };
+                };
                 const tiles = SUIT_ORDER.map((d) => {
                     const ok = l !== null && legal.has(l + d) && !busy;
                     const sym = d === "N" ? "NT" : SUIT_SYMBOL[d];
-                    return `<button data-call="${l}${d}" ${ok ? "" : "disabled"} class="cb-tile cb-tile-${TILE_CLS[d]}">${l}<b>${sym}</b></button>`;
+                    const o = optBits(`${l}${d}`);
+                    return `<button data-call="${l}${d}" data-opt="${l}${d}" ${ok ? "" : "disabled"}${o.t} class="cb-tile cb-tile-${TILE_CLS[d]}">${l}<b>${sym}</b>${o.b}</button>`;
                 }).join("");
+                const xo = optBits("X");
                 const dbl =
                     legal.has("X") && !busy
-                        ? `<button data-call="X" class="cb-tile cb-tile-x">X</button>`
+                        ? `<button data-call="X" data-opt="X"${xo.t} class="cb-tile cb-tile-x">X${xo.b}</button>`
                         : "";
+                const xxo = optBits("XX");
                 const rdbl =
                     legal.has("XX") && !busy
-                        ? `<button data-call="XX" class="cb-tile cb-tile-xx">XX</button>`
+                        ? `<button data-call="XX" data-opt="XX"${xxo.t} class="cb-tile cb-tile-xx">XX${xxo.b}</button>`
                         : "";
-                const pass = `<button data-call="P" ${legal.has("P") && !busy ? "" : "disabled"} class="cb-pass">PASS</button>`;
+                const po = optBits("P");
+                const pass = `<button data-call="P" data-opt="P"${po.t} ${legal.has("P") && !busy ? "" : "disabled"} class="cb-pass">PASS${po.b}</button>`;
                 return `<span id="bidArea" class="block">
                     <div class="cb-levels">${tabs}</div>
                     <div class="cb-bidpanel">${tiles}${dbl}${rdbl}${pass}</div>
@@ -1174,6 +1347,17 @@
                 box.querySelectorAll("[data-call]").forEach((btn) => {
                     btn.onclick = () => makeCall(btn.dataset.call);
                 });
+                box.querySelectorAll("[data-opt]").forEach((btn) => {
+                    const c = btn.dataset.opt;
+                    btn.onmouseenter = () => showOptAlert(c);
+                    btn.onmouseleave = () => setAlertBox(defaultAlertLine());
+                    const pct = btn.querySelector(".cb-pct");
+                    if (pct)
+                        pct.onclick = (e) => {
+                            e.stopPropagation();
+                            showOptAlert(c);
+                        };
+                });
             }
 
             function refreshBidArea() {
@@ -1181,6 +1365,26 @@
                 if (!el || !state) return;
                 el.outerHTML = bidAreaHtml();
                 wireBidArea(document);
+            }
+
+            // Tapping a marked auction chip explains what that bid showed.
+            function wireAlertChips(root) {
+                root.querySelectorAll("[data-alert-call]").forEach((el) => {
+                    el.onclick = () => {
+                        if (!state) return;
+                        const i = parseInt(el.dataset.alertCall, 10);
+                        const a = state.alerts && state.alerts[i];
+                        if (!a) return;
+                        const seat = SEAT_NAMES[(state.dealer + i) % 4];
+                        const call = (state.calls || [])[i];
+                        setAlertBox(
+                            alertBoxLine(
+                                `${seat} · ${callLabel(call)}`,
+                                alertText(a),
+                            ),
+                        );
+                    };
+                });
             }
 
             function waitingHtml() {
@@ -1387,7 +1591,9 @@
                             state.calls,
                             state.done ? null : state.nextSeat,
                             state.humanSeat,
+                            state.alerts,
                         ),
+                        alertBoxHtml(),
                     ];
                     if (state.done) {
                         parts.push(resultHtml());
@@ -1918,6 +2124,7 @@
                         teamSelectBoard(parseInt(btn.dataset.board, 10));
                 });
                 wireBidArea(document);
+                wireAlertChips(content);
                 const retry = document.getElementById("retryBtn");
                 if (retry) retry.onclick = () => refreshBoard(true);
 

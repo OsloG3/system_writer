@@ -6,6 +6,10 @@ data/sessions.json
 data/game_*.json
 data/*.tmp
 
+# compiled bid-alert cache (regenerated from models/last.json on startup)
+models/*.bin
+models/*.tmp
+
 # editor/backup artifacts
 \#*#
 *~

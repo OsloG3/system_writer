@@ -1,7 +1,7 @@
 """Summarize how a model bids by letting it bid against itself.
 
     python -m bidding_dt.rl.analyze --ckpt runs/rl_small/best.pt \
-        --deals 4000 --out runs/rl_small/tree.json
+        --deals 4000 --out runs/rl_small/tree.json.zst
 
 The checkpoint plays every seat (pure self-play over fresh random deals, no
 reward solving): all four seats sample at --temp, or bid deterministically
@@ -26,6 +26,7 @@ the print with --min-n / --depth; the JSON always holds the full tree):
 """
 
 import argparse
+import io
 import json
 from pathlib import Path
 
@@ -134,6 +135,31 @@ def print_tree(root: dict, max_depth: int | None = None,
     rec(root, 0)
 
 
+def write_report(report: dict, out: str) -> Path:
+    """Write the report JSON; .zst/.gz suffixes compress it transparently.
+
+    The full tree is huge (hundreds of MB of JSON); zstd level 19 shrinks it
+    ~100x and the Go alert loader (system_writer/alerts.go) decompresses both
+    formats on the fly. Plain paths keep the indented, human-readable dump.
+    """
+    p = Path(out)
+    if p.suffix == ".zst":
+        import zstandard
+
+        cctx = zstandard.ZstdCompressor(level=19, threads=-1)
+        with p.open("wb") as f, cctx.stream_writer(f) as sw, \
+                io.TextIOWrapper(sw, "utf-8") as tw:
+            json.dump(report, tw, separators=(",", ":"))
+    elif p.suffix == ".gz":
+        import gzip
+
+        with gzip.open(p, "wt", encoding="utf-8", compresslevel=9) as f:
+            json.dump(report, f, separators=(",", ":"))
+    else:
+        p.write_text(json.dumps(report, indent=2))
+    return p
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -150,7 +176,8 @@ def main():
                     help="max print depth in calls from the dealer (default all)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default=None)
-    ap.add_argument("--out", default=None, help="write the full tree JSON here")
+    ap.add_argument("--out", default=None,
+                    help="write the full tree JSON here (.zst/.gz compress)")
     args = ap.parse_args()
 
     device = pick_device(args.device)
@@ -172,7 +199,7 @@ def main():
                   "greedy": bool(args.greedy),
                   "temp": None if args.greedy else args.temp,
                   "tree": node_to_json(root)}
-        Path(args.out).write_text(json.dumps(report, indent=2))
+        write_report(report, args.out)
         print(f"\nfull tree written to {args.out}")
 
 

@@ -367,6 +367,13 @@ func (g *TeamGame) stateLocked(username string, boardNo int) map[string]any {
 	st["dealer"] = b.Dealer
 	st["vuln"] = b.Vuln
 	st["calls"] = callsOrEmpty(b.Calls)
+	// Alerts for every East/West (bot) bid of the selected board, parallel
+	// to calls; omitted until the self-play tree finishes loading.
+	if t := alertTreeReady(); t != nil {
+		if a := t.callAlerts(b.Dealer, b.Calls, 1<<teamSouthSeat|1<<teamNorthSeat); a != nil {
+			st["alerts"] = a
+		}
+	}
 	next := (b.Dealer + len(b.Calls)) % 4
 	st["nextSeat"] = next
 	st["done"] = b.Result != nil
@@ -384,6 +391,11 @@ func (g *TeamGame) stateLocked(username string, boardNo int) map[string]any {
 	if yourTurn {
 		if legal, err := g.legalLocked(b); err == nil {
 			st["legal"] = legal
+			if t := alertTreeReady(); t != nil {
+				if a := t.optionAlerts(b.Calls, legal); a != nil {
+					st["optionAlerts"] = a
+				}
+			}
 		}
 	}
 	return st
