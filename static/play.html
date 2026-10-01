@@ -638,6 +638,7 @@
             let busy = false;
             let autoRetries = 0;
             let bidLevelSel = null;
+            let bidLevelKey = null;
             let pollTimer = null;
             let overlay = null;
 
@@ -716,8 +717,8 @@
                 const suits = [
                     ["♠", 0, "s"],
                     ["♥", 1, "h"],
-                    ["♣", 3, "c"],
                     ["♦", 2, "d"],
+                    ["♣", 3, "c"],
                 ];
                 const parts = String(handStr || "").split(".");
                 const lines = suits
@@ -936,7 +937,9 @@
                     return;
                 if (!force && state.mode === "solo" && state.done) return;
                 const quiet =
-                    state.mode === "team" && state.yourTurn && !state.done;
+                    state.mode === "team" &&
+                    !state.done &&
+                    (state.yourTurn || state.noBoard);
                 busy = true;
                 if (!quiet) render();
                 try {
@@ -1127,8 +1130,11 @@
                 const avail = [];
                 for (let l = 1; l <= 7; l++)
                     if (SUIT_ORDER.some((d) => legal.has(l + d))) avail.push(l);
-                if (!avail.includes(bidLevelSel))
+                const key = `${state.mode}|${state.boardSel}|${(state.calls || []).length}`;
+                if (key !== bidLevelKey || !avail.includes(bidLevelSel)) {
+                    bidLevelKey = key;
                     bidLevelSel = avail.length ? avail[0] : null;
+                }
                 const tabs = [1, 2, 3, 4, 5, 6, 7]
                     .map((l) => {
                         const ok = avail.includes(l) && !busy;
