@@ -19,9 +19,11 @@ N E-W 1H P 2H P P P
 
 ## Design
 
-- **Rank equivalence**: all cards below the 9 are equivalent. A hand is a
-  32-dim vector: 4 suits x 7 rank classes {A,K,Q,J,T,9,low} counts + suit
-  lengths (a sufficient statistic), encoded by a small MLP into a HAND token.
+- **Hand encoding**: a hand is its 52-dim 0/1 card-indicator vector -- every
+  rank gets its own slot per suit (suit order S,H,D,C; no rank folding), so
+  the encoding is lossless and suit lengths/HCP are derivable from it. A
+  small MLP encodes the hero's vector into the single HAND token
+  (`data/hands.py`).
 - **Hero rotation**: the auction is rotated so the hero always acts at call
   slots `s % 4 == 0` (0=hero, 1=RHO, 2=partner, 3=LHO). When the hero is not
   the dealer, the frame is front-padded with `(4-o)%4` PAD tokens,
@@ -139,6 +141,16 @@ par-only reward in self-play, where the shared policy sits on both sides of a
 zero-sum signal that mostly cancels in the gradient (and can be farmed by
 passing deals out).
 
+Both seats of a partnership sample at `rollout_temp` and learn, so a row can
+also be punished for its *partner's* exploration noise: when `r_row` is
+negative it is scaled by `exp(-D)` in (0, 1], where D is the partner's mean
+per-call deviation from greedy play (`logp(greedy call) - logp(call taken)`
+under the untempered policy, averaged over the partner's calls in that
+auction). A partner that bid exactly as the greedy policy would passes the
+full punishment on (D = 0); increasingly unlikely sampled calls shrink it
+toward zero. Positive rewards are never scaled and the per-call average keeps
+the discount independent of auction length.
+
 New agreements emerge because both seats of a partnership share one policy
 that only ever sees its own hand + the auction: any coordination must be
 carried by the calls themselves. A KL anchor to the frozen BC policy plus an
@@ -168,6 +180,12 @@ uv run python -m bidding_dt.rl.train_ppo --config configs/rl_small.yaml \
 # GPU training run
 uv run python -m bidding_dt.rl.train_ppo --config configs/rl_small.yaml \
     --preset small --bc-ckpt runs/small/best.pt --out runs/rl_small
+
+# bigger GPU run: the base preset (~6.4M params) with configs/rl_base.yaml,
+# which scales up deals_per_iter/minibatch and lowers the LR for the larger
+# trunk (warm-start from the matching BC base checkpoint)
+uv run python -m bidding_dt.rl.train_ppo --config configs/rl_base.yaml \
+    --preset base --bc-ckpt runs/base/best.pt --out runs/rl_base
 
 # further-train an existing RL model against a league of other models:
 # --bc-ckpt accepts BC *or* RL checkpoints (auto-detected; the checkpoint's
@@ -201,10 +219,13 @@ uv run python -m bidding_dt.rl.plot runs/rl_small
 uv run python -m bidding_dt.rl.eval_rl --ckpt runs/rl_small/best.pt \
     --opp bc:runs/small/best.pt --deals 4000
 
-# emergent-system report: opening/response frequencies per HCP bucket,
-# RL vs BC vs human corpus, with total-variation distances
+# emergent-system report: the checkpoint bids against itself (all four
+# seats, sampled at --temp or deterministic with --greedy) and every auction
+# that happens is merged into one prefix tree; each node records how often
+# the bot made that bid in that sequence and the min/max HCP and min/max
+# length per suit of the hands it held doing it
 uv run python -m bidding_dt.rl.analyze --ckpt runs/rl_small/best.pt \
-    --bc runs/small/best.pt --hands 20000 --out runs/rl_small/system.json
+    --deals 4000 --out runs/rl_small/tree.json
 
 # progress plots from log.jsonl: eval IMPs (+-1 SE), train reward, losses,
 # entropy, KL/clipfrac, auction behaviour, schedules, iter cost; several
@@ -238,7 +259,7 @@ progress figure (and prints a one-line summary for headless use).
 src/bidding_dt/
   config.py            # dataclasses, YAML configs, size presets
   data/vocab.py        # 39-token action space, seat/vuln maps
-  data/hands.py        # hand -> 32-dim rank-class encoding
+  data/hands.py        # hand -> 52-dim 0/1 card-indicator encoding
   data/parse.py        # training.txt -> cache/*.npy + splits
   data/dataset.py      # hero-rotated views, targets, collate
   data/legal.py        # exact legality mask (P/X/XX/bids)
@@ -257,7 +278,7 @@ src/bidding_dt/
   rl/ppo.py            # clipped PPO + value MSE + entropy + KL(pi||pi_BC)
   rl/train_ppo.py      # training entrypoint
   rl/eval_rl.py        # two-table team IMPs/board vs fixed opponents
-  rl/analyze.py        # emergent bidding-system extraction vs BC/humans
+  rl/analyze.py        # self-play auction tree: per-bid HCP/suit-length ranges
   rl/plot.py           # log.jsonl -> progress.png, multi-run overlay
   train.py eval.py bid.py
   play_server.py         # HTTP sidecar: bots + par scoring for the website
@@ -309,9 +330,6 @@ src/bidding_dt/
     deal volume gets progressively cheaper; a warm `cache/dd.sqlite` turns
     reward scoring into pure lookups (resumed smoke iters: ~14s cold -> <2s
     warm).
-- **Rank equivalence caveat**: the policy cannot see cards below the 9, but
-  rewards use the true 52 cards -- fine for bidding, just don't expect the
-  policy to exploit low-card nuance.
 - The COND token remains the offline-RL/RTG slot: an alternative route is
   return-conditioned DT on par-diff-labelled human auctions; the PPO route
   above is what `rl/` implements (COND is simply unused there).

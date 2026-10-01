@@ -10,8 +10,10 @@ from bidding_dt.data.vocab import CALL_PASS, VOCAB_SIZE
 from bidding_dt.rl.config import RLConfig
 from bidding_dt.rl.model import RLModel
 from bidding_dt.rl.ppo import ppo_update
-from bidding_dt.rl.rollout import (RolloutBuffer, UniformPolicy, par_row_rewards,
-                                   play_deals, play_team_deals, team_row_rewards)
+from bidding_dt.rl.rollout import (RolloutBuffer, UniformPolicy,
+                                   par_row_rewards, partner_greedy_dev,
+                                   play_deals, play_team_deals,
+                                   team_row_rewards)
 from bidding_dt.env.deals import random_deals
 
 HAS_ENDPLAY = True
@@ -283,11 +285,10 @@ def test_play_team_deals_sampling_diverges(tmp_path):
 
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
-def test_play_team_deals_selfplay_hot_seats(tmp_path):
-    """Self-play: E+S are the hot (recorded) seats at the open table and N+W
-    at the closed table; the greedy partner seats are never recorded, so only
-    the heat-playing bots learn. Each seat is hot at exactly one table, so all
-    four seats appear in the buffer, and the heat makes the tables diverge."""
+def test_play_team_deals_selfplay_all_seats_hot(tmp_path):
+    """Self-play: every seat samples at temp and is recorded at BOTH tables
+    (both partners of each pair play hot and learn), and the heat makes the
+    tables diverge."""
     from bidding_dt.dd.solver import TableCache
     rng = np.random.default_rng(21)
     deals = random_deals(rng, 6)
@@ -301,22 +302,17 @@ def test_play_team_deals_selfplay_hot_seats(tmp_path):
     b = roll.n_deals
     di = np.asarray(roll.buf.deal_idx)
     seat = np.asarray(roll.buf.seat)
-    open_rows = di < b
-    # open table records only E(1)/S(2); closed table records only N(0)/W(3)
-    assert set(seat[open_rows].tolist()) <= {1, 2}
-    assert set(seat[~open_rows].tolist()) <= {0, 3}
-    # each seat is hot at exactly one table -> all four show up across deals
-    assert set(seat.tolist()) == {0, 1, 2, 3}
+    assert set(seat[di < b].tolist()) == {0, 1, 2, 3}
+    assert set(seat[di >= b].tolist()) == {0, 1, 2, 3}
     assert roll.diverged.any()
     cache.close()
 
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
-def test_play_team_deals_league_hot_seats(tmp_path):
-    """League: only South (open table) and West (closed table) are hot and
-    recorded. The learner's partner (North open / East closed) plays the same
-    policy greedily and the frozen opponent holds the rest -- neither is
-    recorded, so only the heat seats are rewarded and learn."""
+def test_play_team_deals_league_both_partners_hot(tmp_path):
+    """League: both learner-team seats sample at temp and are recorded --
+    N+S at table 0 and E+W at table 1; only the frozen opponent's seats are
+    missing from the buffer."""
     from bidding_dt.dd.solver import TableCache
     rng = np.random.default_rng(31)
     deals = random_deals(rng, 6)
@@ -331,11 +327,50 @@ def test_play_team_deals_league_hot_seats(tmp_path):
     b = roll.n_deals
     di = np.asarray(roll.buf.deal_idx)
     seat = np.asarray(roll.buf.seat)
-    open_rows = di < b
-    # every deal records South(2) at the open table and West(3) at the closed
-    assert set(seat[open_rows].tolist()) == {2}
-    assert set(seat[~open_rows].tolist()) == {3}
+    assert set(seat[di < b].tolist()) == {0, 2}
+    assert set(seat[di >= b].tolist()) == {1, 3}
     cache.close()
+
+
+def test_partner_greedy_dev_partner_means():
+    """Partner deviation is the mean of the partner's per-call devs in the
+    same auction; partners that never called (or legacy buffers without dev)
+    count as 0."""
+    buf = RolloutBuffer()
+    buf.deal_idx = [0, 0, 0, 0, 5, 5]
+    buf.seat = [0, 0, 2, 2, 1, 3]
+    buf.dev = [1.0, 3.0, 0.0, 4.0, 2.0, 0.0]
+    d = partner_greedy_dev(buf)
+    # seat-0 rows: partner seat 2, mean (0+4)/2 = 2; seat-2 rows: partner
+    # seat 0, mean (1+3)/2 = 2; row 4 (seat 1): partner seat 3 dev 0; row 5:
+    # partner seat 1 dev 2
+    assert np.allclose(d, [2.0, 2.0, 2.0, 2.0, 0.0, 2.0])
+    buf2 = RolloutBuffer()
+    buf2.deal_idx = [0]
+    buf2.seat = [0]
+    buf2.dev = [1.5]
+    assert np.allclose(partner_greedy_dev(buf2), [0.0])   # partner silent
+    assert partner_greedy_dev(RolloutBuffer()).shape == (0,)
+    buf3 = _toy_buf([0], [1], [0])                        # legacy: no dev
+    assert np.allclose(partner_greedy_dev(buf3), [0.0])
+
+
+def test_team_row_rewards_partner_dev_scales_negatives_only():
+    """Negative row rewards are scaled by exp(-partner_dev) in (0, 1];
+    positive rewards and partner_dev=None leave them untouched."""
+    buf = _toy_buf(deal_idx=[0, 0], seat=[0, 1], call_idx=[0, 0])
+    kw = dict(n_deals=1, team_imps=np.array([-8.0]), diverge=np.array([0]),
+              par_imps_ns=np.zeros(2), reward_scale=1.0,
+              team_weight=1.0, par_weight=0.25)
+    r0 = team_row_rewards(buf, **kw)
+    assert np.allclose(r0, [-8.0, 8.0])        # N: -8; E: sign-flipped +8
+    pd = np.full(2, np.log(4.0))
+    r = team_row_rewards(buf, partner_dev=pd, **kw)
+    # negative row scaled by exp(-ln 4) = 1/4 -> -2; positive row untouched
+    assert np.allclose(r, [-2.0, 8.0])
+    # dev 0 (greedy partner) -> full punishment
+    assert np.allclose(team_row_rewards(buf, partner_dev=np.zeros(2), **kw),
+                       [-8.0, 8.0])
 
 
 def _toy_buffer(n, seed=0):
@@ -472,4 +507,37 @@ def test_play_team_deals_cpu_amp(tmp_path):
     assert roll.env.done.all()
     assert np.isfinite(roll.buf.logprob).all()
     assert np.isfinite(roll.buf.value).all()
+    cache.close()
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_play_team_deals_partner_dev_discount(tmp_path):
+    """Sampled team rollouts record per-call greedy deviations and discount
+    negative row rewards by exp(-partner mean dev) in (0, 1]; positives and
+    greedy rollouts are unchanged."""
+    from bidding_dt.dd.solver import TableCache
+    rng = np.random.default_rng(43)
+    deals = random_deals(rng, 8)
+    dealer = rng.integers(0, 4, 8)
+    vuln = rng.integers(0, 4, 8)
+    model = tiny_model(seed=47).eval()
+    cache = TableCache(tmp_path / "dd.sqlite")
+    torch.manual_seed(53)
+    roll = play_team_deals(model, deals, dealer, vuln, torch.device("cpu"),
+                           cache=cache, greedy=False, temp=1.4)
+    buf = roll.buf
+    dev = np.asarray(buf.dev)
+    assert dev.shape == (buf.n,)
+    assert np.isfinite(dev).all() and (dev >= 0.0).all()
+    pd = roll.partner_dev
+    assert pd.shape == (buf.n,) and np.isfinite(pd).all() and (pd >= 0.0).all()
+
+    raw = team_row_rewards(buf, roll.n_deals, roll.team_imps, roll.diverge,
+                           roll.par_imps_ns, reward_scale=1.0)
+    r = roll.row_rewards(reward_scale=1.0)
+    neg = raw < 0
+    assert neg.any() and pd[neg].max() > 0.0     # scaling is exercised
+    assert np.allclose(r[~neg], raw[~neg])       # positives untouched
+    assert np.allclose(r[neg], raw[neg] * np.exp(-pd[neg]))
+    assert (r[neg] <= 0.0).all() and (r[neg] >= raw[neg]).all()  # shrunk, sign kept
     cache.close()

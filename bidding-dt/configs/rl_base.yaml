@@ -1,0 +1,46 @@
+# GPU self-play run (base preset, ~6.4M params): BC warm start + KL anchor
+# annealed to 0, league of past snapshots as opponents on half the iters.
+# Reward = two-table team match: IMP swing between the tables (credited only
+# from the first divergent call on) + par-diff IMPs at 1/4 weight.
+#   uv run python -m bidding_dt.rl.train_ppo --config configs/rl_base.yaml \
+#       --preset base --bc-ckpt runs/base/best.pt --out runs/rl_base
+#
+# Same recipe as rl_small.yaml with the model-size-dependent knobs scaled up:
+# the base trunk is ~3x small, so it gets more rollout data per update (bigger
+# deals_per_iter/minibatch), a slightly lower LR, and more iters to converge.
+model:
+  dropout: 0.0
+rl:
+  iters: 256
+  deals_per_iter: 256
+  lr: 7.0e-5               # a touch below rl_small's 1e-4 for the bigger trunk
+  warmup_iters: 10
+  minibatch_size: 256
+  ppo_epochs: 3
+  reward_scale: 0.2
+  team_weight: 1.0
+  par_weight: 0.25
+  rollout_temp: 1.5        # keep self-play tables diverging
+  gamma: 1.0
+  lam: 0.95
+  clip_eps: 0.2
+  vf_coef: 0.5
+  ent_coef: 0.01
+  ent_coef_end: 0.001
+  kl_beta: 0.1
+  kl_beta_end: 0.0
+  league_prob: 0.5
+  snapshot_every: 30
+  max_snapshots: 24
+  # frozen external league members (any BC/SL or RL checkpoint, any arch):
+  # league_members:
+  #   - bc:runs/base/best.pt
+  #   - rl:runs/rl_base/best.pt
+  # league_include_init: true   # --bc-ckpt warm start joins the league too
+  # member_weight: 1.0          # sampling weight per external member
+  # snapshot_weight: 1.0        # sampling weight per past-self snapshot
+  # league_persist: true        # league survives --resume (under <out>/league)
+  # pfsp_alpha: 0.0             # >0: favor opponents the learner is losing to
+  eval_every: 25
+  eval_deals: 256
+  cache_path: cache/dd.sqlite

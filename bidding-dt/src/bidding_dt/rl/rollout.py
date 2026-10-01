@@ -1,16 +1,12 @@
 """Self-play rollouts and GAE.
 
 Team-style training: every deal is played at TWO tables with the same
-dealer/vuln (a duplicate team match) -- table 0 is the "open" table, table 1
-the "closed" one. Only the "hot" seats sample at `temp` (the exploration
-heat) and are learned from; the seats that are not hot play the same policy
-greedily and are never recorded. In league mode the learner team sits N-S at
-the open table and E-W at the closed table (a frozen checkpoint opponent takes
-the other seats), and South (open) / West (closed) are the hot learner seats.
-In pure self-play the learner acts for all four seats: E+S are hot at the open
-table and N+W at the closed table, so each seat is hot at one table and greedy
-at the other -- that asymmetry plus the sampling heat makes the two auctions
-diverge.
+dealer/vuln (a duplicate team match). In league mode the learner team sits
+N-S at table 0 and E-W at table 1 while the frozen checkpoint opponent takes
+the other seats at both tables; in pure self-play the learner acts for all
+four seats at both tables and sampling variance (see `temp`) makes the two
+auctions diverge. Every learner-side seat samples at `temp` and is learned
+from -- both partners of a team play hot.
 
 Reward (per learner decision, IMPs):
 
@@ -25,10 +21,23 @@ swing, so they receive no team credit. The par term applies to every call
 and is down-weighted (par_weight = team_weight/4 by config default). Signs:
 each row sees both terms from its own side's perspective (N-S positive,
 E-W negative; the team term is additionally flipped at table 1, so in
-league mode every hot learner row gets +team_imps when the learner team wins
+league mode every learner row gets +team_imps when the learner team wins
 the comparison).
 
-Every hot-seat decision is recorded in exactly the supervised input format,
+Because both partners sample, a row can also be punished for its *partner's*
+exploration noise, so negative rewards are discounted by how far the partner
+deviated from greedy play: every recorded call stores
+
+    dev = logp(greedy call) - logp(call taken)    (untempered policy, >= 0)
+
+and a row whose reward is negative has it scaled by exp(-D) with D the mean
+dev over the partner's calls in the same auction (partner_greedy_dev /
+team_row_rewards). exp(-D) lies in (0, 1]: a partner that bid exactly as the
+greedy policy would (D = 0) passes the full punishment on, while very unlikely
+sampled calls shrink it toward zero. Positive rewards are never scaled, and
+averaging dev per call keeps the discount independent of auction length.
+
+Every learner decision is recorded in exactly the supervised input format,
 so the PPO update reuses the BC representation. Trajectories are per
 (env-row, seat): the seat's own decisions form the MDP chain with the row
 reward as terminal payoff. gamma=1 by default -- auctions are short and the
@@ -79,6 +88,7 @@ class RolloutBuffer:
     deal_idx: list = field(default_factory=list)   # env row (team: 0..2B-1)
     seat: list = field(default_factory=list)
     call_idx: list = field(default_factory=list)   # decision's call position
+    dev: list = field(default_factory=list)        # greedy deviation per call
     adv: np.ndarray | None = None
     ret: np.ndarray | None = None
 
@@ -87,7 +97,7 @@ class RolloutBuffer:
         return len(self.action)
 
     def add_rows(self, idx, hero, tokens, hand, vuln_cls, row_len, masks,
-                 actions, logprobs, values, call_idx):
+                 actions, logprobs, values, call_idx, devs=None):
         for k, i in enumerate(idx):
             L = int(row_len[k])
             self.tokens.append(np.ascontiguousarray(tokens[k, :L]))
@@ -101,6 +111,7 @@ class RolloutBuffer:
             self.deal_idx.append(int(i))
             self.seat.append(int(hero[k]))
             self.call_idx.append(int(call_idx[k]))
+            self.dev.append(float(devs[k]) if devs is not None else 0.0)
 
     def finish(self, row_reward: np.ndarray, gamma: float = 1.0,
                lam: float = 0.95):
@@ -171,10 +182,38 @@ def par_row_rewards(buf: RolloutBuffer, reward_imps_ns: np.ndarray,
     return reward_imps_ns[deal_idx] * sign * reward_scale
 
 
+def partner_greedy_dev(buf: RolloutBuffer) -> np.ndarray:
+    """(n,) mean greedy deviation of each row's partner.
+
+    The partner is seat+2 in the same auction (same env row / deal_idx); its
+    deviation is the mean of buf.dev over the partner's own recorded calls --
+    dev = logp(greedy call) - logp(call taken) under the untempered policy,
+    so 0 means the partner bid exactly as the greedy strategy would and large
+    values mean it sampled increasingly unlikely calls. A partner that never
+    got to call deviates 0. Rows without recorded devs (legacy buffers) are
+    treated as deviation 0 (no scaling).
+    """
+    n = len(buf.deal_idx)
+    if n == 0:
+        return np.zeros(0)
+    dev = (np.asarray(buf.dev, dtype=np.float64)
+           if len(buf.dev) == n else np.zeros(n))
+    deal_idx = np.asarray(buf.deal_idx)
+    seat = np.asarray(buf.seat)
+    key = deal_idx * 4 + seat
+    sums = np.zeros(int(key.max()) + 4)
+    counts = np.zeros_like(sums)
+    np.add.at(sums, key, dev)
+    np.add.at(counts, key, 1.0)
+    mean = sums / np.maximum(counts, 1.0)
+    return mean[deal_idx * 4 + (seat + 2) % 4]
+
+
 def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
                      diverge: np.ndarray, par_imps_ns: np.ndarray,
                      reward_scale: float, team_weight: float = 1.0,
-                     par_weight: float = 0.25) -> np.ndarray:
+                     par_weight: float = 0.25,
+                     partner_dev: np.ndarray | None = None) -> np.ndarray:
     """Per-row terminal rewards for a two-table team rollout.
 
     team_imps[j]  = IMPs(score_NS(table0, deal j) - score_NS(table1, deal j))
@@ -182,6 +221,13 @@ def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
                     (min length when one is a strict prefix of the other);
                     the team term only reaches calls at/after that index.
     par_imps_ns   = (2B,) par-diff IMPs of each table's auction, N-S view.
+    partner_dev   = (n,) optional mean greedy deviation of each row's partner
+                    (partner_greedy_dev): negative rewards are scaled by
+                    exp(-partner_dev) in (0, 1], so a row only eats the full
+                    punishment when its partner bid (near-)greedily and the
+                    bad outcome is discounted toward zero as the partner's
+                    sampled calls get less likely. Positive rewards are never
+                    scaled, so the discount cannot manufacture a win.
     """
     deal_idx = np.asarray(buf.deal_idx)          # env row in [0, 2B)
     seat = np.asarray(buf.seat)
@@ -193,7 +239,12 @@ def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
     gate = (call_idx >= diverge[base]).astype(np.float64)
     team = team_imps[base] * sign * table_sign * gate
     par = par_imps_ns[deal_idx] * sign
-    return reward_scale * (team_weight * team + par_weight * par)
+    r = reward_scale * (team_weight * team + par_weight * par)
+    if partner_dev is not None:
+        scale = np.exp(-np.clip(np.asarray(partner_dev, dtype=np.float64),
+                                0.0, None))
+        r = np.where(r < 0.0, r * scale, r)
+    return r
 
 
 @dataclass
@@ -207,20 +258,26 @@ class TeamRollout:
     diverged: np.ndarray       # (B,) bool, auctions differ anywhere
     par_imps_ns: np.ndarray    # (2B,) par-diff IMPs per table auction
     score_ns: np.ndarray       # (2B,) achieved score, N-S view
+    partner_dev: np.ndarray | None = None   # (n,) mean partner greedy deviation
 
     def row_rewards(self, reward_scale: float, team_weight: float = 1.0,
                     par_weight: float = 0.25) -> np.ndarray:
         return team_row_rewards(self.buf, self.n_deals, self.team_imps,
                                 self.diverge, self.par_imps_ns, reward_scale,
-                                team_weight, par_weight)
+                                team_weight, par_weight,
+                                partner_dev=self.partner_dev)
 
 
 def _act(mdl, tokens, hand, vuln_cls, row_len, masks, device, greedy,
          temp: float = 1.0, amp: bool = False):
     """One batched decision step for `mdl` (numpy inputs); returns torch
-    (actions, logprobs, values). temp > 1 flattens the sampling distribution
-    (logprobs are from the tempered distribution, matching PPO recompute).
-    amp=True runs the forward under bf16 autocast (CPU speedup knob)."""
+    (actions, logprobs, values, greedy_dev). temp > 1 flattens the sampling
+    distribution (logprobs are from the tempered distribution, matching PPO
+    recompute). greedy_dev = logp(argmax) - logp(action) under the UNTEMPERED
+    masked policy: 0 iff the action is the greedy one, growing with how
+    unlikely the sampled action was (used to discount negative rewards by a
+    partner's exploration noise). amp=True runs the forward under bf16
+    autocast (CPU speedup knob)."""
     with torch.autocast(getattr(device, "type", device),
                         dtype=torch.bfloat16, enabled=amp):
         logits, values = mdl.forward_last(
@@ -230,41 +287,32 @@ def _act(mdl, tokens, hand, vuln_cls, row_len, masks, device, greedy,
             torch.as_tensor(row_len, dtype=torch.long, device=device))
     logits = logits.float()
     values = values.float()   # bf16 under amp -> fp32 for numpy/buffer storage
-    if temp != 1.0:
-        logits = logits / temp
     masks_t = torch.as_tensor(masks, dtype=torch.bool, device=device)
     logits = logits.masked_fill(~masks_t, float("-inf"))
+    lp0 = logits.log_softmax(-1)             # untempered, for greedy_dev
+    if temp != 1.0:
+        logits = logits / temp
     dist = Categorical(logits=logits)
     if greedy and not getattr(mdl, "stochastic", False):
         actions = logits.argmax(-1)
     else:
         actions = dist.sample()
-    return actions, dist.log_prob(actions), values
+    dev = (lp0.max(-1).values
+           - lp0.gather(-1, actions[:, None]).squeeze(-1)).clamp_min(0.0)
+    return actions, dist.log_prob(actions), values, dev
 
 
 @torch.no_grad()
 def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
-         buf: RolloutBuffer | None, temp: float, amp: bool = False,
-         team_b: int | None = None):
-    """Step env to completion; record hot-seat decisions into buf (if any).
+         buf: RolloutBuffer | None, temp: float, amp: bool = False):
+    """Step env to completion; record learner decisions into buf (if any).
 
-    Only the "hot" seats sample at `temp` (the exploration heat) and are
-    recorded/learned; the seats that are not hot play the same policy
-    greedily and are dropped.
-
-    team_b (two-table team mode): deals per table -- rows [0, team_b) are the
-    open table (table 0), rows [team_b, 2*team_b) the closed table (table 1):
-
-      self-play (opponent is None): the learner acts for every seat. E+S are
-        hot at the open table and N+W hot at the closed table, so each seat is
-        hot at exactly one table and greedy at the other.
-      league (opponent given): the learner team is N-S (open) / E-W (closed)
-        and the frozen `opponent` holds the other seats. South (open) and West
-        (closed) are the hot learner seats; their partners (North open, East
-        closed) play the same policy greedily.
-
-    team_b=None (single-table play_deals): legacy behaviour -- every
-    learner-side seat samples at `temp` and is recorded (no greedy partner).
+    Every learner-side seat samples at `temp` and is recorded -- in team mode
+    both partners of the learner partnership play hot at their table, and in
+    self-play all four seats do at both tables. Each recorded call also stores
+    its greedy deviation (buf.dev, see `_act`) so negative rewards can be
+    discounted by the partner's exploration noise (partner_greedy_dev).
+    Opponent seats play their own frozen policy at temp=1 and are dropped.
     """
     use_opp = opponent is not None and learner_ns is not None
     while env.any_active():
@@ -273,62 +321,35 @@ def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
         masks = env.legal_masks(idx)
         actions = np.zeros(len(idx), dtype=np.int64)
 
-        if team_b is not None:
-            is_open = idx < team_b                      # table 0 vs table 1
-            if use_opp:
-                # league: learner N-S (open) / E-W (closed); only S (open) and
-                # W (closed) are hot -- the partner seat plays greedily.
-                is_learn = (hero % 2 == 0) == learner_ns[idx]
-                is_hot = is_learn & (hero == np.where(is_open, 2, 3))
-                is_greedy = is_learn & ~is_hot
-                is_opp = ~is_learn
-            else:
-                # self-play: E,S hot at the open table; N,W hot at the closed
-                # table; the complementary pair at each table is the greedy one.
-                is_hot = np.where(is_open, np.isin(hero, (1, 2)),
-                                  np.isin(hero, (0, 3)))
-                is_greedy = ~is_hot
-                is_opp = np.zeros(len(idx), dtype=bool)
-        elif use_opp:
-            is_hot = (hero % 2 == 0) == learner_ns[idx]
-            is_greedy = np.zeros(len(idx), dtype=bool)
-            is_opp = ~is_hot
+        if use_opp:
+            hero_ns = hero % 2 == 0
+            is_learn = hero_ns == learner_ns[idx]
         else:
-            is_hot = np.ones(len(idx), dtype=bool)
-            is_greedy = np.zeros(len(idx), dtype=bool)
-            is_opp = np.zeros(len(idx), dtype=bool)
+            is_learn = np.ones(len(idx), dtype=bool)
 
-        hot_rows = np.flatnonzero(is_hot)
-        if len(hot_rows):
-            a, lp, v = _act(model, tokens[hot_rows], hand[hot_rows],
-                            vuln_cls[hot_rows], row_len[hot_rows],
-                            masks[hot_rows], device, greedy, temp, amp)
+        learn_rows = np.flatnonzero(is_learn)
+        if len(learn_rows):
+            a, lp, v, dev = _act(model, tokens[learn_rows], hand[learn_rows],
+                                 vuln_cls[learn_rows], row_len[learn_rows],
+                                 masks[learn_rows], device, greedy, temp, amp)
             a_np = a.cpu().numpy()
-            actions[hot_rows] = a_np
+            actions[learn_rows] = a_np
             if buf is not None:
-                buf.add_rows(idx[hot_rows], hero[hot_rows],
-                             tokens[hot_rows], hand[hot_rows],
-                             vuln_cls[hot_rows], row_len[hot_rows],
-                             masks[hot_rows], a_np,
+                buf.add_rows(idx[learn_rows], hero[learn_rows],
+                             tokens[learn_rows], hand[learn_rows],
+                             vuln_cls[learn_rows], row_len[learn_rows],
+                             masks[learn_rows], a_np,
                              lp.cpu().numpy(), v.cpu().numpy(),
-                             env.n_calls[idx[hot_rows]])
-        greedy_rows = np.flatnonzero(is_greedy)
-        if len(greedy_rows):
-            # the learner policy playing its non-hot (partner) seat
-            # deterministically: no exploration and never recorded, so only
-            # the hot seats are rewarded and learn from their actions.
-            a, _, _ = _act(model, tokens[greedy_rows], hand[greedy_rows],
-                           vuln_cls[greedy_rows], row_len[greedy_rows],
-                           masks[greedy_rows], device, True, 1.0, amp)
-            actions[greedy_rows] = a.cpu().numpy()
-        opp_rows = np.flatnonzero(is_opp)
+                             env.n_calls[idx[learn_rows]],
+                             dev.cpu().numpy())
+        opp_rows = np.flatnonzero(~is_learn)
         if len(opp_rows):
             # frozen opponent plays its true policy (temp=1); only the learner's
             # own sampling is tempered, so the team swing measures skill, not
             # opponent noise, and stays consistent with the PPO logprob recompute
-            a, _, _ = _act(opponent, tokens[opp_rows], hand[opp_rows],
-                           vuln_cls[opp_rows], row_len[opp_rows],
-                           masks[opp_rows], device, greedy, 1.0, amp)
+            a, _, _, _ = _act(opponent, tokens[opp_rows], hand[opp_rows],
+                              vuln_cls[opp_rows], row_len[opp_rows],
+                              masks[opp_rows], device, greedy, 1.0, amp)
             actions[opp_rows] = a.cpu().numpy()
 
         env.step(idx, actions)
@@ -389,20 +410,15 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
                     presolve=None) -> TeamRollout:
     """Play every deal at two tables (team match) and score the comparison.
 
-    Only the "hot" seats sample at `temp` (the exploration heat) and are
-    recorded for learning; the seats that are not hot play the same policy
-    greedily and are dropped (see `_run`).
-
-    opponent given (league): the learner team is N-S at table 0 (open) and
-    E-W at table 1 (closed); `opponent` (frozen checkpoint) holds the other
-    seats at both tables. South (open) and West (closed) are the hot learner
-    seats that learn from the play; their partners bid greedily.
-
-    opponent=None (self-play): the learner acts for all four seats at both
-    tables. E+S are hot at the open table and N+W hot at the closed table, so
-    each seat is hot at one table and greedy at the other -- that heat is what
-    makes the two auctions diverge; a fully greedy policy would play identical
-    auctions and get zero team signal.
+    opponent given (league): the learner team is N-S at table 0 and E-W at
+    table 1; `opponent` (frozen checkpoint) holds the other seats at both
+    tables. opponent=None (self-play): the learner acts for all four seats
+    at both tables -- sampling (temp >= 1) is what makes the two auctions
+    diverge; a greedy policy would play identical auctions and get zero
+    team signal. Every learner-side seat samples at `temp` and is recorded
+    (both partners learn); roll.partner_dev holds each recorded row's mean
+    partner greedy deviation, which row_rewards() uses to discount negative
+    rewards (see team_row_rewards).
     amp: bf16 autocast for the rollout forwards (CPU speed knob).
     presolve: optional warm_cache future to join before scoring.
     """
@@ -413,8 +429,7 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
     learner_ns = (np.concatenate([np.ones(b, bool), np.zeros(b, bool)])
                   if opponent is not None else None)
     buf = RolloutBuffer() if record else None
-    _run(env, model, device, opponent, learner_ns, greedy, buf, temp, amp,
-         team_b=b)
+    _run(env, model, device, opponent, learner_ns, greedy, buf, temp, amp)
 
     _join_presolve(presolve)
     rewards = env.rewards(cache=cache)
@@ -423,6 +438,8 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
     team_imps = np.array([points_to_imps(int(score_ns[j] - score_ns[b + j]))
                           for j in range(b)], dtype=np.float64)
     diverge, diverged = _divergence(env, b)
+    partner_dev = partner_greedy_dev(buf) if buf is not None else None
     return TeamRollout(buf=buf, env=env, n_deals=b, team_imps=team_imps,
                        diverge=diverge, diverged=diverged,
-                       par_imps_ns=par_imps, score_ns=score_ns)
+                       par_imps_ns=par_imps, score_ns=score_ns,
+                       partner_dev=partner_dev)
