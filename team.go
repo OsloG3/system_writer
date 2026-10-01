@@ -245,6 +245,41 @@ func (g *TeamGame) scoreLocked(b *TeamBoard) error {
 	return nil
 }
 
+// dealMatchLocked deals a fresh teamMatchLen-board match and runs the bots'
+// openings on every board whose dealer is E/W. The whole match is dealt before
+// any board is committed so a sidecar failure mid-deal cannot leave a partial
+// match behind. Callers must hold g.mu.
+func (g *TeamGame) dealMatchLocked() error {
+	start := len(g.Boards)
+	type dealT struct {
+		Hands  [4]string `json:"hands"`
+		Dealer int       `json:"dealer"`
+		Vuln   int       `json:"vuln"`
+	}
+	deals := make([]dealT, 0, teamMatchLen)
+	for i := 0; i < teamMatchLen; i++ {
+		dealer, vuln := teamRotation(start + i)
+		var d dealT
+		if err := botPost("/deal", map[string]any{"dealer": dealer, "vuln": vuln}, &d, botTimeout); err != nil {
+			return err
+		}
+		deals = append(deals, d)
+	}
+	g.MatchStart = start
+	for _, d := range deals {
+		b := &TeamBoard{Hands: d.Hands, Dealer: d.Dealer, Vuln: d.Vuln}
+		g.Boards = append(g.Boards, b)
+		// Bots open every board whose dealer is E/W; boards dealt to a human
+		// dealer simply wait. A failure here leaves the board waiting on a
+		// bot turn, which polling recovers.
+		if err := g.advanceLocked(b); err != nil {
+			log.Printf("team deal board advance: %v", err)
+		}
+	}
+	g.Updated = time.Now()
+	return nil
+}
+
 // boardAtLocked returns the board with the given 1-based number, or nil.
 // Callers must hold g.mu.
 func (g *TeamGame) boardAtLocked(no int) *TeamBoard {
@@ -394,10 +429,18 @@ func handleTeamNew(w http.ResponseWriter, r *http.Request) {
 	teamMu.Lock()
 	teamGames[g.ID] = g
 	teamMu.Unlock()
+	g.mu.Lock()
 	if err := saveTeamGameLocked(g); err != nil {
 		log.Printf("Could not persist team game: %v", err)
 	}
-	g.mu.Lock()
+	// Deal the first match right away so both members see the boards as soon
+	// as the table exists, without either having to start it. A sidecar
+	// failure leaves an empty table that can still be started manually.
+	if err := g.dealMatchLocked(); err != nil {
+		log.Printf("team new: dealing first match: %v", err)
+	} else if err := saveTeamGameLocked(g); err != nil {
+		log.Printf("Could not persist team game: %v", err)
+	}
 	st := g.stateLocked(username, 0)
 	g.mu.Unlock()
 	writeJSON(w, st)
@@ -605,34 +648,10 @@ func handleTeamStart(w http.ResponseWriter, r *http.Request) {
 	}
 	// Deal the whole match first; only commit once every board is in hand so
 	// a sidecar failure mid-deal cannot leave a partial match behind.
-	start := len(g.Boards)
-	type dealT struct {
-		Hands  [4]string `json:"hands"`
-		Dealer int       `json:"dealer"`
-		Vuln   int       `json:"vuln"`
+	if err := g.dealMatchLocked(); err != nil {
+		jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
+		return
 	}
-	deals := make([]dealT, 0, teamMatchLen)
-	for i := 0; i < teamMatchLen; i++ {
-		dealer, vuln := teamRotation(start + i)
-		var d dealT
-		if err := botPost("/deal", map[string]any{"dealer": dealer, "vuln": vuln}, &d, botTimeout); err != nil {
-			jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
-			return
-		}
-		deals = append(deals, d)
-	}
-	g.MatchStart = start
-	for _, d := range deals {
-		b := &TeamBoard{Hands: d.Hands, Dealer: d.Dealer, Vuln: d.Vuln}
-		g.Boards = append(g.Boards, b)
-		// Bots open every board whose dealer is E/W; boards dealt to a human
-		// dealer simply wait. A failure here leaves the board waiting on a
-		// bot turn, which polling recovers.
-		if err := g.advanceLocked(b); err != nil {
-			log.Printf("team start board advance: %v", err)
-		}
-	}
-	g.Updated = time.Now()
 	if err := saveTeamGameLocked(g); err != nil {
 		log.Printf("Could not persist team game: %v", err)
 	}
