@@ -98,6 +98,7 @@ func main() {
 	initPlay()
 	initTeam()
 	initAlerts()
+	initPush()
 
 	// API Endpoints
 	http.HandleFunc("POST /api/register", handleRegister)
@@ -123,8 +124,18 @@ func main() {
 	http.HandleFunc("POST /api/play/team/{id}/start", handleTeamStart)
 	http.HandleFunc("GET /api/play/team/{id}/history", handleTeamHistory)
 	http.HandleFunc("DELETE /api/play/team/{id}", handleTeamDelete)
+	http.HandleFunc("GET /api/play/push/key", handlePushKey)
+	http.HandleFunc("POST /api/play/push/subscribe", handlePushSubscribe)
+	http.HandleFunc("POST /api/play/push/unsubscribe", handlePushUnsubscribe)
 
 	// Static/HTML Pages
+	// The service worker must be served from the origin root so its scope
+	// covers /play; the manifest gets its proper MIME type explicitly.
+	http.HandleFunc("GET /sw.js", serveHTML("static/sw.js"))
+	http.HandleFunc("GET /manifest.webmanifest", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/manifest+json")
+		http.ServeFile(w, r, "static/manifest.webmanifest")
+	})
 	http.HandleFunc("/edit/", serveHTML("static/edit.html"))
 	http.HandleFunc("/view/", serveHTML("static/view.html"))
 	http.HandleFunc("/practice/", serveHTML("static/practice.html"))

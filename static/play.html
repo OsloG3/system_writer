@@ -5,6 +5,9 @@
         <meta charset="utf-8" />
         <meta content="width=device-width, initial-scale=1.0" name="viewport" />
         <title>Bridge Trainer | Play vs Bots</title>
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta name="theme-color" content="#151a24" />
+        <link rel="apple-touch-icon" href="/static/icon-192.png" />
         <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
         <link
             href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
@@ -1032,35 +1035,122 @@
                 );
             }
 
-            function maybeAskNotifyPermission() {
+            // ---- Web Push: turn alerts while the page is closed ----
+            // The server pushes when a team board flips to a member's turn;
+            // static/sw.js shows it unless a focused window alerts in-page.
+            // Needs a secure origin; iOS only delivers to sites installed
+            // on the home screen (iOS 16.4+).
+
+            function pushCapable() {
+                return (
+                    "serviceWorker" in navigator && "PushManager" in window
+                );
+            }
+
+            function urlB64ToUint8(base64) {
+                const pad = "=".repeat((4 - (base64.length % 4)) % 4);
+                const b = atob(
+                    (base64 + pad).replace(/-/g, "+").replace(/_/g, "/"),
+                );
+                const arr = new Uint8Array(b.length);
+                for (let i = 0; i < b.length; i++) arr[i] = b.charCodeAt(i);
+                return arr;
+            }
+
+            async function pushEnable() {
+                if (!pushCapable()) return false;
+                try {
+                    const reg = await navigator.serviceWorker.ready;
+                    const res = await fetch("/api/play/push/key");
+                    if (!res.ok) return false;
+                    const { key } = await res.json();
+                    const opts = {
+                        userVisibleOnly: true,
+                        applicationServerKey: urlB64ToUint8(key),
+                    };
+                    let sub;
+                    try {
+                        sub = await reg.pushManager.subscribe(opts);
+                    } catch (e) {
+                        // an old subscription from a different VAPID key
+                        const old = await reg.pushManager.getSubscription();
+                        if (old) await old.unsubscribe();
+                        sub = await reg.pushManager.subscribe(opts);
+                    }
+                    const r = await fetch("/api/play/push/subscribe", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(sub),
+                    });
+                    return r.ok;
+                } catch (e) {
+                    return false;
+                }
+            }
+
+            async function pushDisable() {
+                if (!pushCapable()) return;
+                try {
+                    const reg = await navigator.serviceWorker.ready;
+                    const sub = await reg.pushManager.getSubscription();
+                    if (!sub) return;
+                    const endpoint = sub.endpoint;
+                    await sub.unsubscribe();
+                    await fetch("/api/play/push/unsubscribe", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ endpoint }),
+                    });
+                } catch (e) {}
+            }
+
+            async function enableTurnAlertsFlow() {
                 if (
-                    turnAlertsOn &&
                     typeof Notification !== "undefined" &&
                     Notification.permission === "default"
                 ) {
-                    Notification.requestPermission().catch(() => {});
+                    try {
+                        await Notification.requestPermission();
+                    } catch (e) {}
+                }
+                const pushed = await pushEnable();
+                if (pushed)
+                    showToast(
+                        "Turn alerts on — delivered even with the page closed",
+                    );
+                else if (
+                    typeof Notification !== "undefined" &&
+                    Notification.permission === "granted"
+                )
+                    showToast(
+                        "Turn alerts on (this browser delivers them only while the page is open)",
+                    );
+                else showToast("Turn alerts on (in-app only)");
+                render();
+            }
+
+            function maybeAskNotifyPermission() {
+                if (!turnAlertsOn) return;
+                if (
+                    typeof Notification !== "undefined" &&
+                    Notification.permission === "default"
+                ) {
+                    Notification.requestPermission()
+                        .then(() => pushEnable())
+                        .catch(() => {});
+                } else {
+                    pushEnable(); // keep the server-side binding fresh
                 }
             }
 
             function toggleTurnAlerts() {
                 turnAlertsOn = !turnAlertsOn;
                 localStorage.setItem(TURN_ALERT_KEY, turnAlertsOn ? "1" : "0");
-                if (
-                    turnAlertsOn &&
-                    typeof Notification !== "undefined" &&
-                    Notification.permission === "default"
-                ) {
-                    Notification.requestPermission()
-                        .then((p) =>
-                            showToast(
-                                p === "granted"
-                                    ? "Turn alerts on"
-                                    : "Turn alerts on (in-app only — the browser blocked system notifications)",
-                            ),
-                        )
-                        .catch(() => {});
+                if (turnAlertsOn) {
+                    enableTurnAlertsFlow();
                 } else {
-                    showToast(turnAlertsOn ? "Turn alerts on" : "Turn alerts off");
+                    pushDisable();
+                    showToast("Turn alerts off");
                 }
                 render();
             }
@@ -1652,7 +1742,6 @@
                                 <span class="material-symbols-outlined text-sm">${state.mode === "team" && state.matchDone ? "restart_alt" : "casino"}</span>
                                 ${state.mode === "team" && state.matchDone ? "Start next match" : "Next board"}
                             </button>
-                            ${state.hands ? `<button id="allHandsBtn" class="cb-btn-ghost"><span class="material-symbols-outlined text-sm">style</span>All hands</button>` : ""}
                         </div>
                     </div>`;
             }
@@ -1736,7 +1825,7 @@
                            </button>`
                         : "";
                 const bell = team
-                    ? `<button id="alertBellBtn" class="cb-iconbtn" title="${turnAlertsOn ? "Turn alerts on — tap to disable" : "Turn alerts off — tap to enable"}" style="${turnAlertsOn ? "color:#f2ca4c;" : "opacity:.5;"}">
+                    ? `<button id="alertBellBtn" class="cb-iconbtn" title="${turnAlertsOn ? "Turn alerts on (also while the page is closed) — tap to disable" : "Turn alerts off — tap to enable"}" style="${turnAlertsOn ? "color:#f2ca4c;" : "opacity:.5;"}">
                            <span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' ${turnAlertsOn ? 1 : 0};">${turnAlertsOn ? "notifications_active" : "notifications_off"}</span>
                        </button>`
                     : "";
@@ -1780,9 +1869,17 @@
                 if (team && state.noBoard) {
                     mid = busy ? dealingHtml() : teamReadyHtml();
                 } else if (state.done) {
-                    // End of hand: just the score and the four hands; the
-                    // auction stays reachable via Past boards / All hands
-                    mid = resultHtml() + allHandsHtml();
+                    // End of hand: score, the bidding, and the four hands
+                    mid =
+                        resultHtml() +
+                        auctionHtml(
+                            state.dealer,
+                            state.vuln,
+                            state.calls,
+                            null,
+                            state.humanSeat,
+                        ) +
+                        allHandsHtml();
                 } else {
                     const parts = [
                         auctionHtml(
@@ -1975,23 +2072,6 @@
                             Log in
                         </button>
                     </div>`;
-            }
-
-            function currentItem() {
-                const r = state.result;
-                return {
-                    no: state.mode === "team" ? state.boardSel : null,
-                    ts: null,
-                    dealer: state.dealer,
-                    vuln: state.vuln,
-                    calls: state.calls || [],
-                    contract: contractString(r ? r.contract : null),
-                    tricks: r ? r.tricks : null,
-                    parNs: r ? r.parNs : 0,
-                    scoreNs: r ? r.scoreNs : 0,
-                    imps: r ? r.imps : 0,
-                    hands: state.hands || null,
-                };
             }
 
             function historyItemFromSolo(rec, idx) {
@@ -2304,17 +2384,6 @@
                         closeMenu();
                         newBoard();
                     };
-                const allh = document.getElementById("allHandsBtn");
-                if (allh)
-                    allh.onclick = () => {
-                        overlay = {
-                            items: null,
-                            detail: currentItem(),
-                            loading: false,
-                            error: false,
-                        };
-                        renderOverlay();
-                    };
                 const next = document.getElementById("nextBoardBtn");
                 if (next)
                     next.onclick = () => {
@@ -2382,6 +2451,13 @@
             document.addEventListener("authchange", () => {
                 if (window.currentUser) {
                     loadInitial();
+                    // bind this browser's push endpoint to the new account
+                    if (
+                        turnAlertsOn &&
+                        typeof Notification !== "undefined" &&
+                        Notification.permission === "granted"
+                    )
+                        pushEnable();
                 } else {
                     state = null;
                     stats = null;
@@ -2399,6 +2475,9 @@
                     refreshBoard(true);
             });
 
+            if ("serviceWorker" in navigator) {
+                navigator.serviceWorker.register("/sw.js").catch(() => {});
+            }
             refreshAuthState();
         </script>
     </body>

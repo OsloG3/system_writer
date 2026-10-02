@@ -3,6 +3,8 @@ system_writer
 sw
 data/users.json
 data/sessions.json
+data/vapid.json
+data/push_subs.json
 data/game_*.json
 data/*.tmp
 

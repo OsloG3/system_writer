@@ -137,6 +137,70 @@ func auctionFinished(calls []string) bool {
 	return n >= 4 && calls[n-1] == "P" && calls[n-2] == "P" && calls[n-3] == "P"
 }
 
+// waitingLocked maps each human seat to the 1-based numbers of the current
+// match's boards that await that seat's bid. Callers must hold g.mu.
+func (g *TeamGame) waitingLocked() map[int][]int {
+	m := make(map[int][]int)
+	start := g.matchStartIdx()
+	for i := start; i < len(g.Boards); i++ {
+		b := g.Boards[i]
+		if b.Result != nil {
+			continue
+		}
+		if next := (b.Dealer + len(b.Calls)) % 4; next == teamSouthSeat || next == teamNorthSeat {
+			m[next] = append(m[next], i+1)
+		}
+	}
+	return m
+}
+
+// newTurns returns, per human seat, the boards gained between two
+// waitingLocked snapshots.
+func newTurns(before, after map[int][]int) map[int][]int {
+	out := make(map[int][]int)
+	for seat, boards := range after {
+		var fresh []int
+		for _, no := range boards {
+			if !slices.Contains(before[seat], no) {
+				fresh = append(fresh, no)
+			}
+		}
+		if len(fresh) > 0 {
+			out[seat] = fresh
+		}
+	}
+	return out
+}
+
+// pushNewTurns sends Web Push alerts for the boards that became a member's
+// turn between two waitingLocked snapshots -- the only delivery path for
+// players whose page is closed. One combined push per member.
+func (g *TeamGame) pushNewTurns(before, after map[int][]int) {
+	for seat, fresh := range newTurns(before, after) {
+		user := g.Partner
+		if seat == teamSouthSeat {
+			user = g.Host
+		}
+		if user == "" {
+			continue
+		}
+		sendTurnPush(user, g.ID, fresh)
+	}
+}
+
+// advanceAllLocked runs every board of the current match whose bots owe
+// calls. Callers must hold g.mu.
+func (g *TeamGame) advanceAllLocked() {
+	for _, b := range g.Boards[g.matchStartIdx():] {
+		if b.Result != nil {
+			continue
+		}
+		if err := g.advanceLocked(b); err != nil {
+			log.Printf("team board advance: %v", err)
+		}
+	}
+}
+
 // statsLocked summarizes the table so the shared scoreboard renders the same
 // way as solo play. Callers must hold g.mu.
 func (g *TeamGame) statsLocked() map[string]any {
@@ -453,6 +517,7 @@ func handleTeamNew(w http.ResponseWriter, r *http.Request) {
 	} else if err := saveTeamGameLocked(g); err != nil {
 		log.Printf("Could not persist team game: %v", err)
 	}
+	g.pushNewTurns(nil, g.waitingLocked())
 	st := g.stateLocked(username, 0)
 	g.mu.Unlock()
 	writeJSON(w, st)
@@ -537,6 +602,7 @@ func handleTeamGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	boardNo, _ := strconv.Atoi(r.URL.Query().Get("board"))
+	waitBefore := g.waitingLocked()
 	changed := false
 	for _, b := range g.Boards[g.matchStartIdx():] {
 		if b.Result != nil {
@@ -555,6 +621,7 @@ func handleTeamGet(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Could not persist team game: %v", serr)
 		}
 	}
+	g.pushNewTurns(waitBefore, g.waitingLocked())
 	writeJSON(w, g.stateLocked(username, boardNo))
 }
 
@@ -613,14 +680,19 @@ func handleTeamCall(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusBadRequest, "illegal call: "+call)
 		return
 	}
+	waitBefore := g.waitingLocked()
 	b.Calls = append(b.Calls, call)
 	b.Legal = nil
 	b.LegalLen = -1
 	g.Updated = time.Now()
 	err = g.advanceLocked(b)
+	// run the match's other stalled boards too, so a member whose page is
+	// closed still learns via Web Push that a board awaits them
+	g.advanceAllLocked()
 	if serr := saveTeamGameLocked(g); serr != nil {
 		log.Printf("Could not persist team game: %v", serr)
 	}
+	g.pushNewTurns(waitBefore, g.waitingLocked())
 	if err != nil {
 		jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
 		return
@@ -667,6 +739,7 @@ func handleTeamStart(w http.ResponseWriter, r *http.Request) {
 	if err := saveTeamGameLocked(g); err != nil {
 		log.Printf("Could not persist team game: %v", err)
 	}
+	g.pushNewTurns(nil, g.waitingLocked())
 	writeJSON(w, g.stateLocked(username, 0))
 }
 
