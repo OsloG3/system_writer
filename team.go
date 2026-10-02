@@ -768,6 +768,7 @@ func handleTeamHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	type historyBoard struct {
 		No     int         `json:"no"`
+		Match  int         `json:"match"` // 1-based match number (teamMatchLen boards each)
 		Dealer int         `json:"dealer"`
 		Vuln   int         `json:"vuln"`
 		Calls  []string    `json:"calls"`
@@ -777,7 +778,7 @@ func handleTeamHistory(w http.ResponseWriter, r *http.Request) {
 	boards := make([]historyBoard, 0, len(g.Boards))
 	for i, b := range g.Boards {
 		boards = append(boards, historyBoard{
-			No: i + 1, Dealer: b.Dealer, Vuln: b.Vuln,
+			No: i + 1, Match: i/teamMatchLen + 1, Dealer: b.Dealer, Vuln: b.Vuln,
 			Calls: callsOrEmpty(b.Calls), Hands: b.Hands, Result: b.Result,
 		})
 	}

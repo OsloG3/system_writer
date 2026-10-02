@@ -2262,6 +2262,7 @@
                 const r = b.result;
                 return {
                     no: b.no,
+                    match: b.match || 0,
                     ts: null,
                     dealer: b.dealer,
                     vuln: b.vuln,
@@ -2288,8 +2289,25 @@
                             const data = await res.json();
                             overlay.items = (data.boards || [])
                                 .filter((b) => b.result)
-                                .map(historyItemFromTeam)
-                                .reverse();
+                                .map(historyItemFromTeam);
+                            overlay.items.forEach((it, i) => (it.idx = i));
+                            // group boards into their matches, newest first
+                            const byMatch = new Map();
+                            for (const it of overlay.items) {
+                                if (!byMatch.has(it.match))
+                                    byMatch.set(it.match, []);
+                                byMatch.get(it.match).push(it);
+                            }
+                            overlay.groups = [...byMatch.entries()]
+                                .sort((a, b) => b[0] - a[0])
+                                .map(([no, boards]) => ({
+                                    no,
+                                    boards,
+                                    total: boards.reduce(
+                                        (s, b) => s + (b.imps || 0),
+                                        0,
+                                    ),
+                                }));
                         } else {
                             overlay.error = true;
                         }
@@ -2312,6 +2330,7 @@
             }
 
             function historyRowHtml(item, i) {
+                const idx = item.idx !== undefined ? item.idx : i;
                 const label = item.no
                     ? "Board " + item.no
                     : timeAgo(item.ts) || "Board";
@@ -2320,13 +2339,29 @@
                         ? ""
                         : ` · ${item.tricks} tricks`;
                 return `
-                    <button data-hist-item="${i}" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:brightness-125 transition-all" style="background:#202836;">
+                    <button data-hist-item="${idx}" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:brightness-125 transition-all" style="background:#202836;">
                         <span class="text-xs text-[#8fa0b5] font-label w-20 shrink-0">${label}</span>
                         <span class="text-sm font-headline font-semibold text-white min-w-0 truncate">${contractHtml(item.contract)}</span>
                         <span class="text-xs text-[#8fa0b5] font-label hidden sm:inline">${VULN_NAMES[item.vuln]}${resultTxt}</span>
                         <span class="ml-auto text-xs text-[#8fa0b5] font-label">par ${scoreText(item.parNs)}</span>
                         <span class="text-sm font-headline font-bold ${impsColor(item.imps)} w-10 text-right">${signed(item.imps)}</span>
                     </button>`;
+            }
+
+            // One match section: overall IMPs across its boards, then the
+            // per-board rows (ascending, like a scoresheet)
+            function matchGroupHtml(g) {
+                const scored = g.boards.length;
+                return `
+                    <div class="mb-4">
+                        <div class="flex items-center gap-2 px-1 pb-1.5">
+                            <span class="text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label font-bold">Match ${g.no}</span>
+                            <span class="text-[10px] text-[#8fa0b5] font-label">${scored} board${scored === 1 ? "" : "s"} scored</span>
+                            <span class="ml-auto text-[9px] uppercase tracking-widest text-[#8fa0b5] font-label">overall</span>
+                            <span class="text-base font-headline font-extrabold ${impsColor(g.total)} w-14 text-right">${signed(g.total, 1)}</span>
+                        </div>
+                        <div class="space-y-1.5">${g.boards.map((it) => historyRowHtml(it)).join("")}</div>
+                    </div>`;
             }
 
             function historyDetailHtml(item) {
@@ -2340,7 +2375,7 @@
                             <span class="material-symbols-outlined text-sm">arrow_back</span>All boards
                         </button>
                         <div class="font-headline font-bold text-white min-w-0 truncate">${contractHtml(item.contract)}</div>
-                        ${item.no ? `<span class="text-xs text-[#8fa0b5] font-label">· board ${item.no}</span>` : ""}
+                        ${item.no ? `<span class="text-xs text-[#8fa0b5] font-label">· board ${item.no}${item.match ? ` · match ${item.match}` : ""}</span>` : ""}
                     </div>
                     <div class="text-xs text-[#8fa0b5] font-label">
                         ${SEAT_NAMES[item.dealer]} dealt · ${VULN_NAMES[item.vuln]} vuln
@@ -2358,6 +2393,10 @@
                     body = `<div class="flex items-center gap-2 py-6 justify-center">${spinner("Loading boards…")}</div>`;
                 } else if (overlay.error) {
                     body = `<p class="text-sm text-[#9aa7b8] italic py-6 text-center">Could not load the boards just now.</p>`;
+                } else if (overlay.groups) {
+                    body = overlay.groups.length
+                        ? overlay.groups.map(matchGroupHtml).join("")
+                        : `<p class="text-sm text-[#9aa7b8] italic py-6 text-center">No completed boards yet.</p>`;
                 } else if (!overlay.items || overlay.items.length === 0) {
                     body = `<p class="text-sm text-[#9aa7b8] italic py-6 text-center">No completed boards yet.</p>`;
                 } else {
@@ -2365,7 +2404,7 @@
                 }
                 return `
                     <div class="flex items-center justify-between mb-3">
-                        <div class="font-headline font-bold text-white">Board history</div>
+                        <div class="font-headline font-bold text-white">${overlay.groups ? "Match history" : "Board history"}</div>
                         <button id="histCloseBtn" class="material-symbols-outlined text-[#9aa7b8] hover:text-white">close</button>
                     </div>
                     ${body}`;
