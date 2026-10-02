@@ -171,6 +171,9 @@
             }
             .cb-mid.cb-mid-bid > .cb-auction .cb-auc-body {
                 flex: 1;
+                min-height: 3.75rem;
+                overflow-y: auto;
+                overscroll-behavior: contain;
             }
 
             .cb-auction {
@@ -205,19 +208,32 @@
                 font-weight: 800;
                 font-size: 0.85rem;
             }
-            .cb-auc-head > div.dlr {
-                color: #f2ca4c;
-            }
-            .cb-seatyou {
-                display: flex;
+            .cb-seatv {
+                display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                width: 1.5rem;
-                height: 1.5rem;
-                border-radius: 50%;
-                border: 2px solid #e8ecf2;
-                color: #fff;
+                width: 1.7rem;
+                height: 1.7rem;
+                border-radius: 0.55rem;
+                box-sizing: border-box;
             }
+            .cb-seatv.v {
+                background: #a93226;
+                color: #ffe3de;
+            }
+            .cb-seatv.nv {
+                background: #2e5d43;
+                color: #d7ecdc;
+            }
+            .cb-seatv.dlr {
+                box-shadow: 0 0 0 2px #f2ca4c;
+            }
+            .cb-seatv.you {
+                border: 2px solid #e8ecf2;
+                border-radius: 50%;
+            }
+            .cb-vuln-v { color: #f08a8a; }
+            .cb-vuln-nv { color: #8fd694; }
             .cb-auc-body {
                 min-height: 8rem;
                 padding: 0.5rem 0.4rem 0.6rem;
@@ -688,6 +704,7 @@
             const TILE_CLS = { C: "c", D: "d", H: "h", S: "s", N: "n" };
             const BOARD_KEY = "atheneum_play_board";
             const TEAM_KEY = "atheneum_play_team";
+            const TURN_ALERT_KEY = "atheneum_play_turn_alerts";
 
             let state = null;
             let stats = null;
@@ -699,6 +716,9 @@
             let bidLevelKey = null;
             let pollTimer = null;
             let overlay = null;
+            let turnAlertsOn = localStorage.getItem(TURN_ALERT_KEY) !== "0";
+            let prevGamesTurn = null; // lobby: game id -> yourTurn, for transitions
+            let pendingTurnToast = null; // alert text deferred while the page is hidden
 
             function dcolorSuits(text) {
                 return escapeHtml(text)
@@ -808,6 +828,26 @@
                 );
             }
 
+            // Mobile only: N and S sit in separate full-width grid areas and
+            // center to their own content width, so the narrower block's left
+            // edge drifts right. Give both the wider block's width so they
+            // share the same centered axis and left edge.
+            function alignHandDiagram(root) {
+                if (
+                    !window.matchMedia ||
+                    !window.matchMedia("(max-width: 400px)").matches
+                )
+                    return;
+                root.querySelectorAll(".cb-diagram").forEach((d) => {
+                    const n = d.querySelector(".cb-dg-n");
+                    const s = d.querySelector(".cb-dg-s");
+                    if (!n || !s) return;
+                    n.style.width = s.style.width = "";
+                    const w = Math.max(n.offsetWidth, s.offsetWidth);
+                    n.style.width = s.style.width = w + "px";
+                });
+            }
+
             function impsColor(imps) {
                 if (imps > 0) return "text-[#6ee7a0]";
                 if (imps < 0) return "text-[#f08a8a]";
@@ -914,6 +954,128 @@
                 return `<div id="alertBox" class="cb-alertbox">${defaultAlertLine()}</div>`;
             }
 
+            // ---- Turn alerts (partner tables: 2 players vs 2 bots) ----
+            // A table that was not waiting for you starts waiting for you ->
+            // system notification where the browser allows it (desktop,
+            // Android; on iOS Safari only for installed PWAs), plus toast,
+            // vibration and a title badge as the everywhere fallbacks.
+
+            function yourTurnBoards(s) {
+                if (!s || s.mode !== "team") return [];
+                return (s.boards || [])
+                    .filter((b) => !b.done && b.yourTurn)
+                    .map((b) => b.no);
+            }
+
+            function newTurnBoards(prev, next) {
+                const had = new Set(yourTurnBoards(prev));
+                return yourTurnBoards(next).filter((no) => !had.has(no));
+            }
+
+            function sendTurnAlert(title, body, tag, onclick) {
+                if (
+                    typeof Notification !== "undefined" &&
+                    Notification.permission === "granted"
+                ) {
+                    try {
+                        const n = new Notification(title, {
+                            body,
+                            tag,
+                            renotify: true,
+                        });
+                        n.onclick = () => {
+                            window.focus();
+                            if (onclick) onclick();
+                            n.close();
+                        };
+                    } catch (e) {}
+                } else if (document.hidden) {
+                    // No system notifications (iOS Safari): show it on return
+                    pendingTurnToast = body;
+                }
+                if (navigator.vibrate) {
+                    try {
+                        navigator.vibrate([120, 60, 120]);
+                    } catch (e) {}
+                }
+                if (!document.hidden) showToast(body);
+            }
+
+            // In-table: new boards of the open match became the player's turn
+            function notifyBoardsTurn(s, boards) {
+                const who = s.yourSeat === 2 ? s.partner : s.host;
+                const label = `Board${boards.length > 1 ? "s" : ""} ${boards.join(", ")} — your turn to bid`;
+                sendTurnAlert(
+                    "Your turn · Bridge Trainer",
+                    `${label} (table with ${who || "partner"})`,
+                    `turn-${s.id}`,
+                    () => {
+                        if (
+                            state &&
+                            state.mode === "team" &&
+                            state.id === s.id &&
+                            state.boardSel !== boards[0]
+                        )
+                            teamSelectBoard(boards[0]);
+                    },
+                );
+            }
+
+            // Lobby: a table in the list became the player's turn
+            function notifyGameTurn(g) {
+                const who = g.yourSeat === 2 ? g.partner : g.host;
+                sendTurnAlert(
+                    "Your turn · Bridge Trainer",
+                    `Table with ${who || "partner"} awaits your bid`,
+                    `turn-${g.id}`,
+                    () => teamOpen(g.id),
+                );
+            }
+
+            function maybeAskNotifyPermission() {
+                if (
+                    turnAlertsOn &&
+                    typeof Notification !== "undefined" &&
+                    Notification.permission === "default"
+                ) {
+                    Notification.requestPermission().catch(() => {});
+                }
+            }
+
+            function toggleTurnAlerts() {
+                turnAlertsOn = !turnAlertsOn;
+                localStorage.setItem(TURN_ALERT_KEY, turnAlertsOn ? "1" : "0");
+                if (
+                    turnAlertsOn &&
+                    typeof Notification !== "undefined" &&
+                    Notification.permission === "default"
+                ) {
+                    Notification.requestPermission()
+                        .then((p) =>
+                            showToast(
+                                p === "granted"
+                                    ? "Turn alerts on"
+                                    : "Turn alerts on (in-app only — the browser blocked system notifications)",
+                            ),
+                        )
+                        .catch(() => {});
+                } else {
+                    showToast(turnAlertsOn ? "Turn alerts on" : "Turn alerts off");
+                }
+                render();
+            }
+
+            function updateTitleAlert(s) {
+                let n = 0;
+                if (s && s.mode === "team") n = yourTurnBoards(s).length;
+                else if (!s && games)
+                    n = games.filter((g) => g.yourTurn).length;
+                document.title =
+                    turnAlertsOn && n > 0
+                        ? `● Your turn (${n}) · Bridge Trainer`
+                        : "Bridge Trainer | Play vs Bots";
+            }
+
             function cbChip(c, alertIdx) {
                 let chip;
                 if (c === "P") chip = `<span class="cb-call cb-call-p">pass</span>`;
@@ -944,15 +1106,16 @@
                     while (rows[r].length < pos) rows[r].push({ c: null });
                     rows[r].push({ q: true });
                 }
+                const vulnSeat = (s) =>
+                    vuln === 3 ||
+                    (vuln === 1 && s % 2 === 0) ||
+                    (vuln === 2 && s % 2 === 1);
                 const head = cols
-                    .map(
-                        (s) =>
-                            `<div class="${s === dealer ? "dlr" : ""}">${
-                                s === youSeat
-                                    ? `<span class="cb-seatyou">${SEAT_NAMES[s][0]}</span>`
-                                    : SEAT_NAMES[s][0]
-                            }</div>`,
-                    )
+                    .map((s) => {
+                        const v = vulnSeat(s);
+                        const cls = `cb-seatv ${v ? "v" : "nv"}${s === dealer ? " dlr" : ""}${s === youSeat ? " you" : ""}`;
+                        return `<div><span class="${cls}" title="${v ? "Vulnerable" : "Not vulnerable"}">${SEAT_NAMES[s][0]}</span></div>`;
+                    })
                     .join("");
                 const body = rows.length
                     ? rows
@@ -983,7 +1146,7 @@
                 return `
                     <div class="cb-auction">
                         <div class="cb-auc-meta">
-                            <span>Dealer ${SEAT_NAMES[dealer][0]} · Vuln ${VULN_NAMES[vuln]}</span>
+                            <span>Dealer ${SEAT_NAMES[dealer][0]} · <span class="${vuln === 0 ? "cb-vuln-nv" : "cb-vuln-v"}">Vuln ${VULN_NAMES[vuln]}</span></span>
                             <span>${list.length} call${list.length === 1 ? "" : "s"}</span>
                         </div>
                         <div class="cb-auc-head">${head}</div>
@@ -1019,6 +1182,15 @@
                     return;
                 }
                 if (data.mode === "team") {
+                    if (
+                        turnAlertsOn &&
+                        state &&
+                        state.mode === "team" &&
+                        state.id === data.id
+                    ) {
+                        const added = newTurnBoards(state, data);
+                        if (added.length) notifyBoardsTurn(data, added);
+                    }
                     const changed =
                         !state ||
                         state.mode !== "team" ||
@@ -1150,11 +1322,13 @@
                     showToast("Enter your partner's username", true);
                     return;
                 }
+                maybeAskNotifyPermission();
                 await post("/api/play/team/new", { partner: partner });
             }
 
             async function teamOpen(id) {
                 if (busy) return;
+                maybeAskNotifyPermission();
                 busy = true;
                 render();
                 try {
@@ -1211,6 +1385,23 @@
                     const res = await fetch("/api/play/team/list");
                     if (res.ok) games = (await res.json()).games || [];
                 } catch (e) {}
+                checkLobbyTurnAlerts();
+            }
+
+            // Lobby polling: fire once per table when its yourTurn flips on
+            function checkLobbyTurnAlerts() {
+                if (!games) return;
+                const now = {};
+                for (const g of games) now[g.id] = !!g.yourTurn;
+                if (turnAlertsOn && prevGamesTurn) {
+                    for (const g of games) {
+                        if (now[g.id] && prevGamesTurn[g.id] === false) {
+                            notifyGameTurn(g);
+                            break; // one alert per poll is enough
+                        }
+                    }
+                }
+                prevGamesTurn = now;
             }
 
             async function loadUsers() {
@@ -1544,6 +1735,11 @@
                                <span class="material-symbols-outlined text-sm">touch_app</span>Next hand
                            </button>`
                         : "";
+                const bell = team
+                    ? `<button id="alertBellBtn" class="cb-iconbtn" title="${turnAlertsOn ? "Turn alerts on — tap to disable" : "Turn alerts off — tap to enable"}" style="${turnAlertsOn ? "color:#f2ca4c;" : "opacity:.5;"}">
+                           <span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' ${turnAlertsOn ? 1 : 0};">${turnAlertsOn ? "notifications_active" : "notifications_off"}</span>
+                       </button>`
+                    : "";
                 const menu = `
                     <div class="cb-menuwrap">
                         <button id="cbMenuBtn" class="cb-plainbtn" title="Menu">
@@ -1565,12 +1761,12 @@
                             <div class="t">Hand ${no}</div>
                             <div class="s">${sub}</div>
                         </div>
-                        ${arrows}${jump}${menu}
+                        ${arrows}${jump}${bell}${menu}
                     </div>`;
             }
 
             function handFooterHtml() {
-                if (state.noBoard || !state.hand) return "";
+                if (state.noBoard || !state.hand || state.done) return "";
                 return `
                     <div class="cb-handfoot">
                         <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]} ${hcpOf(state.hand)} HCP</div>
@@ -1583,22 +1779,23 @@
                 let mid;
                 if (team && state.noBoard) {
                     mid = busy ? dealingHtml() : teamReadyHtml();
+                } else if (state.done) {
+                    // End of hand: just the score and the four hands; the
+                    // auction stays reachable via Past boards / All hands
+                    mid = resultHtml() + allHandsHtml();
                 } else {
                     const parts = [
                         auctionHtml(
                             state.dealer,
                             state.vuln,
                             state.calls,
-                            state.done ? null : state.nextSeat,
+                            state.nextSeat,
                             state.humanSeat,
                             state.alerts,
                         ),
                         alertBoxHtml(),
                     ];
-                    if (state.done) {
-                        parts.push(resultHtml());
-                        parts.push(allHandsHtml());
-                    } else if (
+                    if (
                         busy ||
                         !state.yourTurn ||
                         (state.yourTurn && !state.legal)
@@ -1943,6 +2140,7 @@
                         ? historyListHtml()
                         : historyDetailHtml(overlay.detail)
                 }</div>`;
+                alignHandDiagram(el);
                 el.onclick = (e) => {
                     if (e.target === el) closeHistory();
                 };
@@ -2010,6 +2208,17 @@
                               ],
                           }
                         : null;
+                // Keep following the auction's latest call across re-renders,
+                // unless the player scrolled up to review earlier calls
+                const prevAuc = document.querySelector(
+                    ".cb-mid-bid .cb-auc-body",
+                );
+                const followAuc =
+                    !prevAuc ||
+                    prevAuc.scrollHeight -
+                        prevAuc.scrollTop -
+                        prevAuc.clientHeight <
+                        24;
                 content.innerHTML = state ? tableView() : lobbyHtml();
 
                 const deal = document.getElementById("dealBtn");
@@ -2061,6 +2270,8 @@
                         const t = nextTeamBoardTarget();
                         if (t !== null) teamSelectBoard(t);
                     };
+                const bell = document.getElementById("alertBellBtn");
+                if (bell) bell.onclick = toggleTurnAlerts;
                 const mbtn = document.getElementById("cbMenuBtn");
                 if (mbtn)
                     mbtn.onclick = (e) => {
@@ -2128,6 +2339,13 @@
                 const retry = document.getElementById("retryBtn");
                 if (retry) retry.onclick = () => refreshBoard(true);
 
+                updateTitleAlert(state);
+                alignHandDiagram(content);
+                const aucBody = content.querySelector(
+                    ".cb-mid-bid .cb-auc-body",
+                );
+                if (aucBody && followAuc)
+                    aucBody.scrollTop = aucBody.scrollHeight;
                 renderOverlay();
                 schedulePoll();
             }
@@ -2173,6 +2391,10 @@
             });
 
             document.addEventListener("visibilitychange", () => {
+                if (!document.hidden && pendingTurnToast) {
+                    showToast(pendingTurnToast);
+                    pendingTurnToast = null;
+                }
                 if (!document.hidden && state && window.currentUser && !busy)
                     refreshBoard(true);
             });
