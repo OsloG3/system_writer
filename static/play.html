@@ -655,6 +655,137 @@
                 .cb-dg-line { font-size: 0.72rem; }
             }
 
+            .cb-done {
+                background: #1e3c3c;
+                border-radius: 1rem;
+                padding: 0.7rem 0.75rem 0.75rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.55rem;
+            }
+            .cb-done-head {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+            .cb-done-score { min-width: 0; }
+            .cb-done-contract {
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.95rem;
+                color: #fff;
+            }
+            .cb-done-tricks {
+                font-size: 0.68rem;
+                color: #9fc0c0;
+                margin-top: 2px;
+            }
+            .cb-done-imps {
+                display: flex;
+                align-items: baseline;
+                gap: 0.45rem;
+                margin-top: 0.3rem;
+            }
+            .cb-done-imps .lbl,
+            .cb-done-par .lbl {
+                font-family: Inter, sans-serif;
+                font-weight: 700;
+                font-size: 0.56rem;
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+                color: #7fa0a0;
+            }
+            .cb-done-imps .victory-imps {
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.65rem;
+                line-height: 1;
+            }
+            .cb-done-par {
+                text-align: right;
+                flex-shrink: 0;
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 0.7rem;
+                padding: 0.3rem 0.6rem;
+            }
+            .cb-done-par .val {
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.15rem;
+                color: #e5e9f0;
+            }
+            .cb-done-foot { display: flex; }
+
+            .cb-diagram.cb-diagram-done {
+                grid-template-areas:
+                    ". n ."
+                    "w a e"
+                    ". s .";
+            }
+            .cb-dg-a {
+                grid-area: a;
+                min-width: 0;
+                width: 100%;
+                align-self: center;
+                max-height: 10.5rem;
+                overflow-y: auto;
+                overscroll-behavior: contain;
+            }
+            .cb-auc-mini-head,
+            .cb-auc-mini-row {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 2px;
+                margin-bottom: 2px;
+            }
+            .cb-auc-mini-head span {
+                text-align: center;
+                font-family: Inter, sans-serif;
+                font-weight: 700;
+                font-size: 0.55rem;
+                letter-spacing: 0.05em;
+                color: #8fa0b5;
+            }
+            .cb-auc-mini-head span.dlr { color: #f2ca4c; }
+            .cb-mini {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 1.05rem;
+                min-width: 0;
+                border-radius: 0.3rem;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.6rem;
+                padding: 0 1px;
+            }
+            .cb-mini-c { background: #b5e48c; color: #2b7a4b; }
+            .cb-mini-d { background: #f8c471; color: #c05621; }
+            .cb-mini-h { background: #f1948a; color: #b03a2e; }
+            .cb-mini-s { background: #a5b4f4; color: #2a3f93; }
+            .cb-mini-n { background: #e8eaed; color: #1b1f27; }
+            .cb-mini-p { background: #2e5d43; color: #cfe8d4; }
+            .cb-mini-x { background: #c0392b; color: #fff; }
+            .cb-mini-xx { background: #2a51b0; color: #fff; }
+            @media (max-width: 400px) {
+                .cb-diagram.cb-diagram-done {
+                    grid-template-columns: 1fr 1fr;
+                    grid-template-areas:
+                        "n n"
+                        "w e"
+                        "s s"
+                        "a a";
+                }
+                .cb-dg-a {
+                    width: auto;
+                    min-width: 65%;
+                    max-width: 100%;
+                    justify-self: center;
+                    max-height: 7.5rem;
+                }
+            }
+
             .cb-cardpanel {
                 background: #1b2330;
                 border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1705,9 +1836,56 @@
                 return `<div class="cb-wait">${inner}</div>`;
             }
 
-            function resultHtml() {
+            // ---- Finished-hand view ----
+            // One card: score top-left, par top-right, the hand diagram with
+            // the auction compacted into its center, next board bottom-left.
+
+            function miniChip(c) {
+                if (c === "P") return `<span class="cb-mini cb-mini-p">P</span>`;
+                if (c === "X") return `<span class="cb-mini cb-mini-x">X</span>`;
+                if (c === "XX") return `<span class="cb-mini cb-mini-xx">XX</span>`;
+                const sym = c[1] === "N" ? "NT" : SUIT_SYMBOL[c[1]];
+                return `<span class="cb-mini cb-mini-${TILE_CLS[c[1]]}">${c[0]}${sym}</span>`;
+            }
+
+            function miniAuctionHtml(dealer, calls) {
+                const cols = [0, 1, 2, 3].map((k) => (dealer + k) % 4);
+                const head = cols
+                    .map(
+                        (s) =>
+                            `<span class="${s === dealer ? "dlr" : ""}">${SEAT_NAMES[s][0]}</span>`,
+                    )
+                    .join("");
+                const list = calls || [];
+                let body = "";
+                for (let i = 0; i < list.length; i += 4) {
+                    const row = list.slice(i, i + 4);
+                    let cells = "";
+                    for (let k = 0; k < 4; k++)
+                        cells += row[k] ? miniChip(row[k]) : `<span></span>`;
+                    body += `<div class="cb-auc-mini-row">${cells}</div>`;
+                }
+                return `<div class="cb-auc-mini-head">${head}</div>${body}`;
+            }
+
+            function doneDiagramHtml(hands, youSeat, dealer, calls) {
+                const cls = ["cb-dg-n", "cb-dg-e", "cb-dg-s", "cb-dg-w"];
+                return (
+                    `<div class="cb-diagram cb-diagram-done">` +
+                    [0, 1, 2, 3]
+                        .map(
+                            (s) =>
+                                `<div class="cb-dg-seat ${cls[s]}">${diagramSeatHtml(s, hands[s], youSeat)}</div>`,
+                        )
+                        .join("") +
+                    `<div class="cb-dg-a">${miniAuctionHtml(dealer, calls)}</div>` +
+                    `</div>`
+                );
+            }
+
+            function doneViewHtml() {
                 const r = state.result;
-                let contractLine, trickLine;
+                let contractLine, trickNote;
                 if (r.contract) {
                     const c = r.contract;
                     const side =
@@ -1715,40 +1893,38 @@
                             ? "your side"
                             : "the bots";
                     const pen = ["", " doubled", " redoubled"][c.penalty] || "";
-                    const need = c.level + 6;
-                    const margin = r.tricks - need;
-                    const made = margin >= 0;
+                    const margin = r.tricks - (c.level + 6);
                     contractLine = `${c.level}${SUIT_SYMBOL[c.denom]}${pen} by ${SEAT_NAMES[c.declarer]} (${side})`;
-                    trickLine = `${r.tricks} double-dummy tricks — ${made ? "made " + (margin > 0 ? "+" + margin : "exactly") : margin + " down"}`;
+                    trickNote = `${r.tricks} DD tricks — ${margin >= 0 ? "made " + (margin > 0 ? "+" + margin : "exactly") : margin + " down"}`;
                 } else {
                     contractLine = "Passed out";
-                    trickLine = "no contract was reached";
+                    trickNote = "no contract was reached";
                 }
+                const matchDone = state.mode === "team" && state.matchDone;
                 return `
-                    <div class="cb-result pop-in">
-                        <div class="min-w-0 flex-1">
-                            <div class="font-headline font-extrabold text-lg text-white">${dcolorSuits(contractLine)}</div>
-                            <div class="text-xs text-[#9fc0c0] mt-0.5">${trickLine}</div>
-                            <div class="text-[11px] text-[#7fa0a0] mt-1 font-label">
-                                Par (N-S) <b>${scoreText(r.parNs)}</b> · Your score (N-S) <b>${scoreText(r.scoreNs)}</b>
+                    <div class="cb-done pop-in">
+                        <div class="cb-done-head">
+                            <div class="cb-done-score">
+                                <div class="cb-done-contract">${dcolorSuits(contractLine)}</div>
+                                <div class="cb-done-tricks">${trickNote} · your score <b>${scoreText(r.scoreNs)}</b></div>
+                                <div class="cb-done-imps">
+                                    <span class="lbl">IMPs vs par</span>
+                                    <span class="victory-imps ${impsColor(r.imps)}">${signed(r.imps)}</span>
+                                </div>
+                            </div>
+                            <div class="cb-done-par">
+                                <div class="lbl">Par (N-S)</div>
+                                <div class="val">${scoreText(r.parNs)}</div>
                             </div>
                         </div>
-                        <div class="text-center px-3 py-1 rounded-xl" style="background:rgba(0,0,0,.25);">
-                            <div class="text-[9px] uppercase tracking-[0.2em] text-[#7fa0a0] font-label font-bold">IMPs vs par</div>
-                            <div class="victory-imps text-3xl font-headline font-extrabold leading-tight ${impsColor(r.imps)}">${signed(r.imps)}</div>
-                        </div>
-                        <div class="w-full flex flex-wrap gap-2 mt-1">
+                        ${state.hands ? doneDiagramHtml(state.hands, state.humanSeat, state.dealer, state.calls) : ""}
+                        <div class="cb-done-foot">
                             <button id="nextBoardBtn" class="cb-btn-green">
-                                <span class="material-symbols-outlined text-sm">${state.mode === "team" && state.matchDone ? "restart_alt" : "casino"}</span>
-                                ${state.mode === "team" && state.matchDone ? "Start next match" : "Next board"}
+                                <span class="material-symbols-outlined text-sm">${matchDone ? "restart_alt" : "casino"}</span>
+                                ${matchDone ? "Start next match" : "Next board"}
                             </button>
                         </div>
                     </div>`;
-            }
-
-            function allHandsHtml() {
-                if (!state.hands) return "";
-                return handsDiagramHtml(state.hands, state.humanSeat);
             }
 
             function teamReadyHtml() {
@@ -1869,17 +2045,9 @@
                 if (team && state.noBoard) {
                     mid = busy ? dealingHtml() : teamReadyHtml();
                 } else if (state.done) {
-                    // End of hand: score, the bidding, and the four hands
-                    mid =
-                        resultHtml() +
-                        auctionHtml(
-                            state.dealer,
-                            state.vuln,
-                            state.calls,
-                            null,
-                            state.humanSeat,
-                        ) +
-                        allHandsHtml();
+                    // End of hand: one card — score, par, diagram with the
+                    // mini auction at the table's center, next board
+                    mid = doneViewHtml();
                 } else {
                     const parts = [
                         auctionHtml(
@@ -2415,6 +2583,8 @@
                 );
                 if (aucBody && followAuc)
                     aucBody.scrollTop = aucBody.scrollHeight;
+                const miniAuc = content.querySelector(".cb-dg-a");
+                if (miniAuc) miniAuc.scrollTop = miniAuc.scrollHeight;
                 renderOverlay();
                 schedulePoll();
             }

@@ -42,6 +42,7 @@
             let draggedNodeId = null;
             let dropPosition = null;
             let expandedNodes = new Set();
+            let openNotes = new Set(); // nodes whose notes panel is expanded
             let dirty = false;
             let selectedRootId = null;
 
@@ -347,9 +348,72 @@
                 actionButtons.appendChild(downBtn);
                 actionButtons.appendChild(addBtn);
                 actionButtons.appendChild(deleteBtn);
+
+                // Notes toggle: long-form text kept out of the row itself
+                const notesBtn = document.createElement("button");
+                notesBtn.innerHTML =
+                    '<span class="material-symbols-outlined text-sm align-middle">sticky_note_2</span>';
+                notesBtn.title = "Notes (not shown in practice)";
+                const styleNotesBtn = () => {
+                    notesBtn.className =
+                        (node.notes && node.notes.trim()
+                            ? "px-2 py-0.5 bg-primary-container text-on-primary-container "
+                            : "px-2 py-0.5 bg-surface-container text-on-surface ") +
+                        "rounded text-xs font-label transition-colors";
+                };
+                styleNotesBtn();
+                notesBtn.onclick = () => {
+                    if (openNotes.has(node.id)) openNotes.delete(node.id);
+                    else openNotes.add(node.id);
+                    const show = openNotes.has(node.id);
+                    notesPanel.style.display = show ? "block" : "none";
+                    if (show) {
+                        requestAnimationFrame(() => autoGrow(notesInput));
+                        notesInput.focus();
+                    }
+                };
+                actionButtons.appendChild(notesBtn);
                 flexRow.appendChild(actionButtons);
 
                 nodeWrapper.appendChild(flexRow);
+
+                // Notes panel (writer + viewer only; practice ignores notes)
+                const notesPanel = document.createElement("div");
+                notesPanel.className = "node-notes ml-6 md:ml-8 mt-1.5";
+                const notesInput = document.createElement("textarea");
+                notesInput.value = node.notes || "";
+                notesInput.placeholder =
+                    "Longer notes: conventions, follow-ups, agreements… shown in the writer and viewer, never in practice";
+                notesInput.className =
+                    "node-notes-input text-on-surface-variant text-sm";
+                notesInput.dataset.nodeId = node.id;
+                notesInput.oninput = (e) => {
+                    const el = e.target;
+                    const start = el.selectionStart;
+                    const transformed = replaceSymbols(el.value);
+                    if (transformed !== el.value) {
+                        el.value = transformed;
+                        el.setSelectionRange(start, start);
+                    }
+                    autoGrow(el);
+                    node.notes = el.value;
+                    styleNotesBtn();
+                    markDirty();
+                };
+                notesInput.onfocus = () =>
+                    nodeWrapper.classList.add("node-focused");
+                notesInput.onblur = () => {
+                    setTimeout(() => {
+                        if (!nodeWrapper.querySelector(":focus")) {
+                            nodeWrapper.classList.remove("node-focused");
+                        }
+                    }, 100);
+                };
+                notesPanel.appendChild(notesInput);
+                notesPanel.style.display = openNotes.has(node.id)
+                    ? "block"
+                    : "none";
+                nodeWrapper.appendChild(notesPanel);
 
                 // Collapsible content area for children
                 const contentDiv = document.createElement("div");
@@ -491,6 +555,11 @@
                     document
                         .querySelectorAll(".node-desc-input")
                         .forEach(autoGrow);
+                    document
+                        .querySelectorAll(".node-notes-input")
+                        .forEach((el) => {
+                            if (el.offsetParent !== null) autoGrow(el);
+                        });
                     document
                         .querySelectorAll(".node-name-input")
                         .forEach(autoWidth);

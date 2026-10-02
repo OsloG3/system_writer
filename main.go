@@ -25,7 +25,10 @@ type Node struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
 	Description string  `json:"description"`
-	Children    []*Node `json:"children"`
+	// Notes is long-form commentary for the writer and viewer only;
+	// practice deliberately ignores it (it trains on descriptions).
+	Notes    string  `json:"notes,omitempty"`
+	Children []*Node `json:"children"`
 }
 
 type TreeNote struct {
@@ -64,7 +67,7 @@ const legacyPbkdf2Iters = 210_000
 
 // Request body limits
 const maxBodyAuth = 64 << 10 // login, register, editors, create
-const maxBodyTree = 8 << 20  // tree PUT
+const maxBodyTree = 32 << 20 // tree PUT (nodes carry long-form notes)
 
 // Brute-force protection for login and register
 const maxFailures = 5
@@ -671,7 +674,10 @@ func handleCreateTree(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"id": id})
 }
 
-// validID reports whether id is safe to use as a file name under dataDir
+// validID reports whether id is safe to use as a file name under dataDir and
+// is not one of the server's own stores. The tree API is publicly readable,
+// so reserved names (credentials, user data, team games) must never resolve
+// to a file. Generated IDs are 16 hex chars and can never collide with them.
 func validID(id string) bool {
 	if id == "" || len(id) > 64 {
 		return false
@@ -686,7 +692,11 @@ func validID(id string) bool {
 			return false
 		}
 	}
-	return true
+	switch id {
+	case "users", "sessions", "play_stats", "vapid", "push_subs":
+		return false
+	}
+	return !strings.HasPrefix(id, "game_")
 }
 
 // GET /api/tree/{id} - public read access
@@ -920,12 +930,12 @@ func handleListTrees(w http.ResponseWriter, r *http.Request) {
 	list := make([]TreeInfo, 0, len(files))
 
 	for _, f := range files {
-		if filepath.Ext(f.Name()) != ".json" || f.Name() == "users.json" || f.Name() == "sessions.json" {
+		if filepath.Ext(f.Name()) != ".json" {
 			continue
 		}
 		fileID := strings.TrimSuffix(f.Name(), ".json")
 		if !validID(fileID) {
-			continue
+			continue // server stores: users, sessions, stats, games, push…
 		}
 		data, err := os.ReadFile(filepath.Join(dataDir, f.Name()))
 		if err != nil {

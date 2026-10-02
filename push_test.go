@@ -39,3 +39,18 @@ func TestSendTurnPushNoVAPID(t *testing.T) {
 	// no keys loaded in tests -> silent no-op
 	sendTurnPush("someone", "game", []int{3, 4})
 }
+
+// Server stores in data/ must never resolve through the public tree API or
+// pollute the systems list.
+func TestValidIDRejectsSystemFiles(t *testing.T) {
+	for _, bad := range []string{"users", "sessions", "play_stats", "vapid", "push_subs", "game_c82ab4485111252e", "game_"} {
+		if validID(bad) {
+			t.Errorf("validID(%q) = true, want false", bad)
+		}
+	}
+	for _, good := range []string{"0e4ef583162bf20e", "abc-123", generateID()} {
+		if !validID(good) {
+			t.Errorf("validID(%q) = false, want true", good)
+		}
+	}
+}

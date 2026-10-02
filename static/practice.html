@@ -44,6 +44,108 @@
             let revealed = false;
             let stats = { good: 0, again: 0 };
 
+            // ---- Session persistence ----
+            // The deck is stored as node-id paths, never as node content, so
+            // a system edited between sessions is picked up correctly: cards
+            // always render the freshly fetched names/descriptions, paths
+            // whose nodes were deleted drop out, and cards added since are
+            // mixed into the un-practiced tail of the deck.
+            const PRACTICE_KEY = "atheneum_practice_" + id;
+
+            function loadSessions() {
+                try {
+                    const all = JSON.parse(
+                        localStorage.getItem(PRACTICE_KEY) || "{}",
+                    );
+                    if (all && all.v === 1 && all.sessions) return all;
+                } catch (e) {}
+                return { v: 1, sessions: {} };
+            }
+
+            function storeSessions(all) {
+                try {
+                    localStorage.setItem(PRACTICE_KEY, JSON.stringify(all));
+                } catch (e) {}
+            }
+
+            function saveSession() {
+                const all = loadSessions();
+                all.sessions[scopeRootId] = {
+                    deckIds: deck.map((c) => c.ids),
+                    pos: deckPos,
+                    stats: stats,
+                    saved: Date.now(),
+                };
+                storeSessions(all);
+            }
+
+            function clearSession() {
+                const all = loadSessions();
+                delete all.sessions[scopeRootId];
+                storeSessions(all);
+            }
+
+            function restoreSession() {
+                const s = loadSessions().sessions[scopeRootId];
+                if (!s || !Array.isArray(s.deckIds) || !s.deckIds.length)
+                    return false;
+                const fresh = collectCards();
+                const byKey = new Map();
+                for (const c of fresh) byKey.set(c.ids.join(">"), c);
+                const savedKeys = new Set(
+                    s.deckIds.map((ids) => ids.join(">")),
+                );
+                const restored = [];
+                let pos = 0;
+                let lastShownIdx = -1;
+                const savedPos = s.pos || 0;
+                s.deckIds.forEach((ids, i) => {
+                    const c = byKey.get(ids.join(">"));
+                    if (!c) return; // node deleted or no longer a card
+                    restored.push(c);
+                    if (i < savedPos) {
+                        pos++;
+                        lastShownIdx = restored.length - 1;
+                    }
+                });
+                if (!restored.length) return false;
+                // cards the system gained since: shuffle into the tail the
+                // player has not reached yet
+                const added = shuffle(
+                    fresh.filter((c) => !savedKeys.has(c.ids.join(">"))),
+                );
+                for (const c of added) {
+                    const slot =
+                        pos +
+                        Math.floor(
+                            Math.random() * (restored.length - pos + 1),
+                        );
+                    restored.splice(slot, 0, c);
+                }
+                // re-show the card that was on screen only if it still
+                // exists; otherwise continue at the next un-practiced one
+                const shownIds = s.deckIds[Math.max(0, savedPos - 1)];
+                const shownSurvived =
+                    lastShownIdx >= 0 &&
+                    shownIds &&
+                    shownIds.join(">") ===
+                        restored[lastShownIdx].ids.join(">");
+                deck = restored;
+                deckPos = shownSurvived
+                    ? Math.max(0, Math.min(lastShownIdx, deck.length))
+                    : Math.max(0, Math.min(pos, deck.length));
+                stats = {
+                    good: (s.stats && s.stats.good) || 0,
+                    again: (s.stats && s.stats.again) || 0,
+                };
+                return true;
+            }
+
+            function startSession() {
+                if (!restoreSession()) rebuildDeck();
+                else nextCard();
+            }
+
             async function init() {
                 const res = await fetch("/api/tree/" + id);
                 if (!res.ok) {
@@ -70,7 +172,7 @@
                     scopeRootId = "";
                 }
                 renderControls();
-                rebuildDeck();
+                startSession();
             }
 
             function renderControls() {
@@ -81,6 +183,9 @@
                             <span class="material-symbols-outlined text-sm text-[#d4a017]">filter_alt</span>Scope
                         </label>
                         <select id="scopeSelect" class="text-sm rounded-xl border-outline-variant/30 bg-surface-container-lowest text-on-surface px-3 py-2 font-label shadow-sm"></select>
+                        <button id="restartBtn" title="Restart this scope: fresh shuffle, stats reset" class="flex items-center gap-1 px-2.5 py-2 bg-surface-container text-on-surface-variant rounded-xl font-label text-xs font-semibold hover:bg-surface-container-high transition-colors">
+                            <span class="material-symbols-outlined text-sm">restart_alt</span>
+                        </button>
                         <div class="ml-auto flex items-center gap-2 min-w-[140px]">
                             <div class="xp-bar flex-1"><div id="deckBar" class="xp-bar-fill" style="width:0%"></div></div>
                             <span id="deckCount" class="text-[10px] font-label font-semibold text-on-surface-variant whitespace-nowrap"></span>
@@ -105,11 +210,16 @@
                     )
                     .join("");
                 scopeSelect.onchange = () => {
+                    saveSession(); // keep this scope's progress
                     scopeRootId = scopeSelect.value;
                     const url = new URL(window.location);
                     if (scopeRootId) url.searchParams.set("root", scopeRootId);
                     else url.searchParams.delete("root");
                     history.replaceState({}, "", url);
+                    startSession();
+                };
+                document.getElementById("restartBtn").onclick = () => {
+                    clearSession();
                     rebuildDeck();
                 };
             }
@@ -128,6 +238,7 @@
 
             // One card per root-to-leaf sequence; question is the names,
             // answer is the description of every node in the sequence.
+            // `ids` is the stable identity used to persist the deck.
             function collectCards() {
                 const cards = [];
                 function walk(node, path) {
@@ -138,7 +249,12 @@
                                 (n) => n.description && n.description.trim(),
                             )
                         ) {
-                            cards.push({ path: path });
+                            cards.push({
+                                path: path,
+                                ids: path.map(
+                                    (n) => n.id || "n:" + (n.name || ""),
+                                ),
+                            });
                         }
                         return;
                     }
@@ -166,6 +282,7 @@
             function nextCard() {
                 if (deck.length === 0) {
                     currentCard = null;
+                    saveSession();
                     renderEmptyDeck();
                     return;
                 }
@@ -176,6 +293,7 @@
                 currentCard = deck[deckPos];
                 deckPos++;
                 revealed = false;
+                saveSession();
                 renderCard();
             }
 

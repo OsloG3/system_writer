@@ -571,6 +571,38 @@ button:active:not(:disabled) {
     border-radius: 4px;
 }
 
+/* Long-form per-node notes: writer + viewer only, practice ignores them */
+.node-notes {
+    max-width: 60rem;
+}
+.node-notes-input {
+    width: 100%;
+    min-height: 4.5rem;
+    border: 1px solid rgba(43, 122, 75, 0.25);
+    border-radius: 8px;
+    background: rgba(43, 122, 75, 0.04);
+    padding: 8px 10px;
+    outline: none;
+    white-space: pre-wrap;
+    resize: none;
+    overflow: hidden;
+    font-size: 16px; /* no iOS Safari focus zoom */
+    line-height: 1.45;
+}
+.node-notes-input:focus {
+    border-color: rgba(43, 122, 75, 0.5);
+    background: rgba(43, 122, 75, 0.07);
+}
+.node-notes-view {
+    white-space: pre-wrap;
+    border-left: 3px solid rgba(43, 122, 75, 0.35);
+    background: rgba(43, 122, 75, 0.05);
+    border-radius: 0 8px 8px 0;
+    padding: 8px 12px;
+    margin: 0.35rem 0 0 1.5rem;
+    max-width: 60rem;
+}
+
 /* Drag and Drop Visual Feedback */
 .dragging {
     opacity: 0.5;

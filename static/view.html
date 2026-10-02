@@ -39,6 +39,8 @@
             let treeData = { roots: [] };
             let toggles = [];
             let selectedRootId = null;
+            // Sentinel tab that renders every section in one page
+            const ALL_SECTIONS = "__all";
 
             async function loadTree() {
                 const res = await fetch("/api/tree/" + id);
@@ -63,9 +65,11 @@
                     window.location.search,
                 ).get("root");
                 selectedRootId =
-                    (treeData.roots.find((r) => r.id === wanted) ||
-                        treeData.roots[0] ||
-                        {}).id || null;
+                    wanted === ALL_SECTIONS
+                        ? ALL_SECTIONS
+                        : (treeData.roots.find((r) => r.id === wanted) ||
+                              treeData.roots[0] ||
+                              {}).id || null;
                 applyTreePerms(treeData);
                 renderTree();
             }
@@ -95,7 +99,12 @@
 
                 container.insertAdjacentHTML(
                     "beforeend",
-                    rootTabsHtml(treeData.roots, selectedRootId),
+                    rootTabsHtml(
+                        treeData.roots.concat([
+                            { id: ALL_SECTIONS, name: "Full" },
+                        ]),
+                        selectedRootId,
+                    ),
                 );
                 container
                     .querySelectorAll("[data-root-tab]")
@@ -103,10 +112,13 @@
                         btn.onclick = () => selectRoot(btn.dataset.rootTab);
                     });
 
-                const root =
-                    treeData.roots.find((r) => r.id === selectedRootId) ||
-                    treeData.roots[0];
-                selectedRootId = root.id;
+                const showAll = selectedRootId === ALL_SECTIONS;
+                if (!showAll) {
+                    const root =
+                        treeData.roots.find((r) => r.id === selectedRootId) ||
+                        treeData.roots[0];
+                    selectedRootId = root.id;
+                }
 
                 const bar = document.createElement("div");
                 bar.className = "flex items-center gap-2 mb-8";
@@ -124,7 +136,16 @@
 
                 const treeContainer = document.createElement("div");
                 container.appendChild(treeContainer);
-                renderNode(root, treeContainer, 0);
+                if (showAll) {
+                    treeData.roots.forEach((r) =>
+                        renderNode(r, treeContainer, 0),
+                    );
+                } else {
+                    const root =
+                        treeData.roots.find((r) => r.id === selectedRootId) ||
+                        treeData.roots[0];
+                    renderNode(root, treeContainer, 0);
+                }
 
                 bar.querySelector("#expandAllBtn").onclick = () =>
                     setAllExpanded(true);
@@ -193,6 +214,28 @@
                 flexRow.appendChild(toggleIcon);
                 flexRow.appendChild(contentDiv);
 
+                // Long-form notes: collapsed behind a chip; practice never
+                // shows them, so they stay out of the inline text
+                let notesEl = null;
+                if (node.notes && node.notes.trim()) {
+                    const notesBtn = document.createElement("button");
+                    notesBtn.title = "Show notes";
+                    notesBtn.className =
+                        "flex items-center px-1.5 py-0.5 bg-primary-container/60 text-on-primary-container rounded text-xs font-label hover:bg-primary-container transition-colors";
+                    notesBtn.innerHTML =
+                        '<span class="material-symbols-outlined text-sm">sticky_note_2</span>';
+                    flexRow.appendChild(notesBtn);
+                    notesEl = document.createElement("div");
+                    notesEl.className =
+                        "node-notes-view text-sm text-on-surface-variant";
+                    notesEl.style.display = "none";
+                    notesEl.innerHTML = colorSuits(node.notes);
+                    notesBtn.onclick = () => {
+                        const hidden = notesEl.style.display === "none";
+                        notesEl.style.display = hidden ? "block" : "none";
+                    };
+                }
+
                 // Practice link for root nodes (scopes practice to that section)
                 if (isRoot) {
                     const practiceLink = document.createElement("a");
@@ -206,6 +249,7 @@
                 }
 
                 nodeWrapper.appendChild(flexRow);
+                if (notesEl) nodeWrapper.appendChild(notesEl);
 
                 // Children container
                 if (hasChildren) {
