@@ -21,7 +21,7 @@ import (
 // The host sits South, the partner sits North; East and West are the same
 // bidding-dt bots as in solo play. A table is opened by naming the partner's
 // account, so either player can find it in their table list and no link is
-// needed. Every table is persisted to disk (data/game_<id>.json) so a game
+// needed. Every table is persisted to disk (data/game/<id>.json) so a game
 // keeps its state while both players are disconnected and survives server
 // restarts. A player can keep any number of tables open with the same partner
 // and resume each one from the play lobby.
@@ -76,7 +76,7 @@ func teamRotation(boardNo int) (dealer, vuln int) {
 }
 
 func initTeam() {
-	files, err := filepath.Glob(filepath.Join(dataDir, "game_*.json"))
+	files, err := filepath.Glob(filepath.Join(gameDir(), "*.json"))
 	if err != nil {
 		return
 	}
@@ -90,9 +90,9 @@ func initTeam() {
 			log.Printf("Could not parse %s: %v", f, err)
 			continue
 		}
-		g.ID = strings.TrimPrefix(strings.TrimSuffix(filepath.Base(f), ".json"), "game_")
+		g.ID = strings.TrimSuffix(filepath.Base(f), ".json")
 		if !validID(g.ID) {
-			continue
+			continue // play_stats.json and any other non-game files
 		}
 		if g.Boards == nil {
 			g.Boards = []*TeamBoard{}
@@ -105,7 +105,7 @@ func initTeam() {
 }
 
 func teamGamePath(id string) string {
-	return filepath.Join(dataDir, "game_"+id+".json")
+	return filepath.Join(gameDir(), id+".json")
 }
 
 // saveTeamGameLocked persists a game. Callers must hold g.mu.

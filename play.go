@@ -130,7 +130,7 @@ func initPlay() {
 	log.Printf("Play bots: sidecar %s, seat models %v", botURL, botModels)
 }
 
-func playStatsPath() string { return filepath.Join(dataDir, "play_stats.json") }
+func playStatsPath() string { return filepath.Join(gameDir(), "play_stats.json") }
 
 func loadPlayStats() {
 	data, err := os.ReadFile(playStatsPath())

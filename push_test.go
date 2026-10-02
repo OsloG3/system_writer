@@ -1,7 +1,10 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -52,5 +55,69 @@ func TestValidIDRejectsSystemFiles(t *testing.T) {
 		if !validID(good) {
 			t.Errorf("validID(%q) = false, want true", good)
 		}
+	}
+}
+
+func TestMigrateDataLayout(t *testing.T) {
+	old := dataDir
+	dataDir = t.TempDir()
+	defer func() { dataDir = old }()
+
+	write := func(rel, content string) {
+		if err := os.WriteFile(filepath.Join(dataDir, rel), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("users.json", `[]`)
+	write("sessions.json", `{}`)
+	write("vapid.json", `{}`)
+	write("push_subs.json", `[]`)
+	write("play_stats.json", `{"u":{"boards":1}}`)
+	write("0e4ef583162bf20e.json", `{"name":"tree"}`)
+	write("game_c82ab4485111252e.json", `{"id":"c82ab4485111252e"}`)
+
+	if err := migrateDataLayout(); err != nil {
+		t.Fatal(err)
+	}
+	exists := func(rel string) bool {
+		_, err := os.Stat(filepath.Join(dataDir, rel))
+		return err == nil
+	}
+	for _, p := range []string{"sistems/0e4ef583162bf20e.json", "game/c82ab4485111252e.json", "game/play_stats.json"} {
+		if !exists(p) {
+			t.Errorf("missing %s after migration", p)
+		}
+	}
+	for _, p := range []string{"users.json", "sessions.json", "vapid.json", "push_subs.json"} {
+		if !exists(p) {
+			t.Errorf("%s should stay at the data root", p)
+		}
+	}
+	for _, p := range []string{"0e4ef583162bf20e.json", "game_c82ab4485111252e.json", "play_stats.json"} {
+		if exists(p) {
+			t.Errorf("%s should have moved out of the data root", p)
+		}
+	}
+	// the loaders follow the files
+	if tr, err := loadTree("0e4ef583162bf20e"); err != nil || tr.Name != "tree" {
+		t.Errorf("loadTree after migration: %v %+v", err, tr)
+	}
+	if teamGamePath("c82ab4485111252e") != filepath.Join(dataDir, "game", "c82ab4485111252e.json") {
+		t.Error("teamGamePath should point into game/")
+	}
+	if playStatsPath() != filepath.Join(dataDir, "game", "play_stats.json") {
+		t.Error("playStatsPath should point into game/")
+	}
+	// idempotent, and a stale root-level copy never clobbers the new layout
+	if err := migrateDataLayout(); err != nil {
+		t.Fatal(err)
+	}
+	write("0e4ef583162bf20e.json", `{"name":"stale"}`)
+	if err := migrateDataLayout(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dataDir, "sistems", "0e4ef583162bf20e.json"))
+	if err != nil || !strings.Contains(string(data), `"tree"`) {
+		t.Errorf("stale root file clobbered the migrated tree: %v %s", err, data)
 	}
 }

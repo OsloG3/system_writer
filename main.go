@@ -22,9 +22,9 @@ import (
 )
 
 type Node struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 	// Notes is long-form commentary for the writer and viewer only;
 	// practice deliberately ignores it (it trains on descriptions).
 	Notes    string  `json:"notes,omitempty"`
@@ -52,10 +52,71 @@ type Session struct {
 	Expires  time.Time `json:"expires"`
 }
 
-// dataDir holds all persisted state (accounts, sessions, trees). It defaults
-// to ./data but can be pointed outside the repo with ATHENEUM_DATA_DIR so
-// that git operations / redeploys never touch user accounts.
+// dataDir holds all persisted state. It defaults to ./data but can be
+// pointed outside the repo with ATHENEUM_DATA_DIR so that git operations /
+// redeploys never touch user accounts. Bidding systems live in
+// data/sistems/<id>.json and game data (partner tables, solo history) in
+// data/game/; accounts, sessions and push state stay at the data root.
 var dataDir = "./data"
+
+func sistemsDir() string { return filepath.Join(dataDir, "sistems") }
+func gameDir() string    { return filepath.Join(dataDir, "game") }
+
+// migrateDataLayout moves files from the old flat data/ layout (trees,
+// game_<id>.json, play_stats.json all in one directory) into sistems/ and
+// game/. Idempotent; files already in the new layout always win.
+func migrateDataLayout() error {
+	if err := os.MkdirAll(sistemsDir(), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(gameDir(), 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dataDir)
+	if err != nil {
+		return err
+	}
+	staysAtRoot := map[string]bool{
+		"users.json": true, "sessions.json": true,
+		"vapid.json": true, "push_subs.json": true,
+	}
+	moved := 0
+	move := func(src, dst string) {
+		if _, err := os.Stat(dst); err == nil {
+			return // already migrated
+		}
+		if err := os.Rename(src, dst); err != nil {
+			log.Printf("Could not migrate %s: %v", src, err)
+			return
+		}
+		moved++
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || filepath.Ext(name) != ".json" || staysAtRoot[name] {
+			continue
+		}
+		base := strings.TrimSuffix(name, ".json")
+		src := filepath.Join(dataDir, name)
+		if id, isGame := strings.CutPrefix(base, "game_"); isGame {
+			if validID(id) {
+				move(src, filepath.Join(gameDir(), id+".json"))
+			}
+			continue
+		}
+		if base == "play_stats" {
+			move(src, filepath.Join(gameDir(), "play_stats.json"))
+			continue
+		}
+		if validID(base) {
+			move(src, filepath.Join(sistemsDir(), name))
+		}
+	}
+	if moved > 0 {
+		log.Printf("Migrated %d data file(s) into sistems/ and game/", moved)
+	}
+	return nil
+}
 
 const sessionCookie = "atheneum_session"
 const sessionTTL = 7 * 24 * time.Hour
@@ -95,6 +156,9 @@ func main() {
 		log.Fatalf("Could not create data directory: %v", err)
 	}
 	log.Printf("Data directory: %s", dataDir)
+	if err := migrateDataLayout(); err != nil {
+		log.Printf("Could not migrate the data layout: %v", err)
+	}
 
 	loadUsers()
 	loadSessions()
@@ -619,7 +683,7 @@ func canEdit(tree *TreeNote, username string) bool {
 }
 
 func loadTree(id string) (*TreeNote, error) {
-	data, err := os.ReadFile(filepath.Join(dataDir, id+".json"))
+	data, err := os.ReadFile(filepath.Join(sistemsDir(), id+".json"))
 	if err != nil {
 		return nil, err
 	}
@@ -706,7 +770,7 @@ func handleTreeGet(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusBadRequest, "invalid tree ID")
 		return
 	}
-	file, err := os.Open(filepath.Join(dataDir, id+".json"))
+	file, err := os.Open(filepath.Join(sistemsDir(), id+".json"))
 	if err != nil {
 		jsonError(w, http.StatusNotFound, "tree not found")
 		return
@@ -774,7 +838,7 @@ func handleTreeDelete(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusForbidden, "only the owner can delete this system")
 		return
 	}
-	if err := os.Remove(filepath.Join(dataDir, id+".json")); err != nil {
+	if err := os.Remove(filepath.Join(sistemsDir(), id+".json")); err != nil {
 		jsonError(w, http.StatusNotFound, "tree not found")
 		return
 	}
@@ -904,7 +968,7 @@ func saveTree(id string, tree *TreeNote) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dataDir, id+".json"), data, 0644)
+	return os.WriteFile(filepath.Join(sistemsDir(), id+".json"), data, 0644)
 }
 
 // Helper to serve HTML files
@@ -915,7 +979,7 @@ func serveHTML(filename string) http.HandlerFunc {
 }
 
 func handleListTrees(w http.ResponseWriter, r *http.Request) {
-	files, err := os.ReadDir(dataDir)
+	files, err := os.ReadDir(sistemsDir())
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, "could not read data")
 		return
@@ -935,9 +999,9 @@ func handleListTrees(w http.ResponseWriter, r *http.Request) {
 		}
 		fileID := strings.TrimSuffix(f.Name(), ".json")
 		if !validID(fileID) {
-			continue // server stores: users, sessions, stats, games, push…
+			continue // defensive: only generated IDs are systems
 		}
-		data, err := os.ReadFile(filepath.Join(dataDir, f.Name()))
+		data, err := os.ReadFile(filepath.Join(sistemsDir(), f.Name()))
 		if err != nil {
 			continue
 		}
