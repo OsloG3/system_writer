@@ -1,0 +1,28 @@
+# CPU smoke run: roll a few thousand auctions through a bidding checkpoint and
+# train the tiny hand model on them (minutes on 2-4 cores).
+#   uv run python -m bidding_dt.hand.train --preset tiny \
+#       --config configs/hand_smoke.yaml --policy bc:runs/smoke/best.pt \
+#       --out runs/hand_smoke
+model:
+  n_codes: 8            # k VQ slots (tiny: 8 x 64 instead of 16 x 1024)
+  codebook_size: 64
+  code_dim: 32
+  revive_every: 50
+gen:
+  deals: 2000
+  chunk: 128
+  temp: 1.0
+  threads: 2
+train:
+  batch_size: 64
+  lr: 3.0e-4
+  epochs: 1
+  warmup_steps: 50
+  log_every: 20
+  val_every: 100
+  val_batches: 4
+  val_samples: 4
+  mask_aug: 0.5
+data:
+  num_workers: 0
+  max_deals: 2000

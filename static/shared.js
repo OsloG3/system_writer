@@ -521,7 +521,7 @@ function renderLayout(options) {
     // options: { mode: 'view' | 'edit' | 'practice' | 'play' | 'index', title: '', titleId: '', subtitle: '', badge: '', badgeColor: '' }
     const mode = options.mode || 'index';
     const badgeColor = options.badgeColor || 'bg-gold/90 text-on-gold';
-    const modeLabel = mode === 'edit' ? 'Edit Mode' : mode === 'view' ? 'View Mode' : mode === 'practice' ? 'Practice Mode' : mode === 'play' ? 'Play Mode' : 'Home';
+    const modeLabel = mode === 'edit' ? 'Edit Mode' : mode === 'view' ? 'View Mode' : mode === 'practice' ? 'Practice Mode' : mode === 'bridge' ? 'Play Bridge' : mode === 'play' ? 'Bid Only' : 'Home';
 
     const btnGhost = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-white text-ink rounded font-label text-sm hover:bg-white/90 shadow-sm transition-all no-underline active:translate-y-px";
     const btnPrimary = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-gradient-to-b from-gold-light to-gold text-on-gold rounded font-label text-sm hover:brightness-105 shadow-[0_2px_0_rgba(0,0,0,0.3)] transition-all no-underline active:translate-y-px active:shadow-none";
@@ -598,7 +598,7 @@ function renderLayout(options) {
     const sideIdle = `${sideBase} text-white/55 hover:text-white hover:bg-white/8`;
     const sideLink = "flex items-center cursor-pointer";
 
-    const sideAction = mode === 'play' ? `
+    const sideAction = (mode === 'play' || mode === 'bridge') ? `
         <button onclick="newBoard(); closeSidebar();" class="mt-5 w-full py-2.5 bg-gradient-to-b from-gold-light to-gold text-on-gold rounded-xl font-label text-xs font-bold tracking-widest uppercase flex items-center justify-center gap-2 shadow-[0_3px_0_rgba(0,0,0,0.45)] hover:brightness-105 transition-all active:translate-y-0.5 active:shadow-none">
             <span class="material-symbols-outlined text-sm">casino</span>
             New Board
@@ -629,13 +629,17 @@ function renderLayout(options) {
                     <span class="font-headline font-extrabold text-lg sm:text-xl text-white tracking-tight">Bridge Trainer</span>
                 </a>
                 <nav class="hidden md:flex items-center gap-2 font-headline tracking-tight text-sm">
-                    <a class="${mode === 'play' ? navIdle : navActive}" href="/">
+                    <a class="${mode === 'play' || mode === 'bridge' ? navIdle : navActive}" href="/">
                         <span class="material-symbols-outlined text-base">account_tree</span>
                         Collections
                     </a>
-                    <a class="${mode === 'play' ? navActive : navIdle}" href="/play">
+                    <a class="${mode === 'play' ? navActive : navIdle}" href="/play?m=bid">
+                        <span class="material-symbols-outlined text-base">gavel</span>
+                        Bid only
+                    </a>
+                    <a class="${mode === 'bridge' ? navActive : navIdle}" href="/play?m=play">
                         <span class="material-symbols-outlined text-base">casino</span>
-                        Play
+                        Play bridge
                     </a>
                 </nav>
             </div>
@@ -663,13 +667,17 @@ function renderLayout(options) {
                     ${sideAction}
                 </div>
                 <nav class="flex-grow space-y-1 overflow-y-auto">
-                    <a href="/" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' ? sideIdle : sideActive}">
+                    <a href="/" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' || mode === 'bridge' ? sideIdle : sideActive}">
                         <span class="material-symbols-outlined text-lg">account_tree</span>
                         Collections
                     </a>
-                    <a href="/play" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' ? sideActive : sideIdle}">
+                    <a href="/play?m=bid" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' ? sideActive : sideIdle}">
+                        <span class="material-symbols-outlined text-lg">gavel</span>
+                        Bid only
+                    </a>
+                    <a href="/play?m=play" onclick="closeSidebar()" class="${sideLink} ${mode === 'bridge' ? sideActive : sideIdle}">
                         <span class="material-symbols-outlined text-lg">casino</span>
-                        Play vs Bots
+                        Play bridge
                     </a>
                 </nav>
                 <div class="px-6 pt-4 mt-4 border-t border-white/10 text-[10px] text-white/35 font-label tracking-[0.2em] uppercase">

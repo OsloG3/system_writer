@@ -4,6 +4,10 @@ Bridge bidding bot: a small decision-transformer-style model that sees one
 hand plus the auction so far and predicts the next call. Supervised
 (behavior-cloning) pretraining on ~970k human auctions, then self-play PPO
 against a two-table double-dummy team reward (see "Self-play RL" below).
+A third model inverts the problem -- from the public auction alone it *samples*
+the 13 cards a player can hold (see "Hand inference" below) -- and a fourth
+bids from a fixed-length state (auction summary + those samples' encodings)
+with an FFN whose encoders are evolved (see "Bidding systems" below).
 
 ## Data format (`training.txt`)
 
@@ -90,11 +94,26 @@ uv run python -m bidding_dt.bid --ckpt runs/small/best.pt \
 #    /deal /legal /bid /score (JSON; par scoring via the DD solver, tables
 #    cached in cache/dd_play.sqlite). Repeat --ckpt to load several named
 #    models ([name=]path); the first is the default.
+#    Card play adds /play/choose /play/result /play/drop: /play/choose picks a
+#    bot's card by double-dummy simulation over a pool of hidden-hand candidates
+#    consistent with the auction and the play so far (see play_bot.py).
 #    Needs torch (cpu/cuda extra) and endplay (rl extra), so repeat the
 #    extras here. `runs/` is gitignored: copy a checkpoint to the server.
 uv run --extra cpu --extra rl python -m bidding_dt.play_server \
     --ckpt runs/rl_tinyt/best.pt --port 8081
 # on a GPU box: --extra cuda instead of --extra cpu
+#
+# Card-play bot options:
+#   --hand-ckpt runs/hand_small/best.pt   read the auction with the VQ hand
+#                                         model when building the hidden-hand
+#                                         pool (without it a constraint-based
+#                                         sampler deals the pool instead)
+#   --decl-pool N / --def-pool N          candidate deals the declarer-side /
+#                                         a defender bot simulates per decision
+#                                         (the declarer pool should be larger)
+#   --min-floor N                         the pool minimum never drops below N
+#                                         (the minimum shrinks as the hand
+#                                         advances; survivors are reused)
 
 # tests
 uv run pytest
@@ -253,6 +272,189 @@ that is the point; judge by IMPs and the analyze report.
 `bidding_dt.rl.plot` renders any run's log.jsonl into an eight-panel
 progress figure (and prints a one-line summary for headless use).
 
+## Hand inference (VQ encoder-decoder)
+
+`bidding_dt.hand` guesses **one player's 13 cards** from the public information
+only: the auction so far (PAD-padded, hero-rotated to the target seat, exactly
+the supervised frame) and the vulnerability. Encoder-decoder with a discrete
+bottleneck:
+
+- **Encoder**: transformer over `[COND(vuln), KNOWN(excluded cards), calls...]`.
+  Trailing batch padding is masked out; the leading frame PADs are *not* padding
+  -- their role embedding is what says where the target sits versus the dealer.
+- **Bottleneck**: `n_codes` (k=16) learned query slots cross-attend the encoder
+  memory and each is vector-quantized against a codebook of `codebook_size`
+  (1024) entries, so z is 16 discrete codes (straight-through estimator +
+  commitment loss). Codes that keep losing are reseeded from live encoder
+  outputs every `revive_every` steps -- a k x V product codebook collapses onto
+  a handful of codes otherwise -- and the log's `ppl` is the code-usage
+  perplexity to watch that.
+- **Decoder**: sees **only** z (never the auction) and draws the 13 cards
+  autoregressively in ascending card-id order. Each step is a softmax over the
+  52 cards with three things removed: cards already drawn, cards so high that
+  the rest of the hand could not fit above them, and cards the caller excluded.
+  Every sample is therefore a legal 13-card hand by construction, and the model
+  can never hand back an *average* hand.
+
+The discrete bottleneck plus sampling is the point. A multi-2D promises long
+hearts **or** long spades; the mean of those two hands is a hand nobody holds.
+The codes let the encoder commit to one reading and the decoder samples a whole
+hand from it, so repeated draws give the plausible alternatives instead of a
+blur. `--codes` additionally samples the codes themselves -- from the near-tied
+alternatives, at a scale-free temperature (`--code-temp`: the runner-up is drawn
+exp(-1/temp) as often as the winner) -- which widens the spread between reads,
+and `train_code_temp > 0` trains the decoder on non-argmin codes as well.
+
+**Masking** (`--mask "AT7.KT943.A42.K8"`, repeatable) removes cards the caller
+knows the target cannot hold -- your own hand, and dummy's once it is tabled.
+The mask is both a hard decoder constraint *and* an encoder input (the KNOWN
+token: knowing 13 dead cards is real information), and training attaches a
+random 13-card mask to a fraction of the rows (`train.mask_aug`) so masked
+inference is in distribution.
+
+**Training data is generated by the other models** (`hand/gen.py`): random deals
+are rolled out through any mix of bidding checkpoints -- BC, RL, the uniform
+baseline -- and the resulting (deal, auction) pairs become the training set, so
+the guesser learns the conventions those models actually play, including
+whatever an RL run invented for itself (`rl/analyze.py` shows how far that
+drifts from human bidding). Generation is rollouts only: no DD solving, no
+rewards, no endplay. Stores are written in the `cache/` layout, so generated and
+human data (`--source cache`) mix freely, and each view samples an auction
+*prefix* -- the model works mid-auction, not just on finished ones.
+
+```bash
+# generate a reusable store (policies: random | bc:<ckpt> | rl:<ckpt> | <ckpt>,
+# optional @weight; N-S and E-W draw independently, so tables mix systems)
+uv run python -m bidding_dt.hand.gen --out cache/gen --deals 400000 \
+    --policy bc:runs/small/best.pt --policy rl:runs/rl_small/best.pt \
+    --policy random@0.1
+
+# train: generates into <out>/gen (unless --gen-deals 0 / --reuse-gen), then
+# trains the VQ encoder-decoder on it
+uv run python -m bidding_dt.hand.train --preset small --config configs/hand_small.yaml \
+    --policy rl:runs/rl_small/best.pt --policy bc:runs/small/best.pt \
+    --source cache --out runs/hand_small
+
+# CPU smoke run (a few minutes)
+uv run python -m bidding_dt.hand.train --preset tiny --config configs/hand_smoke.yaml \
+    --policy bc:runs/smoke/best.pt --out runs/hand_smoke
+
+# ask for hands: what can E hold after "P 1D X 2H", given my own 13 cards?
+uv run python -m bidding_dt.hand.sample --ckpt runs/hand_small/best.pt \
+    --dealer N --vuln N-S --target E --auction "P 1D X 2H" \
+    --mask "AT7.KT943.A42.K8" --n 8 --codes
+
+# spot-check: sampled vs actual hands on a store's val split
+uv run python -m bidding_dt.hand.sample --ckpt runs/hand_small/best.pt \
+    --source cache/gen --show 5
+```
+
+Val metrics in `runs/*/log.jsonl` (`best.pt` tracks `ce`): `ce` teacher-forced
+card cross-entropy, `ppl` code-usage perplexity, `acc` greedy card recovery,
+`shape` exact suit-shape match rate, `hcp` HCP MAE, `sample_acc`/`best_acc` mean
+and best-of-n card recovery over `val_samples` draws, `jaccard` mean pairwise
+overlap between draws of the same row (low = still exploring, high = collapsed
+onto one hand) and `shapes` distinct suit shapes per row. Train logs also carry
+`vq`/`commit` and `revived` (codes reseeded that interval).
+
+Reference points for `ce`: an untrained model sits at log(52) = 3.95 nats/card,
+and one that has learned *nothing but the 13-of-52 prior* at ~2.09 -- so only
+values below that are real auction information, and there is a long way from
+there (an auction is worth a few bits, not the 27 nats that specify a hand).
+`hcp` under the ~2.9 MAE of a random hand and a climbing `best_acc` are the same
+signal from the sampling side. Greedy `acc` is a weak metric by construction:
+the per-card argmax sequence is not a typical hand, so judge by `ce` and the
+sampled numbers.
+
+## Bidding systems (fixed-length-state FFN + evolved encoders)
+
+`bidding_dt.system` is a second bidder, built on top of the hand-inference
+encoder instead of the decision transformer. Its state is a **fixed-length
+vector**, so the decision model is a plain FFN (residual SwiGLU blocks):
+
+| block | dims | source |
+| --- | --- | --- |
+| own hand | 52 | the usual 0/1 card indicator |
+| vulnerability | 4 | hero-relative one-hot (none/we/they/both) |
+| dealer | 4 | dealer's seat relative to the actor (self/RHO/pd/LHO) |
+| last bid: level, strain | 8 + 6 | one-hot, slot 0 = nobody has bid |
+| last bid by | 5 | one-hot relative seat (+ "nobody") |
+| double/redouble status | 3 | undoubled / doubled / redoubled |
+| doubled by, redoubled by | 5 + 5 | one-hot relative seat (+ "nobody") |
+| consecutive passes | 4 | 0, 1, 2, 3+ |
+| legal actions | 39 | the exact mask (also applied to the logits) |
+| `z_self, z_RHO, z_partner, z_LHO` | 4 x `d_z` | the frozen HandVQ encoder, run on the public auction **in each seat's own frame** |
+
+The call sequence is never read: the last-bid summary carries the current
+position, and the four z blocks carry the history -- each is the hand-guesser's
+compression of the same public auction from one player's point of view, so what
+a player's own bidding says about their own hand arrives as `z_self`. The
+current seat is the frame origin (role 0) and needs no feature of its own;
+`dealer` is that frame's only positional degree of freedom.
+
+Two nested loops (`system/train.py`):
+
+```
+inner (per PPO iteration)      sample system i from the population
+                               N-S play encoder_i + adapter_i
+                               opponents come from the league
+                               two-table team rollouts (DD rewards)
+                               PPO-update the shared policy [and adapter]
+
+outer (per generation)         evaluate every system on fixed deals
+                               keep the elites, replace the weakest with
+                               mutated children:  child = parent + sigma*N(0,1)
+                               snapshot the strong systems into the league
+```
+
+A *system* is (frozen encoder, adapter): the adapter is the small projection
+that turns a seat's z into `d_z` state features, and it is the evolvable part
+(`evo.sigma`, absolute by default; `sigma_relative: true` makes it a fraction of
+each weight's own std). Children inherit their parent's encoder, so encoders
+that keep losing evaluations die out with their adapters. The FFN policy is
+shared and trained by PPO; `evo.inner_target` decides whether PPO also trains
+the adapters (`policy` | `adapter` | `both`). Snapshots are frozen
+single-adapter clones added to the existing league, so later generations face
+the systems that already worked.
+
+The policy implements the same `forward_last(tokens, hand, vuln, row_len)`
+protocol as `rl/model.py` -- the state is rebuilt from those arguments -- so
+`rl/rollout.py` (two-table team matches), `rl/league.py` and `rl/ppo.py` are
+reused unchanged, and the PPO logprob recompute sees exactly what the rollout
+sampler saw. The encoder's code indices are memoized per auction prefix
+(`model.z_cache`), which keeps the recompute off the transformer: a PPO
+iteration costs ~0.1 s on CPU once the rollout is done.
+
+```bash
+# needs a hand-inference encoder first (see above), plus a BC/RL checkpoint as
+# the KL anchor and first league member
+uv run python -m bidding_dt.system.train --preset small \
+    --config configs/system_small.yaml \
+    --encoder runs/hand_small/best.pt --bc-ckpt runs/small/best.pt \
+    --league bc:runs/small/best.pt --league rl:runs/rl_small/best.pt \
+    --out runs/sys_small
+
+# CPU smoke (2 generations x 2 PPO iterations, 3 systems)
+uv run --extra cpu --extra rl python -m bidding_dt.system.train --preset tiny \
+    --config configs/system_smoke.yaml --encoder runs/hand_smoke/best.pt \
+    --bc-ckpt runs/smoke/best.pt --out runs/sys_smoke
+
+# several encoders -> the population starts with one variant per encoder
+uv run python -m bidding_dt.system.train --config configs/system_small.yaml \
+    --encoder runs/hand_small/best.pt --encoder runs/hand_base/best.pt \
+    --bc-ckpt runs/small/best.pt --out runs/sys_multi
+```
+
+The FFN starts with no bidding knowledge, so the KL anchor to the frozen BC
+policy doubles as the warm start: keep `rl.kl_beta` high at first and anneal it
+to zero (`kl_beta_end`) to hand over to the IMP reward. `log.jsonl` events:
+`generation` (team IMPs, reward, decisions, which systems were active, PPO
+stats, `z_cache` size), `eval` (per-system IMPs/board + the running
+`train_imps`), `snapshot` (systems added to the league), `evolve` (which child
+replaced which, its parent, generation and relative noise size, plus the full
+ranking). `best.pt` tracks the best evaluated system and stores its adapter
+index, so it loads straight back with the matching `--encoder`.
+
 ## Layout
 
 ```
@@ -280,8 +482,21 @@ src/bidding_dt/
   rl/eval_rl.py        # two-table team IMPs/board vs fixed opponents
   rl/analyze.py        # self-play auction tree: per-bid HCP/suit-length ranges
   rl/plot.py           # log.jsonl -> progress.png, multi-run overlay
+  hand/config.py       # HandVQConfig / train / gen / data sections (YAML)
+  hand/model.py        # VQ encoder-decoder: auction -> k codes -> a whole hand
+  hand/data.py         # auction stores, (deal, seat, prefix) views, collate
+  hand/gen.py          # roll the bidding models -> generated training stores
+  hand/train.py        # hand-model training entrypoint + val metrics
+  hand/sample.py       # sample hands for a seat, with known-cards masking
+  system/state.py      # auction summary + 4 z blocks -> fixed-length state
+  system/model.py      # SystemPolicy: SwiGLU FFN over that state (+ z adapters)
+  system/population.py # system variants, mutation/selection, league snapshots
+  system/config.py     # SystemModelConfig / EvoConfig / SystemConfig (YAML)
+  system/train.py      # inner PPO loop + outer evolutionary loop
   train.py eval.py bid.py
   play_server.py         # HTTP sidecar: bots + par scoring for the website
+  play_bot.py            # card-play bot: DD simulation over auction-consistent
+                         # hidden-hand pools (used by /play/choose)
 ```
 
 ## RL design notes

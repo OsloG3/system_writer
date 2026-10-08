@@ -44,7 +44,9 @@ reward as terminal payoff. gamma=1 by default -- auctions are short and the
 reward is terminal, so discounting would only bias early calls.
 
 play_deals() is the single-table variant kept for evaluation (IMPs vs par
-against a fixed opponent).
+against a fixed opponent); play_seat_policies() steps an env with a policy per
+(row, seat) and scores nothing, which is how hand/gen.py manufactures training
+auctions from a pool of models.
 """
 
 from dataclasses import dataclass, field
@@ -353,6 +355,33 @@ def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
             actions[opp_rows] = a.cpu().numpy()
 
         env.step(idx, actions)
+
+
+@torch.no_grad()
+def play_seat_policies(env: AuctionBatch, policies, seat_policy: np.ndarray,
+                       device, greedy: bool = False, temp: float = 1.0,
+                       amp: bool = False) -> AuctionBatch:
+    """Step `env` to completion with a policy per (row, seat).
+
+    `seat_policy[row, seat]` indexes `policies`, so a table can mix systems
+    (BC N-S against RL E-W, self-play, a random seat...). Nothing is recorded
+    and no rewards are computed, so this needs no DD solver: it is the rollout
+    used to manufacture training data (hand/gen.py), not an RL iteration.
+    """
+    while env.any_active():
+        idx = env.active_idx()
+        tokens, hand, vuln_cls, hero, row_len = env.build_inputs(idx)
+        masks = env.legal_masks(idx)
+        actions = np.zeros(len(idx), dtype=np.int64)
+        which = seat_policy[idx, hero]
+        for pid in np.unique(which):
+            rows = np.flatnonzero(which == pid)
+            a, _, _, _ = _act(policies[pid], tokens[rows], hand[rows],
+                              vuln_cls[rows], row_len[rows], masks[rows],
+                              device, greedy, temp, amp)
+            actions[rows] = a.cpu().numpy()
+        env.step(idx, actions)
+    return env
 
 
 def _join_presolve(presolve):

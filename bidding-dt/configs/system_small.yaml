@@ -1,0 +1,58 @@
+# System-policy run (GPU box; on CPU add --threads N --cpu-bf16).
+# Inner loop: 8 PPO iterations per generation on fresh deals, two-table team
+# reward, league opponents half the time. Outer loop: 40 generations over a
+# population of 8 systems -- evaluate, keep 4 elites, breed the other half from
+# them with sigma * N(0,1) adapter noise, snapshot the top 2 into the league.
+#   uv run python -m bidding_dt.system.train --preset small \
+#       --config configs/system_small.yaml \
+#       --encoder runs/hand_small/best.pt --bc-ckpt runs/small/best.pt \
+#       --league bc:runs/small/best.pt --league rl:runs/rl_small/best.pt \
+#       --out runs/sys_small
+model:
+  d_model: 256
+  d_ff: 680
+  n_layers: 4
+  dropout: 0.0
+  d_z: 32                  # state features per seat's z (4 seats -> 128 dims)
+  z_hidden: 0              # 0 = single linear projection (mutation-friendly)
+  z_cache: 200000
+rl:
+  iters: 8                 # inner PPO iterations per generation
+  deals_per_iter: 128
+  lr: 1.0e-4
+  weight_decay: 0.01
+  warmup_iters: 20
+  min_lr_frac: 0.1
+  minibatch_size: 512
+  ppo_epochs: 3
+  length_bucket: 8
+  reward_scale: 0.2
+  team_weight: 1.0
+  par_weight: 0.25
+  rollout_temp: 1.5        # keep the two tables of a deal diverging
+  greedy: false
+  clip_eps: 0.2
+  vf_coef: 0.5
+  ent_coef: 0.01
+  ent_coef_end: 0.001
+  kl_beta: 1.0             # strong BC anchor first: the FFN starts with no
+  kl_beta_end: 0.0         # bidding knowledge, then anneal to pure IMPs
+  league_prob: 0.5
+  snapshot_every: 25
+  max_snapshots: 24
+  league_persist: true
+  cache_path: cache/dd.sqlite
+evo:
+  generations: 40
+  systems: 8
+  sigma: 0.002             # child = parent + sigma * N(0,1) on adapter weights
+  sigma_relative: false    # true -> scale the noise by each weight's own std
+  keep_best: 4
+  replace_frac: 0.5
+  sample_by: uniform       # uniform | fitness
+  eval_every: 1
+  eval_deals: 256
+  eval_opponent: random
+  snapshot_every: 2
+  snapshot_top: 2
+  inner_target: policy     # policy | adapter | both

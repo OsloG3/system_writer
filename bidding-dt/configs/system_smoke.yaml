@@ -1,0 +1,38 @@
+# CPU smoke run for the system policy: 2 generations x 2 PPO iterations over a
+# 3-system population, scored against the random baseline.
+#   uv run --extra cpu --extra rl python -m bidding_dt.system.train --preset tiny \
+#       --config configs/system_smoke.yaml --encoder runs/hand_smoke/best.pt \
+#       --bc-ckpt runs/smoke/best.pt --out runs/sys_smoke
+model:
+  d_model: 128
+  d_ff: 344
+  n_layers: 3
+  d_z: 16
+  z_cache: 20000
+rl:
+  iters: 2                 # inner PPO iterations per generation
+  deals_per_iter: 16
+  minibatch_size: 64
+  ppo_epochs: 2
+  warmup_iters: 2
+  reward_scale: 0.2
+  rollout_temp: 1.2
+  kl_beta: 0.5             # the BC anchor is the warm start: keep it strong
+  kl_beta_end: 0.1
+  ent_coef: 0.01
+  ent_coef_end: 0.001
+  league_prob: 0.5
+  cache_path: cache/dd_sys_smoke.sqlite
+  threads: 2
+evo:
+  generations: 2
+  systems: 3
+  sigma: 0.002
+  keep_best: 1
+  replace_frac: 0.34
+  eval_every: 1
+  eval_deals: 8
+  eval_opponent: random
+  snapshot_every: 1
+  snapshot_top: 1
+  inner_target: policy

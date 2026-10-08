@@ -640,8 +640,236 @@
                 overflow: hidden;
                 text-overflow: ellipsis;
             }
+
+            /* ---- Card-play table ---- */
+            .cb-pinfo {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 0.4rem 0.7rem;
+                background: #1e3c3c;
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 0.8rem;
+                padding: 0.45rem 0.7rem;
+                font-family: Inter, sans-serif;
+                font-size: 0.72rem;
+                color: #cdd7e4;
+            }
+            .cb-pinfo b { color: #fff; }
+            .cb-pinfo .sep { opacity: 0.35; }
+            .cb-ptable {
+                display: grid;
+                grid-template-columns: auto 1fr auto;
+                grid-template-areas:
+                    ". n ."
+                    "w c e"
+                    ". s .";
+                gap: 0.5rem 0.6rem;
+                align-items: center;
+                justify-items: center;
+                background: radial-gradient(circle at 50% 45%, #24504a, #17322f 70%);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 1rem;
+                padding: 0.7rem 0.6rem;
+            }
+            .cb-pt-n { grid-area: n; }
+            .cb-pt-e { grid-area: e; }
+            .cb-pt-s { grid-area: s; }
+            .cb-pt-w { grid-area: w; }
+            .cb-pt-c { grid-area: c; }
+            .cb-pseat {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.25rem;
+                min-width: 0;
+            }
+            .cb-pseat-h {
+                flex-direction: row;
+                gap: 0.4rem;
+            }
+            .cb-pseat-name {
+                font-family: Inter, sans-serif;
+                font-size: 0.62rem;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: #9fb0c4;
+                display: flex;
+                align-items: center;
+                gap: 0.3rem;
+                white-space: nowrap;
+            }
+            .cb-pseat-name .you { color: #f2ca4c; font-weight: 700; }
+            .cb-pseat-name .role {
+                background: rgba(255, 255, 255, 0.12);
+                border-radius: 999px;
+                padding: 0 0.35rem;
+                font-size: 0.56rem;
+            }
+            .cb-pseat.act .cb-pseat-name { color: #6ee7a0; }
+            .cb-pseat.act {
+                filter: drop-shadow(0 0 6px rgba(110, 231, 160, 0.35));
+            }
+            .cb-phand {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 2px;
+                justify-content: center;
+                max-width: 10.5rem;
+            }
+            .cb-pcard {
+                position: relative;
+                width: 1.55rem;
+                height: 2.2rem;
+                border-radius: 0.28rem;
+                background: linear-gradient(180deg, #fff, #eeece6);
+                border: 1px solid rgba(0, 0, 0, 0.4);
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: flex-start;
+                line-height: 1;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                padding-top: 0.12rem;
+                font-size: 0.72rem;
+                flex-shrink: 0;
+            }
+            .cb-pcard.red { color: #c0392b; }
+            .cb-pcard.blk { color: #1b1f27; }
+            .cb-pcard .su { font-size: 0.68rem; }
+            .cb-pcard.playable {
+                cursor: pointer;
+                border-color: #43b78d;
+                box-shadow: 0 0 0 1px #43b78d, 0 2px 6px rgba(0, 0, 0, 0.5);
+                transform: translateY(-2px);
+            }
+            .cb-pcard.playable:hover {
+                transform: translateY(-6px);
+                box-shadow: 0 0 0 2px #6ee7a0, 0 4px 10px rgba(0, 0, 0, 0.5);
+            }
+            .cb-pcard.spent { opacity: 0.28; filter: grayscale(0.6); }
+            .cb-pback {
+                width: 1.5rem;
+                height: 2.15rem;
+                border-radius: 0.28rem;
+                background: repeating-linear-gradient(45deg, #2a5193, #2a5193 3px, #234578 3px, #234578 6px);
+                border: 1px solid rgba(0, 0, 0, 0.45);
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+                margin-left: -0.9rem;
+            }
+            .cb-pback:first-child { margin-left: 0; }
+            .cb-pbacks { display: flex; padding: 0.15rem 0.3rem; }
+            .cb-pcount {
+                font-family: Inter, sans-serif;
+                font-size: 0.62rem;
+                color: #8fa0b5;
+            }
+            .cb-ptrick {
+                position: relative;
+                width: 8.5rem;
+                height: 7rem;
+            }
+            .cb-ptrick .tk {
+                position: absolute;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 1px;
+            }
+            .cb-ptrick .tk-n { top: 0; left: 50%; transform: translateX(-50%); }
+            .cb-ptrick .tk-s { bottom: 0; left: 50%; transform: translateX(-50%); }
+            .cb-ptrick .tk-w { left: 0; top: 50%; transform: translateY(-50%); }
+            .cb-ptrick .tk-e { right: 0; top: 50%; transform: translateY(-50%); }
+            .cb-ptrick .tk .who {
+                font-family: Inter, sans-serif;
+                font-size: 0.54rem;
+                color: #cfe3d8;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+            .cb-ptrick .tkc {
+                width: 2rem;
+                height: 2.85rem;
+                border-radius: 0.3rem;
+                background: linear-gradient(180deg, #fff, #eeece6);
+                border: 1px solid rgba(0, 0, 0, 0.45);
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.9rem;
+                line-height: 1;
+            }
+            .cb-ptrick .tkc.red { color: #c0392b; }
+            .cb-ptrick .tkc.blk { color: #1b1f27; }
+            .cb-ptrick .tkc.win { box-shadow: 0 0 0 2px #f2ca4c, 0 2px 6px rgba(0,0,0,.5); }
+            .cb-ptrick-empty {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: rgba(255, 255, 255, 0.35);
+                font-family: Inter, sans-serif;
+                font-size: 0.68rem;
+                text-align: center;
+            }
+            .cb-ptally {
+                display: flex;
+                gap: 0.75rem;
+                justify-content: center;
+                font-family: Inter, sans-serif;
+                font-size: 0.7rem;
+                color: #cdd7e4;
+                margin-top: 0.2rem;
+            }
+            .cb-ptally b { font-size: 0.9rem; }
+            .cb-pprompt {
+                text-align: center;
+                font-family: Inter, sans-serif;
+                font-size: 0.78rem;
+                color: #6ee7a0;
+                min-height: 1.2rem;
+            }
+            .cb-phist {
+                background: #1b2330;
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 0.8rem;
+                padding: 0.4rem 0.6rem;
+                font-family: Inter, sans-serif;
+                font-size: 0.7rem;
+                max-height: 9rem;
+                overflow-y: auto;
+            }
+            .cb-phist-row {
+                display: flex;
+                align-items: center;
+                gap: 0.4rem;
+                padding: 0.12rem 0;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            }
+            .cb-phist-row:last-child { border-bottom: 0; }
+            .cb-phist-row .no { color: #6b7a8d; width: 1.2rem; }
+            .cb-phist-row .cd { color: #e5e9f0; }
+            .cb-phist-row .wn { margin-left: auto; color: #f2ca4c; font-size: 0.62rem; }
+            .cb-phist-toggle {
+                background: none;
+                border: 0;
+                color: #8fa0b5;
+                font-family: Inter, sans-serif;
+                font-size: 0.68rem;
+                cursor: pointer;
+                padding: 0.2rem 0;
+                text-decoration: underline;
+            }
+
             @media (max-width: 400px) {
-                .cb-diagram {
+            .cb-diagram {
                     grid-template-columns: 1fr 1fr;
                     grid-template-areas:
                         "n n"
@@ -823,12 +1051,20 @@
         <div id="app"></div>
 
         <script>
+            // Which section of the menu we are in: "bid" (auction only, scored
+            // vs par) or "play" (bid then play all 13 tricks vs the bots).
+            const PLAY_MODE =
+                new URLSearchParams(location.search).get("m") === "play"
+                    ? "play"
+                    : "bid";
             document.getElementById("app").innerHTML = renderLayout({
-                mode: "play",
-                badge: "Play",
-                title: "Play vs Bots",
+                mode: PLAY_MODE === "play" ? "bridge" : "play",
+                badge: PLAY_MODE === "play" ? "Play bridge" : "Bid only",
+                title: PLAY_MODE === "play" ? "Play bridge" : "Bid only",
                 subtitle:
-                    "Deal a solo board against three bidding-dt bots, or open a persistent partner table for two humans (North–South) against the East/West bots: an 8-board match dealt up front and bid in parallel. Every board is scored in IMPs versus double-dummy par.",
+                    PLAY_MODE === "play"
+                        ? "Bid a full deal with a bidding-dt bot as your North partner against two bot opponents, then play all 13 tricks. The bots choose every card by double-dummy simulation over hands consistent with the auction, and the board is scored on the tricks you actually take versus double-dummy par."
+                        : "Practise the auction with a bidding-dt bot as your North partner against two bot opponents, or open a persistent partner table for two humans (North–South) versus the East/West bots. Every board is scored in IMPs versus double-dummy par — the cards are not played out.",
             });
 
             const SEAT_NAMES = ["North", "East", "South", "West"];
@@ -836,14 +1072,21 @@
             const SUIT_SYMBOL = { S: "♠", H: "♥", D: "♦", C: "♣", N: "NT" };
             const SUIT_ORDER = ["C", "D", "H", "S", "N"];
             const TILE_CLS = { C: "c", D: "d", H: "h", S: "s", N: "n" };
-            const BOARD_KEY = "atheneum_play_board";
+            const BOARD_KEY_BID = "atheneum_play_board_bid";
+            const BOARD_KEY_PLAY = "atheneum_play_board_play";
             const TEAM_KEY = "atheneum_play_team";
+            // Each menu section keeps its own open board: "Bid only" restores
+            // the bid board (or a partner table), "Play bridge" the play board.
+            function boardKeyFor(mode) {
+                return mode === "play" ? BOARD_KEY_PLAY : BOARD_KEY_BID;
+            }
             const TURN_ALERT_KEY = "atheneum_play_turn_alerts";
 
             let state = null;
             let stats = null;
             let games = null;
             let allUsers = [];
+            let bidTab = "solo"; // bid-only lobby tab: "solo" | "partner"
             let busy = false;
             let autoRetries = 0;
             let bidLevelSel = null;
@@ -1392,7 +1635,9 @@
                     if (res.status === 404) {
                         if (state) {
                             localStorage.removeItem(
-                                state.mode === "team" ? TEAM_KEY : BOARD_KEY,
+                                state.mode === "team"
+                                    ? TEAM_KEY
+                                    : boardKeyFor(state.boardMode),
                             );
                             state = null;
                         }
@@ -1419,7 +1664,7 @@
                         JSON.stringify(state) !== JSON.stringify(data);
                     state = data;
                     localStorage.setItem(TEAM_KEY, data.id);
-                    localStorage.removeItem(BOARD_KEY);
+                    localStorage.removeItem(BOARD_KEY_BID);
                     busy = false;
                     autoRetries = 0;
                     if (changed) render();
@@ -1428,8 +1673,10 @@
                 }
                 data.mode = "solo";
                 state = data;
-                localStorage.setItem(BOARD_KEY, data.id);
-                localStorage.removeItem(TEAM_KEY);
+                localStorage.setItem(boardKeyFor(data.boardMode), data.id);
+                // a partner table only competes with the bid-only solo board
+                if (data.boardMode !== "play")
+                    localStorage.removeItem(TEAM_KEY);
                 if (data.stats) stats = data.stats;
                 busy = false;
                 autoRetries = 0;
@@ -1461,7 +1708,11 @@
                     return;
                 }
                 if (busy) return;
-                await post("/api/play/new");
+                const mode =
+                    state && state.mode !== "team" && state.boardMode
+                        ? state.boardMode
+                        : PLAY_MODE;
+                await post("/api/play/new", { mode: mode });
             }
 
             async function makeCall(call) {
@@ -1572,7 +1823,7 @@
                 if (state && state.mode === "team") {
                     localStorage.removeItem(TEAM_KEY);
                 } else {
-                    localStorage.removeItem(BOARD_KEY);
+                    localStorage.removeItem(boardKeyFor(state && state.boardMode));
                 }
                 state = null;
                 refreshLobby();
@@ -1651,24 +1902,27 @@
                 await loadGames();
                 await loadUsers();
 
-                const tid = localStorage.getItem(TEAM_KEY);
-                if (tid) {
-                    try {
-                        const res = await fetch(
-                            "/api/play/team/" + encodeURIComponent(tid),
-                        );
-                        if (res.ok) {
-                            state = await res.json();
-                            state.mode = "team";
-                            localStorage.removeItem(BOARD_KEY);
-                            busy = false;
-                            render();
-                            return;
-                        }
-                        localStorage.removeItem(TEAM_KEY);
-                    } catch (e) {}
+                // partner tables are bid-only: restored only in "Bid only"
+                if (PLAY_MODE === "bid") {
+                    const tid = localStorage.getItem(TEAM_KEY);
+                    if (tid) {
+                        try {
+                            const res = await fetch(
+                                "/api/play/team/" + encodeURIComponent(tid),
+                            );
+                            if (res.ok) {
+                                state = await res.json();
+                                state.mode = "team";
+                                localStorage.removeItem(BOARD_KEY_BID);
+                                busy = false;
+                                render();
+                                return;
+                            }
+                            localStorage.removeItem(TEAM_KEY);
+                        } catch (e) {}
+                    }
                 }
-                const bid = localStorage.getItem(BOARD_KEY);
+                const bid = localStorage.getItem(boardKeyFor(PLAY_MODE));
                 if (bid) {
                     try {
                         const res = await fetch(
@@ -1682,7 +1936,7 @@
                             render();
                             return;
                         }
-                        localStorage.removeItem(BOARD_KEY);
+                        localStorage.removeItem(boardKeyFor(PLAY_MODE));
                     } catch (e) {}
                 }
                 render();
@@ -1893,14 +2147,23 @@
                             ? "your side"
                             : "the bots";
                     const pen = ["", " doubled", " redoubled"][c.penalty] || "";
-                    const margin = r.tricks - (c.level + 6);
+                    const made = r.played != null ? r.played : r.tricks;
+                    const margin = made - (c.level + 6);
+                    const ddNote =
+                        r.played != null && r.tricks != null
+                            ? ` <span style="opacity:.6">(DD ${r.tricks})</span>`
+                            : "";
                     contractLine = `${c.level}${SUIT_SYMBOL[c.denom]}${pen} by ${SEAT_NAMES[c.declarer]} (${side})`;
-                    trickNote = `${r.tricks} DD tricks — ${margin >= 0 ? "made " + (margin > 0 ? "+" + margin : "exactly") : margin + " down"}`;
+                    trickNote = `${made} trick${made === 1 ? "" : "s"}${ddNote} — ${margin >= 0 ? "made " + (margin > 0 ? "+" + margin : "exactly") : margin + " down"}`;
                 } else {
                     contractLine = "Passed out";
                     trickNote = "no contract was reached";
                 }
                 const matchDone = state.mode === "team" && state.matchDone;
+                const replay =
+                    state.play && (state.play.plays || []).length >= 4
+                        ? playHistoryHtml()
+                        : "";
                 return `
                     <div class="cb-done pop-in">
                         <div class="cb-done-head">
@@ -1918,6 +2181,7 @@
                             </div>
                         </div>
                         ${state.hands ? doneDiagramHtml(state.hands, state.humanSeat, state.dealer, state.calls) : ""}
+                        ${replay}
                         <div class="cb-done-foot">
                             <button id="nextBoardBtn" class="cb-btn-green">
                                 <span class="material-symbols-outlined text-sm">${matchDone ? "restart_alt" : "casino"}</span>
@@ -1980,7 +2244,7 @@
                             : "");
                 } else {
                     no = stats ? stats.boards + (state.done ? 0 : 1) : 1;
-                    sub = `Solo vs bots · dealer ${SEAT_NAMES[state.dealer][0]} · ${VULN_NAMES[state.vuln]} vuln`;
+                    sub = `${state.boardMode === "play" ? "Play bridge" : "Bid only"} · you + bot vs 2 bots · dealer ${SEAT_NAMES[state.dealer][0]} · ${VULN_NAMES[state.vuln]} vuln`;
                 }
                 const arrows =
                     team && list.length
@@ -2030,8 +2294,245 @@
                     </div>`;
             }
 
+            // ---- Card-play rendering ----
+            // During the play phase the human sees their own hand and the dummy
+            // face up; the two hidden seats are card backs with a count. The
+            // declarer-side bot plays declarer and dummy, so when the human is
+            // declarer they click cards for both those seats.
+
+            const PLAY_RANK_ORDER = "AKQJT98765432";
+
+            function handToCards(handStr) {
+                const parts = String(handStr || "").split(".");
+                const out = [];
+                for (let s = 0; s < 4; s++)
+                    for (const r of parts[s] || "") out.push(r + "SHDC"[s]);
+                return out;
+            }
+
+            function origHandOf(seat) {
+                if (!state.play) return null;
+                if (seat === state.humanSeat) return state.hand;
+                if (seat === state.play.dummy) return state.play.dummyHand;
+                return null;
+            }
+
+            function remainingOf(seat) {
+                const orig = origHandOf(seat);
+                if (orig == null) return null;
+                const played = new Set(
+                    (state.play.plays || [])
+                        .filter((p) => p.seat === seat)
+                        .map((p) => p.card),
+                );
+                return handToCards(orig).filter((c) => !played.has(c));
+            }
+
+            function trickWinnerJS(trick, trump) {
+                let win = trick[0];
+                for (let i = 1; i < trick.length; i++) {
+                    const c = trick[i];
+                    if (c.card[1] === win.card[1]) {
+                        if (
+                            PLAY_RANK_ORDER.indexOf(c.card[0]) <
+                            PLAY_RANK_ORDER.indexOf(win.card[0])
+                        )
+                            win = c;
+                    } else if (c.card[1] === trump) {
+                        win = c;
+                    }
+                }
+                return win.seat;
+            }
+
+            function pcard(token, cls, dataAttr) {
+                const r = token[0],
+                    s = token[1];
+                const red = s === "H" || s === "D";
+                const rank = r === "T" ? "10" : r;
+                return `<div class="cb-pcard ${red ? "red" : "blk"} ${cls || ""}" ${dataAttr || ""}><span>${rank}</span><span class="su">${SUIT_SYMBOL[s]}</span></div>`;
+            }
+
+            function cardSpan(token) {
+                const r = token[0],
+                    s = token[1];
+                const red = s === "H" || s === "D";
+                const rank = r === "T" ? "10" : r;
+                return `<span style="color:${red ? "#f08a8a" : "#cdd7e4"};font-weight:600">${rank}${SUIT_SYMBOL[s]}</span>`;
+            }
+
+            function playSeatHtml(seat) {
+                const p = state.play;
+                const isDummy = seat === p.dummy;
+                const isDecl = seat === p.declarer;
+                const isYou = seat === state.humanSeat;
+                const faceUp = isDummy || isYou;
+                const acting = p.yourTurn && p.actSeat === seat;
+                const botActing = !p.yourTurn && p.nextSeat === seat;
+                const tags = [];
+                if (isYou) tags.push('<span class="you">you</span>');
+                if (isDecl) tags.push('<span class="role">declarer</span>');
+                else if (isDummy) tags.push('<span class="role">dummy</span>');
+                let body;
+                if (faceUp) {
+                    const cards = remainingOf(seat) || [];
+                    const legalSet = new Set(acting ? p.legal || [] : []);
+                    body =
+                        `<div class="cb-phand">` +
+                        cards
+                            .map((c) => {
+                                if (!acting) return pcard(c);
+                                const ok = legalSet.has(c);
+                                return pcard(
+                                    c,
+                                    ok ? "playable" : "spent",
+                                    ok ? `data-play="${c}"` : "",
+                                );
+                            })
+                            .join("") +
+                        `</div>`;
+                } else {
+                    const cnt = (p.counts || [])[seat] || 0;
+                    let backs = "";
+                    const shown = Math.min(cnt, 6);
+                    for (let i = 0; i < shown; i++)
+                        backs += `<div class="cb-pback"></div>`;
+                    body = `<div class="cb-pbacks">${backs}</div><div class="cb-pcount">${cnt}</div>`;
+                }
+                const actCls = acting || botActing ? " act" : "";
+                return `<div class="cb-pseat${actCls}">
+                    <div class="cb-pseat-name">${SEAT_NAMES[seat]} ${tags.join(" ")}</div>
+                    ${body}
+                </div>`;
+            }
+
+            function trickToDisplay() {
+                const plays = state.play.plays || [];
+                const n = plays.length;
+                const cur = plays.slice(Math.floor(n / 4) * 4);
+                if (cur.length) return { cards: cur, complete: false };
+                if (n >= 4)
+                    return { cards: plays.slice(n - 4, n), complete: true };
+                return { cards: [], complete: false };
+            }
+
+            function trickCenterHtml() {
+                const p = state.play;
+                const td = trickToDisplay();
+                if (!td.cards.length)
+                    return `<div class="cb-ptrick"><div class="cb-ptrick-empty">${SEAT_NAMES[p.opener]} to lead</div></div>`;
+                const win = td.complete
+                    ? trickWinnerJS(td.cards, p.trump)
+                    : null;
+                const pos = { 0: "tk-n", 1: "tk-e", 2: "tk-s", 3: "tk-w" };
+                const cells = td.cards
+                    .map((pc) => {
+                        const r = pc.card[0],
+                            s = pc.card[1];
+                        const red = s === "H" || s === "D";
+                        const rank = r === "T" ? "10" : r;
+                        const w = win !== null && pc.seat === win ? " win" : "";
+                        return `<div class="tk ${pos[pc.seat]}"><span class="who">${SEAT_NAMES[pc.seat][0]}</span><div class="tkc ${red ? "red" : "blk"}${w}"><span>${rank}</span><span>${SUIT_SYMBOL[s]}</span></div></div>`;
+                    })
+                    .join("");
+                return `<div class="cb-ptrick">${cells}</div>`;
+            }
+
+            function playInfoHtml() {
+                const p = state.play;
+                const c = p.contract;
+                const pen = c
+                    ? ["", " doubled", " redoubled"][c.penalty] || ""
+                    : "";
+                const contractStr = c
+                    ? `${c.level}${SUIT_SYMBOL[c.denom]}${pen} by ${SEAT_NAMES[c.declarer]}`
+                    : "—";
+                const trumpStr = p.trump === "N" ? "NT" : SUIT_SYMBOL[p.trump];
+                return `<div class="cb-pinfo">
+                    <span>${dcolorSuits(contractStr)}</span>
+                    <span class="sep">·</span><span>trump <b>${trumpStr}</b></span>
+                    <span class="sep">·</span><span>dummy <b>${SEAT_NAMES[p.dummy]}</b></span>
+                </div>`;
+            }
+
+            function playTallyHtml() {
+                const p = state.play;
+                const plays = p.plays || [];
+                const humanOnDecl =
+                    p.declarer === state.humanSeat ||
+                    p.dummy === state.humanSeat;
+                const yours = humanOnDecl ? p.declTricks : p.defTricks;
+                const theirs = humanOnDecl ? p.defTricks : p.declTricks;
+                const trickNo =
+                    Math.floor(plays.length / 4) + (plays.length % 4 ? 1 : 0);
+                return `<div class="cb-ptally">
+                    <span>You <b>${yours}</b></span>
+                    <span>Them <b>${theirs}</b></span>
+                    <span>Trick <b>${Math.min(13, Math.max(1, trickNo))}</b>/13</span>
+                </div>`;
+            }
+
+            function playPromptHtml() {
+                const p = state.play;
+                if (busy) return spinner("Playing the hand…");
+                if (p.yourTurn) {
+                    const seatName = SEAT_NAMES[p.actSeat];
+                    const lead = (p.plays || []).length % 4 === 0 ? "lead" : "play";
+                    const who =
+                        p.actSeat === p.dummy && p.actSeat !== state.humanSeat
+                            ? " (dummy)"
+                            : "";
+                    return `Your turn — ${lead} from ${seatName}${who}`;
+                }
+                return spinner(SEAT_NAMES[p.nextSeat] + " is playing…");
+            }
+
+            function playHistoryHtml() {
+                const p = state.play;
+                const plays = p.plays || [];
+                const rows = [];
+                for (let t = 0; t * 4 + 4 <= plays.length; t++) {
+                    const trick = plays.slice(t * 4, t * 4 + 4);
+                    const win = trickWinnerJS(trick, p.trump);
+                    const cells = trick
+                        .map(
+                            (pc) =>
+                                `${SEAT_NAMES[pc.seat][0]} ${cardSpan(pc.card)}`,
+                        )
+                        .join(" · ");
+                    rows.push(
+                        `<div class="cb-phist-row"><span class="no">${t + 1}</span><span class="cd">${cells}</span><span class="wn">${SEAT_NAMES[win][0]} wins</span></div>`,
+                    );
+                }
+                if (!rows.length) return "";
+                return `<div class="cb-phist">${rows.join("")}</div>`;
+            }
+
+            function playTableView() {
+                return `
+                    ${playInfoHtml()}
+                    <div class="cb-ptable">
+                        <div class="cb-pt-n">${playSeatHtml(0)}</div>
+                        <div class="cb-pt-w">${playSeatHtml(3)}</div>
+                        <div class="cb-pt-c">${trickCenterHtml()}</div>
+                        <div class="cb-pt-e">${playSeatHtml(1)}</div>
+                        <div class="cb-pt-s">${playSeatHtml(2)}</div>
+                    </div>
+                    ${playTallyHtml()}
+                    <div class="cb-pprompt">${playPromptHtml()}</div>
+                    ${playHistoryHtml()}`;
+            }
+
+            async function makePlay(card) {
+                if (!state || busy || state.done) return;
+                if (state.phase !== "play" || !state.play || !state.play.yourTurn)
+                    return;
+                await post(`/api/play/${state.id}/card`, { card: card });
+            }
+
             function handFooterHtml() {
                 if (state.noBoard || !state.hand || state.done) return "";
+                if (state.phase === "play") return ""; // hands are on the table
                 return `
                     <div class="cb-handfoot">
                         <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]} ${hcpOf(state.hand)} HCP</div>
@@ -2042,13 +2543,17 @@
             function tableView() {
                 const team = state.mode === "team";
                 let mid;
+                let midCls = "cb-mid";
                 if (team && state.noBoard) {
                     mid = busy ? dealingHtml() : teamReadyHtml();
                 } else if (state.done) {
                     // End of hand: one card — score, par, diagram with the
                     // mini auction at the table's center, next board
                     mid = doneViewHtml();
+                } else if (state.phase === "play") {
+                    mid = playTableView();
                 } else {
+                    midCls = "cb-mid cb-mid-bid";
                     const parts = [
                         auctionHtml(
                             state.dealer,
@@ -2074,7 +2579,7 @@
                 return `
                     <div class="flex-1 min-h-0 flex flex-col">
                         ${topBarHtml()}
-                        <div class="cb-mid ${state.done ? "" : "cb-mid-bid"}">${mid}</div>
+                        <div class="${midCls}">${mid}</div>
                         ${handFooterHtml()}
                     </div>`;
             }
@@ -2090,17 +2595,26 @@
             }
 
             function soloCardHtml() {
+                const isPlay = PLAY_MODE === "play";
+                const title = isPlay ? "Play a full hand" : "Bid with a bot partner";
+                const icon = isPlay ? "casino" : "gavel";
+                const desc = isPlay
+                    ? "You sit South with a bidding-dt bot as your North partner against two bot opponents. Bid the auction, then play all 13 tricks — the bots choose every card by double-dummy simulation over hands consistent with the bidding. Scored on the tricks you actually take versus double-dummy par."
+                    : "You sit South with a bidding-dt bot as your North partner against two bot opponents. Bid the auction; each board is scored in IMPs against double-dummy par. The cards are not played out — pure bidding practice.";
                 return `
                     <div class="cb-cardpanel p-5 flex flex-col">
                         <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-b from-[#5b8def] to-[#2a5193] shadow-[0_3px_0_rgba(0,0,0,0.25)]">
-                            <span class="material-symbols-outlined text-2xl text-white" style="font-variation-settings:'FILL' 1;">smart_toy</span>
+                            <span class="material-symbols-outlined text-2xl text-white" style="font-variation-settings:'FILL' 1;">${icon}</span>
                         </span>
-                        <div class="font-headline font-extrabold text-white mt-3 text-lg">Solo vs 3 bots</div>
+                        <div class="font-headline font-extrabold text-white mt-3 text-lg">
+                            ${title}
+                            <span class="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-white/10 text-[#9aa7b8] align-middle">you + bot vs 2 bots</span>
+                        </div>
                         <p class="text-sm text-[#9aa7b8] mt-1.5 flex-1 leading-relaxed">
-                            You sit South; a bidding-dt bot fills every other seat. Each board is scored in IMPs against double-dummy par.
+                            ${desc}
                         </p>
                         <button id="dealBtn" class="cb-btn-green mt-4 justify-center !px-5 !py-3 !text-sm">
-                            <span class="material-symbols-outlined text-sm">casino</span>Deal a board
+                            <span class="material-symbols-outlined text-sm">casino</span>${isPlay ? "Deal &amp; play a board" : "Deal a board"}
                         </button>
                     </div>`;
             }
@@ -2186,7 +2700,7 @@
                             <td class="px-3 py-1.5 text-xs text-[#8fa0b5] whitespace-nowrap">${timeAgo(rec.ts)}</td>
                             <td class="px-3 py-1.5 text-xs text-[#8fa0b5] whitespace-nowrap">${SEAT_NAMES[rec.dealer][0]} · ${VULN_NAMES[rec.vuln]}</td>
                             <td class="px-3 py-1.5 text-sm font-headline font-semibold text-white">${contractHtml(rec.contract)}</td>
-                            <td class="px-3 py-1.5 text-xs text-[#8fa0b5] whitespace-nowrap">${rec.tricks === null || rec.tricks === undefined ? "—" : rec.tricks + " tricks"} · par ${scoreText(rec.parNs)}</td>
+                            <td class="px-3 py-1.5 text-xs text-[#8fa0b5] whitespace-nowrap">${tricksLabel(rec) || "—"} · par ${scoreText(rec.parNs)}</td>
                             <td class="px-3 py-1.5 text-sm font-headline font-bold text-right ${impsColor(rec.imps)}">${signed(rec.imps)}</td>
                         </tr>`,
                     )
@@ -2216,13 +2730,33 @@
                     </div>`;
             }
 
+            function bidTabsHtml() {
+                const tab = (id, label, icon, on) => `
+                    <button data-bidtab="${id}" class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-label text-xs font-bold uppercase tracking-wider transition-all ${on ? "bg-gradient-to-b from-[#37b26a] to-[#1e7d47] text-white shadow-[0_2px_0_rgba(0,0,0,0.3)]" : "bg-white/5 text-[#8fa0b5] hover:bg-white/10"}">
+                        <span class="material-symbols-outlined text-sm">${icon}</span>${label}
+                    </button>`;
+                return `
+                    <div class="flex gap-2 mb-3">
+                        ${tab("solo", "With a bot partner", "smart_toy", bidTab === "solo")}
+                        ${tab("partner", "With a partner", "group", bidTab === "partner")}
+                    </div>`;
+            }
+
             function lobbyHtml() {
+                if (PLAY_MODE === "play") {
+                    return `
+                        ${statsBarHtml()}
+                        <div class="grid gap-3">${soloCardHtml()}</div>
+                        ${recentHtml()}`;
+                }
+                const body =
+                    bidTab === "solo"
+                        ? `<div class="grid gap-3">${soloCardHtml()}</div>`
+                        : `<div class="grid gap-3">${teamCardHtml()}</div>`;
                 return `
                     ${statsBarHtml()}
-                    <div class="grid gap-3 sm:grid-cols-2">
-                        ${soloCardHtml()}
-                        ${teamCardHtml()}
-                    </div>
+                    ${bidTabsHtml()}
+                    ${body}
                     ${teamGamesHtml()}
                     ${recentHtml()}`;
             }
@@ -2251,6 +2785,7 @@
                     calls: rec.calls || [],
                     contract: rec.contract,
                     tricks: rec.tricks,
+                    played: rec.played,
                     parNs: rec.parNs,
                     scoreNs: rec.scoreNs,
                     imps: rec.imps,
@@ -2329,15 +2864,23 @@
                 renderOverlay();
             }
 
+            function tricksLabel(item) {
+                if (item.played !== null && item.played !== undefined)
+                    return item.tricks !== null && item.tricks !== undefined
+                        ? `took ${item.played} (DD ${item.tricks})`
+                        : `took ${item.played}`;
+                return item.tricks !== null && item.tricks !== undefined
+                    ? `${item.tricks} DD tricks`
+                    : "";
+            }
+
             function historyRowHtml(item, i) {
                 const idx = item.idx !== undefined ? item.idx : i;
                 const label = item.no
                     ? "Board " + item.no
                     : timeAgo(item.ts) || "Board";
-                const resultTxt =
-                    item.tricks === null || item.tricks === undefined
-                        ? ""
-                        : ` · ${item.tricks} tricks`;
+                const tl = tricksLabel(item);
+                const resultTxt = tl ? ` · ${tl}` : "";
                 return `
                     <button data-hist-item="${idx}" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:brightness-125 transition-all" style="background:#202836;">
                         <span class="text-xs text-[#8fa0b5] font-label w-20 shrink-0">${label}</span>
@@ -2379,7 +2922,7 @@
                     </div>
                     <div class="text-xs text-[#8fa0b5] font-label">
                         ${SEAT_NAMES[item.dealer]} dealt · ${VULN_NAMES[item.vuln]} vuln
-                        ${item.tricks === null || item.tricks === undefined ? "" : ` · ${item.tricks} DD tricks`}
+                        ${tricksLabel(item) ? ` · ${tricksLabel(item)}` : ""}
                         · par ${scoreText(item.parNs)} · your score ${scoreText(item.scoreNs)}
                         · <b class="${impsColor(item.imps)}">${signed(item.imps)} IMPs</b>
                     </div>
@@ -2510,6 +3053,13 @@
 
                 const deal = document.getElementById("dealBtn");
                 if (deal) deal.onclick = () => newBoard();
+                content.querySelectorAll("[data-bidtab]").forEach((btn) => {
+                    btn.onclick = () => {
+                        if (busy) return;
+                        bidTab = btn.dataset.bidtab;
+                        render();
+                    };
+                });
                 const create = document.getElementById("createTableBtn");
                 if (create) create.onclick = () => teamCreate();
                 const partnerInput = document.getElementById("partnerName");
@@ -2612,6 +3162,9 @@
                 });
                 wireBidArea(document);
                 wireAlertChips(content);
+                content.querySelectorAll("[data-play]").forEach((el) => {
+                    el.onclick = () => makePlay(el.dataset.play);
+                });
                 const retry = document.getElementById("retryBtn");
                 if (retry) retry.onclick = () => refreshBoard(true);
 

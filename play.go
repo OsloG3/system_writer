@@ -33,8 +33,9 @@ const (
 	playBoardTTL    = 6 * time.Hour
 	playRecentMax   = 50
 
-	botTimeout      = 30 * time.Second // deal / bid / legal
-	botScoreTimeout = 90 * time.Second // score (cold double-dummy solve)
+	botTimeout      = 30 * time.Second  // deal / bid / legal
+	botScoreTimeout = 90 * time.Second  // score (cold double-dummy solve)
+	botPlayTimeout  = 150 * time.Second // a card choice (pool + DD simulation)
 )
 
 var (
@@ -73,36 +74,60 @@ func (c *PlayContract) String() string {
 type PlayResult struct {
 	Contract *PlayContract `json:"contract"` // nil = passed out
 	Tricks   *int          `json:"tricks"`   // double-dummy tricks for the contract
+	Played   *int          `json:"played"`   // tricks the declarer side actually took
 	ParNS    int           `json:"parNs"`
 	ScoreNS  int           `json:"scoreNs"`
 	Imps     float64       `json:"imps"` // human team (N-S) versus par
+}
+
+// PlayCard is one card played, in play order. Card is rank+suit, e.g. "AS", "9H".
+type PlayCard struct {
+	Seat int    `json:"seat"`
+	Card string `json:"card"`
+}
+
+// PlayState is the card-play phase of a board (nil while bidding or passed out).
+type PlayState struct {
+	Contract   *PlayContract `json:"contract"`
+	Trump      byte          `json:"-"` // denom suit char, or 'N'
+	Declarer   int           `json:"declarer"`
+	Dummy      int           `json:"dummy"`
+	Opener     int           `json:"opener"`
+	Plays      []PlayCard    `json:"plays"`
+	DeclTricks int           `json:"declTricks"`
+	Done       bool          `json:"done"`
 }
 
 type PlayBoard struct {
 	mu       sync.Mutex // guards the fields below
 	ID       string
 	User     string
+	Mode     string    // "bid" (auction only, scored vs par) or "play" (cards played out)
 	Hands    [4]string // N,E,S,W 'S.H.D.C'
 	Dealer   int
 	Vuln     int
 	Calls    []string
 	Legal    []string // legal calls for the human at LegalLen calls
 	LegalLen int
+	Play     *PlayState
 	Result   *PlayResult
 	Created  time.Time
 }
 
 type PlayRecord struct {
-	Ts       string    `json:"ts"`
-	Dealer   int       `json:"dealer"`
-	Vuln     int       `json:"vuln"`
-	Calls    []string  `json:"calls"`
-	Contract string    `json:"contract"`
-	Tricks   *int      `json:"tricks"`
-	ParNS    int       `json:"parNs"`
-	ScoreNS  int       `json:"scoreNs"`
-	Imps     float64   `json:"imps"`
-	Hands    [4]string `json:"hands,omitempty"` // all four hands, N,E,S,W
+	Ts       string     `json:"ts"`
+	Mode     string     `json:"mode"`
+	Dealer   int        `json:"dealer"`
+	Vuln     int        `json:"vuln"`
+	Calls    []string   `json:"calls"`
+	Contract string     `json:"contract"`
+	Tricks   *int       `json:"tricks"`
+	Played   *int       `json:"played"`
+	ParNS    int        `json:"parNs"`
+	ScoreNS  int        `json:"scoreNs"`
+	Imps     float64    `json:"imps"`
+	Hands    [4]string  `json:"hands,omitempty"` // all four hands, N,E,S,W
+	Plays    []PlayCard `json:"plays,omitempty"` // the card-play sequence
 }
 
 // PlayStats is the persisted per-user history (data/play_stats.json)
@@ -169,15 +194,20 @@ func recordPlayResult(b *PlayBoard) {
 	s.ImpsTotal += b.Result.Imps
 	rec := PlayRecord{
 		Ts:       time.Now().UTC().Format(time.RFC3339),
+		Mode:     b.Mode,
 		Dealer:   b.Dealer,
 		Vuln:     b.Vuln,
 		Calls:    append([]string(nil), b.Calls...),
 		Contract: b.Result.Contract.String(),
 		Tricks:   b.Result.Tricks,
+		Played:   b.Result.Played,
 		ParNS:    b.Result.ParNS,
 		ScoreNS:  b.Result.ScoreNS,
 		Imps:     b.Result.Imps,
 		Hands:    b.Hands,
+	}
+	if b.Play != nil {
+		rec.Plays = append([]PlayCard(nil), b.Play.Plays...)
 	}
 	s.Recent = append([]PlayRecord{rec}, s.Recent...)
 	if len(s.Recent) > playRecentMax {
@@ -249,8 +279,11 @@ func (b *PlayBoard) over() bool {
 }
 
 // advance runs the bots until it is the human's turn or the auction ends,
-// then scores the finished board exactly once.
+// then either starts the card play (a contract) or scores a passed-out board.
 func (b *PlayBoard) advance() error {
+	if b.Play != nil {
+		return b.advancePlay()
+	}
 	for !b.over() && len(b.Calls) < maxAuctionCalls && b.nextSeat() != humanSeat {
 		body := map[string]any{
 			"hands":  b.Hands,
@@ -273,7 +306,13 @@ func (b *PlayBoard) advance() error {
 		}
 		b.Calls = append(b.Calls, out.Call)
 	}
-	if b.over() || len(b.Calls) >= maxAuctionCalls {
+	if b.over() {
+		if b.Mode == "play" {
+			return b.startPlayOrScore()
+		}
+		return b.score()
+	}
+	if len(b.Calls) >= maxAuctionCalls {
 		return b.score()
 	}
 	return b.ensureLegal()
@@ -307,6 +346,329 @@ func (b *PlayBoard) score() error {
 	return nil
 }
 
+// ---- Card play ----
+//
+// Once the auction ends in a contract the board is played out trick by trick.
+// The human keeps South; a bot fills every other seat. The declarer-side bot
+// plays both declarer and dummy (it sees both those hands), and each defender
+// bot plays itself -- all served by the sidecar's /play/choose, which picks a
+// card by double-dummy simulation over hidden hands consistent with the auction
+// and the play so far (see bidding-dt/src/bidding_dt/play_bot.py).
+
+const cardRanks = "AKQJT98765432"
+
+// handCards splits a 'S.H.D.C' hand into rank+suit card tokens (e.g. "AS","9S").
+func handCards(hand string) []string {
+	var out []string
+	for s, suit := range strings.Split(hand, ".") {
+		if s >= 4 {
+			break
+		}
+		for _, r := range suit {
+			out = append(out, string(r)+string("SHDC"[s]))
+		}
+	}
+	return out
+}
+
+func cardSuit(card string) byte { return card[1] }
+
+func cardRankIdx(card string) int { return strings.IndexByte(cardRanks, card[0]) }
+
+// normalizeCard maps user/bot input onto a rank+suit token ("AS"); "" if invalid.
+func normalizeCard(s string) string {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if len(s) == 2 && strings.IndexByte(cardRanks, s[0]) >= 0 && strings.IndexByte("SHDC", s[1]) >= 0 {
+		return s
+	}
+	// tolerate suit+rank ("SA") too
+	if len(s) == 2 && strings.IndexByte("SHDC", s[0]) >= 0 && strings.IndexByte(cardRanks, s[1]) >= 0 {
+		return string(s[1]) + string(s[0])
+	}
+	return ""
+}
+
+// trickWinner returns the seat that wins a completed trick (4 cards in play
+// order). trump is a suit char or 'N'. Mirrors endplay's trick_winner.
+func trickWinner(trick []PlayCard, trump byte) int {
+	win := trick[0]
+	for _, pc := range trick[1:] {
+		switch {
+		case cardSuit(pc.Card) == cardSuit(win.Card):
+			if cardRankIdx(pc.Card) < cardRankIdx(win.Card) {
+				win = pc
+			}
+		case cardSuit(pc.Card) == trump:
+			win = pc
+		}
+	}
+	return win.Seat
+}
+
+// contractFromCalls recovers the final contract from an auction in seat order,
+// mirroring dd/reward.py's contract_from_auction. nil = passed out.
+func contractFromCalls(dealer int, calls []string) *PlayContract {
+	lastBid := -1
+	doubled, redoubled := false, false
+	firstDenom := map[[2]int]int{} // [denomIdx, side] -> absolute seat
+	for i, raw := range calls {
+		c := normalizeCall(raw)
+		switch {
+		case c == "X":
+			doubled = true
+		case c == "XX":
+			redoubled = true
+		case len(c) == 2 && c[0] >= '1' && c[0] <= '7' && strings.IndexByte("CDHSN", c[1]) >= 0:
+			lastBid = i
+			doubled, redoubled = false, false
+			seat := (dealer + i) % 4
+			key := [2]int{strings.IndexByte("CDHSN", c[1]), seat % 2}
+			if _, ok := firstDenom[key]; !ok {
+				firstDenom[key] = seat
+			}
+		}
+	}
+	if lastBid < 0 {
+		return nil
+	}
+	c := normalizeCall(calls[lastBid])
+	denom := strings.IndexByte("CDHSN", c[1])
+	bidder := (dealer + lastBid) % 4
+	penalty := 0
+	if redoubled {
+		penalty = 2
+	} else if doubled {
+		penalty = 1
+	}
+	return &PlayContract{
+		Level:    int(c[0] - '0'),
+		Denom:    string(c[1]),
+		Declarer: firstDenom[[2]int{denom, bidder % 2}],
+		Penalty:  penalty,
+	}
+}
+
+// startPlayOrScore begins the card play for a contract, or scores a pass-out.
+func (b *PlayBoard) startPlayOrScore() error {
+	contract := contractFromCalls(b.Dealer, b.Calls)
+	if contract == nil || contract.Declarer < 0 || contract.Declarer > 3 {
+		return b.score() // passed out (or truncated): fall back to par scoring
+	}
+	trump := contract.Denom[0]
+	b.Play = &PlayState{
+		Contract: contract,
+		Trump:    trump,
+		Declarer: contract.Declarer,
+		Dummy:    (contract.Declarer + 2) % 4,
+		Opener:   (contract.Declarer + 1) % 4,
+	}
+	return b.advancePlay()
+}
+
+// nextSeat returns the seat to play next (winner of the last trick leads).
+func (p *PlayState) nextSeat() int {
+	n := len(p.Plays)
+	if n == 0 {
+		return p.Opener
+	}
+	if n%4 == 0 {
+		return trickWinner(p.Plays[n-4:], p.Trump)
+	}
+	return (p.Plays[n-1].Seat + 1) % 4
+}
+
+func (p *PlayState) completedTricks() int { return len(p.Plays) / 4 }
+
+// humanControlsPlay reports whether the human (not a bot) plays `seat`.
+func (b *PlayBoard) humanControlsPlay(seat int) bool {
+	p := b.Play
+	if p.Declarer == humanSeat {
+		return seat == p.Declarer || seat == p.Dummy
+	}
+	if p.Dummy == humanSeat {
+		return false // the human is dummy; the declarer bot tables those cards
+	}
+	return seat == humanSeat // the human is a defender
+}
+
+// humanPlaySeats lists the seats the human plays this board (for the UI).
+func (b *PlayBoard) humanPlaySeats() []int {
+	p := b.Play
+	if p.Declarer == humanSeat {
+		return []int{p.Declarer, p.Dummy}
+	}
+	if p.Dummy == humanSeat {
+		return nil
+	}
+	return []int{humanSeat}
+}
+
+// remainingHand returns the cards `seat` has not yet played.
+func (b *PlayBoard) remainingHand(seat int) []string {
+	played := map[string]bool{}
+	for _, pc := range b.Play.Plays {
+		if pc.Seat == seat {
+			played[pc.Card] = true
+		}
+	}
+	var out []string
+	for _, c := range handCards(b.Hands[seat]) {
+		if !played[c] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// legalCards returns the cards `seat` may play now (follow suit if able).
+func (b *PlayBoard) legalCards(seat int) []string {
+	rem := b.remainingHand(seat)
+	n := len(b.Play.Plays)
+	if n%4 == 0 {
+		return rem // on lead: anything
+	}
+	lead := cardSuit(b.Play.Plays[(n/4)*4].Card)
+	var follow []string
+	for _, c := range rem {
+		if cardSuit(c) == lead {
+			follow = append(follow, c)
+		}
+	}
+	if len(follow) > 0 {
+		return follow
+	}
+	return rem
+}
+
+// botChoose asks the sidecar for the card a bot seat should play.
+func (b *PlayBoard) botChoose(seat int) (string, error) {
+	p := b.Play
+	var session string
+	known := map[string]string{strconv.Itoa(p.Dummy): b.Hands[p.Dummy]}
+	if seat == p.Declarer || seat == p.Dummy {
+		session = b.ID + ":decl"
+		known[strconv.Itoa(p.Declarer)] = b.Hands[p.Declarer]
+	} else {
+		session = b.ID + ":def" + strconv.Itoa(seat)
+		known[strconv.Itoa(seat)] = b.Hands[seat]
+	}
+	plays := make([][2]any, 0, len(p.Plays))
+	for _, pc := range p.Plays {
+		plays = append(plays, [2]any{pc.Seat, pc.Card})
+	}
+	body := map[string]any{
+		"session": session,
+		"dealer":  b.Dealer,
+		"vuln":    b.Vuln,
+		"calls":   callsOrEmpty(b.Calls),
+		"known":   known,
+		"plays":   plays,
+		"to_act":  seat,
+	}
+	var out struct {
+		Seat int    `json:"seat"`
+		Card string `json:"card"`
+	}
+	if err := botPost("/play/choose", body, &out, botPlayTimeout); err != nil {
+		return "", err
+	}
+	card := normalizeCard(out.Card)
+	if card == "" {
+		return "", errors.New("sidecar returned an invalid card")
+	}
+	return card, nil
+}
+
+// applyPlay validates and records one card, updating the trick tally.
+func (b *PlayBoard) applyPlay(seat int, card string) error {
+	p := b.Play
+	if seat != p.nextSeat() {
+		return errors.New("played out of turn")
+	}
+	if !slices.Contains(b.legalCards(seat), card) {
+		return fmt.Errorf("illegal card %s for seat %d", card, seat)
+	}
+	p.Plays = append(p.Plays, PlayCard{Seat: seat, Card: card})
+	if len(p.Plays)%4 == 0 {
+		w := trickWinner(p.Plays[len(p.Plays)-4:], p.Trump)
+		if w == p.Declarer || w == p.Dummy {
+			p.DeclTricks++
+		}
+	}
+	if len(p.Plays) == 52 {
+		p.Done = true
+	}
+	return nil
+}
+
+// advancePlay runs the bots until the human must play, the hand is over, or a
+// small budget of bot plays is spent (the last case only arises when the human
+// is the dummy and every seat is a bot, so the client polls to watch it unfold).
+func (b *PlayBoard) advancePlay() error {
+	p := b.Play
+	if p == nil || b.Result != nil {
+		return nil
+	}
+	budget := 4
+	for !p.Done && budget > 0 {
+		seat := p.nextSeat()
+		if b.humanControlsPlay(seat) {
+			return nil // wait for the human
+		}
+		card, err := b.botChoose(seat)
+		if err != nil {
+			return err
+		}
+		if err := b.applyPlay(seat, card); err != nil {
+			return err
+		}
+		budget--
+	}
+	if p.Done {
+		return b.finishPlay()
+	}
+	return nil
+}
+
+// finishPlay scores the actually-played tricks against double-dummy par.
+func (b *PlayBoard) finishPlay() error {
+	if b.Result != nil {
+		return nil
+	}
+	var out struct {
+		Contract *PlayContract `json:"contract"`
+		Tricks   *int          `json:"tricks"`
+		DDTricks *int          `json:"dd_tricks"`
+		ParNS    int           `json:"par_ns"`
+		ScoreNS  int           `json:"score_ns"`
+		Imps     float64       `json:"imps"`
+	}
+	body := map[string]any{
+		"hands":  b.Hands,
+		"dealer": b.Dealer,
+		"vuln":   b.Vuln,
+		"calls":  callsOrEmpty(b.Calls),
+		"tricks": b.Play.DeclTricks,
+	}
+	if err := botPost("/play/result", body, &out, botScoreTimeout); err != nil {
+		return err
+	}
+	played := b.Play.DeclTricks
+	b.Result = &PlayResult{
+		Contract: out.Contract, Tricks: out.DDTricks, Played: &played,
+		ParNS: out.ParNS, ScoreNS: out.ScoreNS, Imps: out.Imps,
+	}
+	recordPlayResult(b)
+	b.dropPlaySessions()
+	return nil
+}
+
+// dropPlaySessions tells the sidecar to forget this board's card-play sessions.
+func (b *PlayBoard) dropPlaySessions() {
+	var out struct{}
+	_ = botPost("/play/drop", map[string]any{"prefix": b.ID + ":"}, &out, botTimeout)
+}
+
 func (b *PlayBoard) ensureLegal() error {
 	if b.Result != nil {
 		b.Legal = nil
@@ -330,27 +692,45 @@ func (b *PlayBoard) ensureLegal() error {
 	return nil
 }
 
-// stateLocked renders the client-visible board. Only the human's hand is
-// exposed while the auction runs; all four are revealed once it is scored.
+// stateLocked renders the client-visible board. During the auction only the
+// human's hand is exposed; during the play the human's hand and the dummy are
+// face up; all four are revealed once the board is scored.
 func (b *PlayBoard) stateLocked(stats PlayStats) map[string]any {
 	st := map[string]any{
 		"id":        b.ID,
 		"dealer":    b.Dealer,
 		"vuln":      b.Vuln,
 		"humanSeat": humanSeat,
+		"boardMode": b.Mode,
 		"hand":      b.Hands[humanSeat],
 		"calls":     callsOrEmpty(b.Calls),
-		"nextSeat":  b.nextSeat(),
-		"yourTurn":  b.Result == nil && b.nextSeat() == humanSeat,
-		"done":      b.Result != nil,
 		"bots":      botLabels(),
 		"stats":     statsSummary(stats),
+		"done":      b.Result != nil,
 	}
-	if b.Result != nil {
+	switch {
+	case b.Result != nil:
+		st["phase"] = "done"
 		st["result"] = b.Result
 		st["hands"] = b.Hands
-	} else if b.nextSeat() == humanSeat && b.Legal != nil && b.LegalLen == len(b.Calls) {
-		st["legal"] = b.Legal
+		st["yourTurn"] = false
+		st["nextSeat"] = -1
+		if b.Play != nil {
+			st["play"] = b.playStateLocked(false)
+		}
+	case b.Play != nil:
+		st["phase"] = "play"
+		seat := b.Play.nextSeat()
+		st["nextSeat"] = seat
+		st["yourTurn"] = b.humanControlsPlay(seat)
+		st["play"] = b.playStateLocked(true)
+	default:
+		st["phase"] = "bid"
+		st["nextSeat"] = b.nextSeat()
+		st["yourTurn"] = b.nextSeat() == humanSeat
+		if b.nextSeat() == humanSeat && b.Legal != nil && b.LegalLen == len(b.Calls) {
+			st["legal"] = b.Legal
+		}
 	}
 	// Alerts from the model's self-play tree: what each bot bid promised and
 	// what each of the human's legal calls would show. Both are omitted
@@ -366,6 +746,48 @@ func (b *PlayBoard) stateLocked(stats PlayStats) map[string]any {
 		}
 	}
 	return st
+}
+
+// playStateLocked renders the card-play phase for the client. The human's own
+// hand travels in stateLocked("hand"); the dummy is face up here. Hidden seats
+// are exposed only as a card count.
+func (b *PlayBoard) playStateLocked(withLegal bool) map[string]any {
+	p := b.Play
+	seat := p.nextSeat()
+	plays := p.Plays
+	if plays == nil {
+		plays = []PlayCard{}
+	}
+	humanSeats := b.humanPlaySeats()
+	if humanSeats == nil {
+		humanSeats = []int{}
+	}
+	counts := [4]int{}
+	for s := 0; s < 4; s++ {
+		counts[s] = len(b.remainingHand(s))
+	}
+	m := map[string]any{
+		"contract":   p.Contract,
+		"declarer":   p.Declarer,
+		"dummy":      p.Dummy,
+		"opener":     p.Opener,
+		"trump":      string(p.Trump),
+		"plays":      plays,
+		"nextSeat":   seat,
+		"declTricks": p.DeclTricks,
+		"defTricks":  p.completedTricks() - p.DeclTricks,
+		"humanSeats": humanSeats,
+		"dummyHand":  b.Hands[p.Dummy],
+		"counts":     counts,
+		"done":       p.Done,
+		"yourTurn":   false,
+	}
+	if withLegal && b.humanControlsPlay(seat) {
+		m["yourTurn"] = true
+		m["actSeat"] = seat
+		m["legal"] = b.legalCards(seat)
+	}
+	return m
 }
 
 func botLabels() map[string]string {
@@ -443,11 +865,21 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 // ---- Handlers ----
 
-// POST /api/play/new - deals a fresh board and runs the bots up to the human
+// POST /api/play/new - deals a fresh board and runs the bots up to the human.
+// Body (optional): {"mode":"bid"|"play"} -- "bid" scores the auction against
+// double-dummy par (no cards), "play" plays the whole hand out. Default "bid".
 func handlePlayNew(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
 	if username == "" {
 		return
+	}
+	mode := "bid"
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	limitBody(w, r, maxBodyAuth)
+	if err := json.NewDecoder(r.Body).Decode(&body); err == nil && body.Mode == "play" {
+		mode = "play"
 	}
 	var deal struct {
 		Hands  [4]string `json:"hands"`
@@ -459,7 +891,7 @@ func handlePlayNew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b := &PlayBoard{
-		ID: generateID(), User: username, Hands: deal.Hands,
+		ID: generateID(), User: username, Mode: mode, Hands: deal.Hands,
 		Dealer: deal.Dealer, Vuln: deal.Vuln,
 		LegalLen: -1, Created: time.Now(),
 	}
@@ -542,6 +974,10 @@ func handlePlayCall(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusConflict, "board is finished")
 		return
 	}
+	if b.Play != nil {
+		jsonError(w, http.StatusConflict, "the auction is over; play a card")
+		return
+	}
 	if b.nextSeat() != humanSeat {
 		// recover a turn that stalled on a sidecar failure
 		if err := b.advance(); err != nil {
@@ -565,6 +1001,78 @@ func handlePlayCall(w http.ResponseWriter, r *http.Request) {
 	b.Legal = nil
 	b.LegalLen = -1
 	if err := b.advance(); err != nil {
+		jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
+		return
+	}
+	writeJSON(w, b.stateLocked(getPlayStats(username)))
+}
+
+// POST /api/play/{id}/card - the human plays a card, then the bots play until
+// the human is up again or the hand is finished (scored and recorded once)
+func handlePlayCard(w http.ResponseWriter, r *http.Request) {
+	username := requireLogin(w, r)
+	if username == "" {
+		return
+	}
+	id := r.PathValue("id")
+	if !validID(id) {
+		jsonError(w, http.StatusBadRequest, "invalid board ID")
+		return
+	}
+	limitBody(w, r, maxBodyAuth)
+	var body struct {
+		Card string `json:"card"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	card := normalizeCard(body.Card)
+	if card == "" {
+		jsonError(w, http.StatusBadRequest, "invalid card")
+		return
+	}
+	b := lookupPlayBoard(id, username)
+	if b == nil {
+		jsonError(w, http.StatusNotFound, "no such board")
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.Result != nil {
+		jsonError(w, http.StatusConflict, "board is finished")
+		return
+	}
+	if b.Play == nil {
+		// the auction may not have reached the play yet (a stalled bot turn)
+		if err := b.advance(); err != nil {
+			jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
+			return
+		}
+		if b.Play == nil {
+			jsonError(w, http.StatusConflict, "the auction is not over")
+			return
+		}
+	}
+	seat := b.Play.nextSeat()
+	if !b.humanControlsPlay(seat) {
+		// recover a bot turn that stalled on a sidecar failure
+		if err := b.advancePlay(); err != nil {
+			jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
+			return
+		}
+		writeJSON(w, b.stateLocked(getPlayStats(username)))
+		return
+	}
+	if !slices.Contains(b.legalCards(seat), card) {
+		jsonError(w, http.StatusBadRequest, "illegal card: "+card)
+		return
+	}
+	if err := b.applyPlay(seat, card); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := b.advancePlay(); err != nil {
 		jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
 		return
 	}

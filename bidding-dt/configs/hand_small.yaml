@@ -1,0 +1,41 @@
+# Full hand-inference run (GPU box; on CPU add --threads N --cpu-bf16).
+# Data is generated from the bidding models, so the guesser reads the bots'
+# own conventions; --source cache mixes in the human auctions as well.
+#   uv run python -m bidding_dt.hand.train --preset small \
+#       --config configs/hand_small.yaml \
+#       --policy rl:runs/rl_small/best.pt --policy bc:runs/small/best.pt \
+#       --source cache --out runs/hand_small
+model:
+  dropout: 0.0
+  n_codes: 16           # z = 16 codes
+  codebook_size: 1024   # ... of 1024 each
+  code_dim: 64
+  commit_beta: 0.25
+  revive_frac: 0.02
+  revive_every: 500
+  train_code_temp: 0.0  # >0: sample codes while training (decoder learns the
+                        #     competing readings of a multi-meaning bid too)
+gen:
+  deals: 400000
+  chunk: 512
+  temp: 1.0             # sample the rollouts: covers off-path auctions
+  val_frac: 0.01
+  test_frac: 0.01
+  # policies:
+  #   - bc:runs/small/best.pt
+  #   - rl:runs/rl_small/best.pt
+  #   - random@0.1      # 10% noise tables
+train:
+  batch_size: 256
+  lr: 3.0e-4
+  epochs: 2
+  warmup_steps: 2000
+  log_every: 100
+  val_every: 2000
+  val_batches: 40
+  val_samples: 8
+  prefix: random        # one auction prefix per (deal, seat) per epoch
+  mask_aug: 0.5         # half the rows carry a random known-cards mask
+  mask_cards: 13        # ... of 13 cards (one full other hand)
+data:
+  num_workers: 8

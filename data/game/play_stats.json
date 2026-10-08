@@ -21,6 +21,7 @@
         ],
         "contract": "4S by N",
         "tricks": 11,
+        "played": null,
         "parNs": 450,
         "scoreNs": 450,
         "imps": 0,
@@ -45,6 +46,7 @@
         ],
         "contract": "1N by W",
         "tricks": 6,
+        "played": null,
         "parNs": -400,
         "scoreNs": 50,
         "imps": 10,
@@ -74,6 +76,7 @@
         ],
         "contract": "4H by N",
         "tricks": 10,
+        "played": null,
         "parNs": 420,
         "scoreNs": 420,
         "imps": 0,
@@ -100,6 +103,7 @@
         ],
         "contract": "2D by S",
         "tricks": 10,
+        "played": null,
         "parNs": 130,
         "scoreNs": 130,
         "imps": 0,
@@ -124,6 +128,7 @@
         ],
         "contract": "2D by N",
         "tricks": 12,
+        "played": null,
         "parNs": 800,
         "scoreNs": 170,
         "imps": -12,
@@ -152,6 +157,7 @@
         ],
         "contract": "2S by W",
         "tricks": 10,
+        "played": null,
         "parNs": -620,
         "scoreNs": -170,
         "imps": 10,
@@ -179,6 +185,7 @@
         ],
         "contract": "3S by W",
         "tricks": 9,
+        "played": null,
         "parNs": -100,
         "scoreNs": -140,
         "imps": -1,
@@ -205,6 +212,7 @@
         ],
         "contract": "3N by E",
         "tricks": 9,
+        "played": null,
         "parNs": -420,
         "scoreNs": -400,
         "imps": 1,
@@ -235,6 +243,7 @@
         ],
         "contract": "1N by W",
         "tricks": 8,
+        "played": null,
         "parNs": -120,
         "scoreNs": -120,
         "imps": 0,
@@ -264,6 +273,7 @@
         ],
         "contract": "4H by N",
         "tricks": 10,
+        "played": null,
         "parNs": 620,
         "scoreNs": 620,
         "imps": 0,
@@ -292,6 +302,7 @@
         ],
         "contract": "3S by N",
         "tricks": 9,
+        "played": null,
         "parNs": -200,
         "scoreNs": 140,
         "imps": 8,
@@ -320,6 +331,7 @@
         ],
         "contract": "4H by S",
         "tricks": 10,
+        "played": null,
         "parNs": -200,
         "scoreNs": 620,
         "imps": 13,
@@ -328,6 +340,248 @@
           "",
           "",
           ""
+        ]
+      }
+    ]
+  },
+  "rl1": {
+    "boards": 1,
+    "impsTotal": -10,
+    "recent": [
+      {
+        "ts": "2026-10-08T18:26:36Z",
+        "dealer": 1,
+        "vuln": 2,
+        "calls": [
+          "P",
+          "1C",
+          "P",
+          "3N",
+          "P",
+          "P",
+          "P"
+        ],
+        "contract": "3N by N",
+        "tricks": 11,
+        "played": 12,
+        "parNs": 920,
+        "scoreNs": 490,
+        "imps": -10,
+        "hands": [
+          "T6.A4.AKT42.AQ53",
+          "J87.KQT652.85.97",
+          "A32.J73.Q63.KJT6",
+          "KQ954.98.J97.842"
+        ],
+        "plays": [
+          {
+            "seat": 1,
+            "card": "TH"
+          },
+          {
+            "seat": 2,
+            "card": "JH"
+          },
+          {
+            "seat": 3,
+            "card": "9H"
+          },
+          {
+            "seat": 0,
+            "card": "4H"
+          },
+          {
+            "seat": 2,
+            "card": "KC"
+          },
+          {
+            "seat": 3,
+            "card": "8C"
+          },
+          {
+            "seat": 0,
+            "card": "AC"
+          },
+          {
+            "seat": 1,
+            "card": "9C"
+          },
+          {
+            "seat": 0,
+            "card": "AD"
+          },
+          {
+            "seat": 1,
+            "card": "8D"
+          },
+          {
+            "seat": 2,
+            "card": "6D"
+          },
+          {
+            "seat": 3,
+            "card": "JD"
+          },
+          {
+            "seat": 0,
+            "card": "KD"
+          },
+          {
+            "seat": 1,
+            "card": "5D"
+          },
+          {
+            "seat": 2,
+            "card": "3D"
+          },
+          {
+            "seat": 3,
+            "card": "9D"
+          },
+          {
+            "seat": 0,
+            "card": "TD"
+          },
+          {
+            "seat": 1,
+            "card": "8S"
+          },
+          {
+            "seat": 2,
+            "card": "QD"
+          },
+          {
+            "seat": 3,
+            "card": "7D"
+          },
+          {
+            "seat": 2,
+            "card": "JC"
+          },
+          {
+            "seat": 3,
+            "card": "4C"
+          },
+          {
+            "seat": 0,
+            "card": "5C"
+          },
+          {
+            "seat": 1,
+            "card": "7C"
+          },
+          {
+            "seat": 2,
+            "card": "AS"
+          },
+          {
+            "seat": 3,
+            "card": "9S"
+          },
+          {
+            "seat": 0,
+            "card": "TS"
+          },
+          {
+            "seat": 1,
+            "card": "JS"
+          },
+          {
+            "seat": 2,
+            "card": "TC"
+          },
+          {
+            "seat": 3,
+            "card": "2C"
+          },
+          {
+            "seat": 0,
+            "card": "QC"
+          },
+          {
+            "seat": 1,
+            "card": "KH"
+          },
+          {
+            "seat": 0,
+            "card": "AH"
+          },
+          {
+            "seat": 1,
+            "card": "6H"
+          },
+          {
+            "seat": 2,
+            "card": "7H"
+          },
+          {
+            "seat": 3,
+            "card": "8H"
+          },
+          {
+            "seat": 0,
+            "card": "4D"
+          },
+          {
+            "seat": 1,
+            "card": "QH"
+          },
+          {
+            "seat": 2,
+            "card": "6C"
+          },
+          {
+            "seat": 3,
+            "card": "KS"
+          },
+          {
+            "seat": 0,
+            "card": "3C"
+          },
+          {
+            "seat": 1,
+            "card": "7S"
+          },
+          {
+            "seat": 2,
+            "card": "3S"
+          },
+          {
+            "seat": 3,
+            "card": "5S"
+          },
+          {
+            "seat": 0,
+            "card": "2D"
+          },
+          {
+            "seat": 1,
+            "card": "5H"
+          },
+          {
+            "seat": 2,
+            "card": "3H"
+          },
+          {
+            "seat": 3,
+            "card": "4S"
+          },
+          {
+            "seat": 0,
+            "card": "6S"
+          },
+          {
+            "seat": 1,
+            "card": "2H"
+          },
+          {
+            "seat": 2,
+            "card": "2S"
+          },
+          {
+            "seat": 3,
+            "card": "QS"
+          }
         ]
       }
     ]
@@ -355,6 +609,7 @@
         ],
         "contract": "4S by W",
         "tricks": 11,
+        "played": null,
         "parNs": -990,
         "scoreNs": -450,
         "imps": 11,
@@ -386,6 +641,7 @@
         ],
         "contract": "1N by E",
         "tricks": 7,
+        "played": null,
         "parNs": 100,
         "scoreNs": -90,
         "imps": -5,
@@ -418,6 +674,7 @@
         ],
         "contract": "5DX by N",
         "tricks": 9,
+        "played": null,
         "parNs": -100,
         "scoreNs": -300,
         "imps": -5,
@@ -448,6 +705,7 @@
         ],
         "contract": "3S by W",
         "tricks": 6,
+        "played": null,
         "parNs": 90,
         "scoreNs": 150,
         "imps": 2,
@@ -477,6 +735,7 @@
         ],
         "contract": "4S by N",
         "tricks": 12,
+        "played": null,
         "parNs": 990,
         "scoreNs": 480,
         "imps": -11,
@@ -504,6 +763,7 @@
         ],
         "contract": "4S by E",
         "tricks": 8,
+        "played": null,
         "parNs": 100,
         "scoreNs": 100,
         "imps": 0,
@@ -535,6 +795,7 @@
         ],
         "contract": "4S by E",
         "tricks": 10,
+        "played": null,
         "parNs": -420,
         "scoreNs": -420,
         "imps": 0,
@@ -568,6 +829,7 @@
         ],
         "contract": "2S by E",
         "tricks": 7,
+        "played": null,
         "parNs": -90,
         "scoreNs": 50,
         "imps": 4,
@@ -596,6 +858,7 @@
         ],
         "contract": "4S by N",
         "tricks": 10,
+        "played": null,
         "parNs": 500,
         "scoreNs": 620,
         "imps": 3,
@@ -622,6 +885,7 @@
         ],
         "contract": "3H by N",
         "tricks": 9,
+        "played": null,
         "parNs": 140,
         "scoreNs": 140,
         "imps": 0,
@@ -646,6 +910,7 @@
         ],
         "contract": "3C by S",
         "tricks": 9,
+        "played": null,
         "parNs": -300,
         "scoreNs": 110,
         "imps": 9,
@@ -672,6 +937,7 @@
         ],
         "contract": "4H by S",
         "tricks": 9,
+        "played": null,
         "parNs": 100,
         "scoreNs": -100,
         "imps": -5,
@@ -694,6 +960,7 @@
         ],
         "contract": "2S by S",
         "tricks": 8,
+        "played": null,
         "parNs": 140,
         "scoreNs": 110,
         "imps": -1,
@@ -718,6 +985,7 @@
         ],
         "contract": "3N by N",
         "tricks": 8,
+        "played": null,
         "parNs": 120,
         "scoreNs": -100,
         "imps": -6,
@@ -747,6 +1015,7 @@
         ],
         "contract": "4H by S",
         "tricks": 10,
+        "played": null,
         "parNs": 620,
         "scoreNs": 620,
         "imps": 0,
@@ -771,6 +1040,7 @@
         ],
         "contract": "4C by E",
         "tricks": 10,
+        "played": null,
         "parNs": -630,
         "scoreNs": -130,
         "imps": 11,
@@ -794,6 +1064,7 @@
         ],
         "contract": "2H by S",
         "tricks": 7,
+        "played": null,
         "parNs": -90,
         "scoreNs": -50,
         "imps": 1,
@@ -825,6 +1096,7 @@
         ],
         "contract": "4H by N",
         "tricks": 11,
+        "played": null,
         "parNs": 920,
         "scoreNs": 450,
         "imps": -10,
@@ -853,6 +1125,7 @@
         ],
         "contract": "3D by W",
         "tricks": 9,
+        "played": null,
         "parNs": -400,
         "scoreNs": -110,
         "imps": 7,
@@ -879,6 +1152,7 @@
         ],
         "contract": "2S by E",
         "tricks": 6,
+        "played": null,
         "parNs": -120,
         "scoreNs": 200,
         "imps": 8,
@@ -906,6 +1180,7 @@
         ],
         "contract": "2S by N",
         "tricks": 8,
+        "played": null,
         "parNs": 120,
         "scoreNs": 110,
         "imps": 0,
@@ -932,6 +1207,7 @@
         ],
         "contract": "4H by N",
         "tricks": 11,
+        "played": null,
         "parNs": 450,
         "scoreNs": 450,
         "imps": 0,
@@ -966,6 +1242,7 @@
         ],
         "contract": "2DX by N",
         "tricks": 7,
+        "played": null,
         "parNs": -620,
         "scoreNs": -200,
         "imps": 9,
@@ -994,6 +1271,7 @@
         ],
         "contract": "4S by W",
         "tricks": 10,
+        "played": null,
         "parNs": -500,
         "scoreNs": -620,
         "imps": -3,
@@ -1018,6 +1296,7 @@
         ],
         "contract": "4H by N",
         "tricks": 8,
+        "played": null,
         "parNs": 100,
         "scoreNs": -100,
         "imps": -5,
@@ -1044,6 +1323,7 @@
         ],
         "contract": "1N by S",
         "tricks": 8,
+        "played": null,
         "parNs": 130,
         "scoreNs": 120,
         "imps": 0,
@@ -1067,6 +1347,7 @@
         ],
         "contract": "1S by S",
         "tricks": 9,
+        "played": null,
         "parNs": 140,
         "scoreNs": 140,
         "imps": 0,
@@ -1102,6 +1383,7 @@
         ],
         "contract": "2SX by E",
         "tricks": 6,
+        "played": null,
         "parNs": 120,
         "scoreNs": 500,
         "imps": 9,
@@ -1130,6 +1412,7 @@
         ],
         "contract": "4S by E",
         "tricks": 8,
+        "played": null,
         "parNs": 500,
         "scoreNs": 200,
         "imps": -7,
@@ -1160,6 +1443,7 @@
         ],
         "contract": "2S by E",
         "tricks": 10,
+        "played": null,
         "parNs": -620,
         "scoreNs": -170,
         "imps": 10,
@@ -1188,6 +1472,7 @@
         ],
         "contract": "2H by S",
         "tricks": 10,
+        "played": null,
         "parNs": 620,
         "scoreNs": 170,
         "imps": -10,
@@ -1217,6 +1502,7 @@
         ],
         "contract": "4S by E",
         "tricks": 11,
+        "played": null,
         "parNs": -450,
         "scoreNs": -450,
         "imps": 0,
@@ -1243,6 +1529,7 @@
         ],
         "contract": "2H by E",
         "tricks": 9,
+        "played": null,
         "parNs": -600,
         "scoreNs": -140,
         "imps": 10,
@@ -1272,6 +1559,7 @@
         ],
         "contract": "3N by W",
         "tricks": 11,
+        "played": null,
         "parNs": -660,
         "scoreNs": -660,
         "imps": 0,
@@ -1295,6 +1583,7 @@
         ],
         "contract": "3D by E",
         "tricks": 8,
+        "played": null,
         "parNs": -100,
         "scoreNs": 50,
         "imps": 4,
@@ -1327,6 +1616,7 @@
         ],
         "contract": "3N by E",
         "tricks": 8,
+        "played": null,
         "parNs": 140,
         "scoreNs": 100,
         "imps": -1,
@@ -1351,6 +1641,7 @@
         ],
         "contract": "3C by E",
         "tricks": 8,
+        "played": null,
         "parNs": 100,
         "scoreNs": 50,
         "imps": -2,
@@ -1381,6 +1672,7 @@
         ],
         "contract": "4H by N",
         "tricks": 10,
+        "played": null,
         "parNs": 500,
         "scoreNs": 620,
         "imps": 3,
@@ -1407,6 +1699,7 @@
         ],
         "contract": "1N by N",
         "tricks": 8,
+        "played": null,
         "parNs": 120,
         "scoreNs": 120,
         "imps": 0,
@@ -1435,6 +1728,7 @@
         ],
         "contract": "2H by S",
         "tricks": 6,
+        "played": null,
         "parNs": -110,
         "scoreNs": -200,
         "imps": -3,
@@ -1464,6 +1758,7 @@
         ],
         "contract": "4SX by E",
         "tricks": 8,
+        "played": null,
         "parNs": 100,
         "scoreNs": 300,
         "imps": 5,
@@ -1488,6 +1783,7 @@
         ],
         "contract": "1N by N",
         "tricks": 6,
+        "played": null,
         "parNs": 90,
         "scoreNs": -100,
         "imps": -5,
@@ -1517,6 +1813,7 @@
         ],
         "contract": "4H by N",
         "tricks": 10,
+        "played": null,
         "parNs": 620,
         "scoreNs": 620,
         "imps": 0,
@@ -1548,6 +1845,7 @@
         ],
         "contract": "5HX by S",
         "tricks": 10,
+        "played": null,
         "parNs": 300,
         "scoreNs": -100,
         "imps": -9,
@@ -1580,6 +1878,7 @@
         ],
         "contract": "3N by N",
         "tricks": 8,
+        "played": null,
         "parNs": 140,
         "scoreNs": -100,
         "imps": -6,
@@ -1609,6 +1908,7 @@
         ],
         "contract": "1N by N",
         "tricks": 8,
+        "played": null,
         "parNs": 140,
         "scoreNs": 120,
         "imps": -1,
@@ -1635,6 +1935,7 @@
         ],
         "contract": "4H by N",
         "tricks": 10,
+        "played": null,
         "parNs": 450,
         "scoreNs": 420,
         "imps": -1,
@@ -1659,6 +1960,7 @@
         ],
         "contract": "1N by N",
         "tricks": 8,
+        "played": null,
         "parNs": 140,
         "scoreNs": 120,
         "imps": -1,
@@ -1686,6 +1988,7 @@
         ],
         "contract": "2S by N",
         "tricks": 8,
+        "played": null,
         "parNs": 120,
         "scoreNs": 110,
         "imps": 0,
@@ -1717,6 +2020,7 @@
         ],
         "contract": "3S by E",
         "tricks": 10,
+        "played": null,
         "parNs": -500,
         "scoreNs": -170,
         "imps": 8,
@@ -1743,6 +2047,7 @@
         ],
         "contract": "1N by W",
         "tricks": 6,
+        "played": null,
         "parNs": 130,
         "scoreNs": 50,
         "imps": -2,
@@ -1769,6 +2074,7 @@
         ],
         "contract": "4H by N",
         "tricks": 10,
+        "played": null,
         "parNs": 600,
         "scoreNs": 620,
         "imps": 1,
@@ -1793,6 +2099,7 @@
         ],
         "contract": "4S by S",
         "tricks": 10,
+        "played": null,
         "parNs": 420,
         "scoreNs": 420,
         "imps": 0,
@@ -1820,6 +2127,7 @@
         ],
         "contract": "2S by S",
         "tricks": 10,
+        "played": null,
         "parNs": 420,
         "scoreNs": 170,
         "imps": -6,
@@ -1848,6 +2156,7 @@
         ],
         "contract": "2S by E",
         "tricks": 9,
+        "played": null,
         "parNs": -430,
         "scoreNs": -140,
         "imps": 7,
@@ -1874,6 +2183,7 @@
         ],
         "contract": "2S by W",
         "tricks": 9,
+        "played": null,
         "parNs": -140,
         "scoreNs": -140,
         "imps": 0,
@@ -1899,6 +2209,7 @@
         ],
         "contract": "4N by S",
         "tricks": 6,
+        "played": null,
         "parNs": 450,
         "scoreNs": -200,
         "imps": -12,
@@ -1926,6 +2237,7 @@
         ],
         "contract": "3N by S",
         "tricks": 7,
+        "played": null,
         "parNs": 130,
         "scoreNs": -100,
         "imps": -6,
@@ -1953,6 +2265,7 @@
         ],
         "contract": "3S by W",
         "tricks": 9,
+        "played": null,
         "parNs": -630,
         "scoreNs": -140,
         "imps": 10,
@@ -1978,6 +2291,7 @@
         ],
         "contract": "1D by S",
         "tricks": 7,
+        "played": null,
         "parNs": 120,
         "scoreNs": 70,
         "imps": -2,
@@ -2004,6 +2318,7 @@
         ],
         "contract": "3N by N",
         "tricks": 7,
+        "played": null,
         "parNs": 90,
         "scoreNs": -200,
         "imps": -7,
@@ -2033,6 +2348,7 @@
         ],
         "contract": "4S by S",
         "tricks": 12,
+        "played": null,
         "parNs": 1430,
         "scoreNs": 680,
         "imps": -13,
@@ -2060,6 +2376,7 @@
         ],
         "contract": "4S by W",
         "tricks": 11,
+        "played": null,
         "parNs": -450,
         "scoreNs": -450,
         "imps": 0,
@@ -2088,6 +2405,7 @@
         ],
         "contract": "3N by E",
         "tricks": 9,
+        "played": null,
         "parNs": -400,
         "scoreNs": -400,
         "imps": 0,
@@ -2116,6 +2434,7 @@
         ],
         "contract": "3N by N",
         "tricks": 10,
+        "played": null,
         "parNs": 630,
         "scoreNs": 630,
         "imps": 0,
@@ -2146,6 +2465,7 @@
         ],
         "contract": "5CX by W",
         "tricks": 7,
+        "played": null,
         "parNs": 650,
         "scoreNs": 1100,
         "imps": 10,
@@ -2172,6 +2492,7 @@
         ],
         "contract": "4S by E",
         "tricks": 11,
+        "played": null,
         "parNs": -650,
         "scoreNs": -650,
         "imps": 0,
@@ -2197,6 +2518,7 @@
         ],
         "contract": "5C by S",
         "tricks": 10,
+        "played": null,
         "parNs": 300,
         "scoreNs": -50,
         "imps": -8,
@@ -2228,6 +2550,7 @@
         ],
         "contract": "5C by W",
         "tricks": 10,
+        "played": null,
         "parNs": -400,
         "scoreNs": 50,
         "imps": 10,
@@ -2250,6 +2573,7 @@
         ],
         "contract": "2H by E",
         "tricks": 9,
+        "played": null,
         "parNs": -140,
         "scoreNs": -140,
         "imps": 0,
@@ -2284,6 +2608,7 @@
         ],
         "contract": "4HX by E",
         "tricks": 9,
+        "played": null,
         "parNs": 100,
         "scoreNs": 100,
         "imps": 0,
@@ -2312,6 +2637,7 @@
         ],
         "contract": "2S by N",
         "tricks": 7,
+        "played": null,
         "parNs": -90,
         "scoreNs": -50,
         "imps": 1,
