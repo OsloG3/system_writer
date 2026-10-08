@@ -495,7 +495,10 @@ func (b *PlayBoard) startPlayOrScore() error {
 		Dummy:    (contract.Declarer + 2) % 4,
 		Opener:   (contract.Declarer + 1) % 4,
 	}
-	return b.advancePlay()
+	// Do not advance here: the client paces the play, fetching one bot card at
+	// a time (see advancePlay's budget) so each card is revealed as it is
+	// computed instead of after every remaining bot has been simulated.
+	return nil
 }
 
 // nextSeat returns the seat to play next (winner of the last trick leads).
@@ -635,14 +638,17 @@ func (b *PlayBoard) applyPlay(seat int, card string) error {
 }
 
 // advancePlay runs the bots until the human must play, the hand is over, or a
-// small budget of bot plays is spent (the last case only arises when the human
-// is the dummy and every seat is a bot, so the client polls to watch it unfold).
+// single bot play has been made. Stepping one card at a time lets the client
+// reveal each card as it is computed (with its own pacing) rather than waiting
+// for a whole trick of expensive double-dummy simulations to finish. When the
+// human is the dummy every seat is a bot, so the client keeps polling to watch
+// the hand unfold one card per request.
 func (b *PlayBoard) advancePlay() error {
 	p := b.Play
 	if p == nil || b.Result != nil {
 		return nil
 	}
-	budget := 4
+	budget := 1
 	for !p.Done && budget > 0 {
 		seat := p.nextSeat()
 		if b.humanControlsPlay(seat) {
@@ -1045,8 +1051,9 @@ func handlePlayCall(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, b.stateLocked(getPlayStats(username)))
 }
 
-// POST /api/play/{id}/card - the human plays a card, then the bots play until
-// the human is up again or the hand is finished (scored and recorded once)
+// POST /api/play/{id}/card - the human plays a card. The response returns
+// immediately with that card recorded; the bots then advance one card per
+// subsequent GET (see advancePlay) so the client can reveal them one at a time.
 func handlePlayCard(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
 	if username == "" {
@@ -1110,10 +1117,8 @@ func handlePlayCard(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := b.advancePlay(); err != nil {
-		jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
-		return
-	}
+	// Return straight away so the human sees their own card land immediately;
+	// the client then paces the bots one card per request (see advancePlay).
 	writeJSON(w, b.stateLocked(getPlayStats(username)))
 }
 

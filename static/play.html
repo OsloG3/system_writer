@@ -586,6 +586,111 @@
                 .cb-midsuit { font-size: 0.95rem; }
             }
 
+            /* ---- Hand grid (card-play phase) ----
+               During play your hand stays along the bottom -- the same place,
+               the same big .cb-card faces and red/black colors it has while
+               bidding -- but laid out as a grid: one column per suit, high
+               ranks at the top (towards the table center / declarer). A tap
+               expands a suit (spread + enlarge); a second tap plays the card.
+               Bidding itself still uses the single-row fan (see cardFan), so
+               the hand keeps the same position and colors across both phases. */
+            .cb-handgrid {
+                display: flex;
+                align-items: flex-end;
+                justify-content: center;
+                gap: 0.5rem;
+                padding: 0.35rem 0.4rem 0.15rem;
+            }
+            .cb-suitcol {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                position: relative;
+                min-width: 2.6rem;
+            }
+            .cb-handgrid .cb-card {
+                width: 2.6rem;
+                height: 3.6rem;
+                margin-left: 0;
+                margin-top: -2.5rem; /* compact: rank corner of each card shows */
+                transition:
+                    margin-top 0.16s ease,
+                    transform 0.16s ease,
+                    box-shadow 0.16s ease;
+            }
+            .cb-handgrid .cb-card:first-child { margin-top: 0; }
+            .cb-handgrid .cb-corner b { font-size: 0.8rem; }
+            .cb-handgrid .cb-corner i { font-size: 0.7rem; }
+            .cb-handgrid .cb-midsuit {
+                font-size: 1rem;
+                right: 0.25rem;
+                bottom: 0.3rem;
+            }
+            .cb-suitvoid {
+                width: 2.6rem;
+                height: 3.6rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.4rem;
+                color: #43403c;
+            }
+            /* play phase: which cards may be played now */
+            .cb-handgrid.play .cb-card.playable {
+                cursor: pointer;
+                box-shadow: 0 0 0 1px #8f8c88, 0 2px 6px rgba(0, 0, 0, 0.5);
+            }
+            .cb-handgrid.play .cb-card.spent {
+                opacity: 0.38;
+                filter: grayscale(0.55);
+            }
+            /* the tapped suit spreads out and grows so a card can be picked */
+            .cb-suitcol.expanded { z-index: 6; }
+            .cb-suitcol.expanded .cb-card {
+                margin-top: -1.7rem; /* ~1.9rem of each card shows */
+                transform: scale(1.1);
+            }
+            .cb-suitcol.expanded .cb-card:first-child { margin-top: 0; }
+            .cb-handgrid.play .cb-suitcol.expanded .cb-card.playable:hover {
+                transform: scale(1.14) translateY(-2px);
+                box-shadow: 0 0 0 2px #e8e6e3, 0 4px 10px rgba(0, 0, 0, 0.5);
+            }
+            /* small variant: the dummy inside the table */
+            .cb-handgrid.sm { gap: 0.3rem; padding: 0.1rem; }
+            .cb-handgrid.sm .cb-suitcol { min-width: 1.7rem; }
+            .cb-handgrid.sm .cb-card {
+                width: 1.7rem;
+                height: 2.4rem;
+                margin-top: -1.6rem;
+                border-radius: 0.3rem;
+            }
+            .cb-handgrid.sm .cb-card:first-child { margin-top: 0; }
+            .cb-handgrid.sm .cb-corner b { font-size: 0.55rem; }
+            .cb-handgrid.sm .cb-corner i { font-size: 0.5rem; margin-top: 0; }
+            .cb-handgrid.sm .cb-midsuit { display: none; }
+            .cb-handgrid.sm .cb-suitvoid {
+                width: 1.7rem;
+                height: 2.4rem;
+                font-size: 0.9rem;
+            }
+            .cb-handgrid.sm .cb-suitcol.expanded .cb-card {
+                margin-top: -1rem;
+                transform: scale(1.12);
+            }
+            @media (max-width: 400px) {
+                .cb-handgrid { gap: 0.35rem; }
+                .cb-handgrid .cb-card {
+                    width: 2.3rem;
+                    height: 3.2rem;
+                    margin-top: -2.25rem;
+                }
+                .cb-handgrid .cb-corner b { font-size: 0.72rem; }
+                .cb-handgrid .cb-corner i { font-size: 0.62rem; }
+                .cb-suitcol { min-width: 2.3rem; }
+                .cb-suitcol.expanded .cb-card { margin-top: -1.5rem; }
+                .cb-suitvoid { width: 2.3rem; height: 3.2rem; }
+            }
+
             .cb-diagram {
                 display: grid;
                 grid-template-columns: 1fr 1.15fr 1fr;
@@ -836,36 +941,47 @@
                 color: #e8e6e3;
                 min-height: 1.2rem;
             }
-            .cb-phist {
-                background: #262421;
-                border: 1px solid rgba(255, 255, 255, 0.06);
-                border-radius: 0.8rem;
-                padding: 0.4rem 0.6rem;
-                font-family: Inter, sans-serif;
-                font-size: 0.7rem;
-                max-height: 9rem;
-                overflow-y: auto;
-            }
-            .cb-phist-row {
+            /* "Last trick" review: a button that opens the most recent
+               completed trick crosswise (same layout and card style as the
+               live table center). Nothing else about past tricks is kept. */
+            .cb-trickbar {
                 display: flex;
                 align-items: center;
-                gap: 0.4rem;
-                padding: 0.12rem 0;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+                justify-content: center;
+                gap: 0.5rem;
+                margin-top: 0.15rem;
             }
-            .cb-phist-row:last-child { border-bottom: 0; }
-            .cb-phist-row .no { color: #787572; width: 1.2rem; }
-            .cb-phist-row .cd { color: #e8e6e3; }
-            .cb-phist-row .wn { margin-left: auto; color: #e8e6e3; font-size: 0.62rem; }
-            .cb-phist-toggle {
-                background: none;
-                border: 0;
-                color: #908f8d;
+            .cb-trickbtn {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.3rem;
+                background: #3d3a36;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #bababa;
+                border-radius: 999px;
+                padding: 0.28rem 0.75rem;
                 font-family: Inter, sans-serif;
-                font-size: 0.68rem;
-                cursor: pointer;
-                padding: 0.2rem 0;
-                text-decoration: underline;
+                font-size: 0.7rem;
+                font-weight: 600;
+            }
+            .cb-trickbtn .material-symbols-outlined { font-size: 15px; }
+            .cb-trickbtn.on {
+                color: #e8e6e3;
+                border-color: rgba(255, 255, 255, 0.25);
+            }
+            .cb-lasttrick {
+                margin-top: 0.35rem;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.15rem;
+            }
+            .cb-lasttrick .cap {
+                font-family: Inter, sans-serif;
+                font-size: 0.6rem;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: #787572;
             }
 
             @media (max-width: 400px) {
@@ -1098,6 +1214,19 @@
             let turnAlertsOn = localStorage.getItem(TURN_ALERT_KEY) !== "0";
             let prevGamesTurn = null; // lobby: game id -> yourTurn, for transitions
             let pendingTurnToast = null; // alert text deferred while the page is hidden
+
+            // ---- Card-play pacing & interaction (solo "Play bridge" only) ----
+            // The server advances one bot card per request; the client reveals
+            // the plays one at a time, at least PLAY_PACE_MS apart, so each card
+            // appears as it is computed instead of the whole trick at once.
+            const PLAY_PACE_MS = 1000;
+            let revealCount = 0; // how many of state.play.plays are on screen
+            let revealBoardId = null; // board id revealCount belongs to
+            let lastRevealTs = 0; // when the last card was revealed
+            let paceTimer = null; // reveal/fetch timer
+            let stepping = false; // a paced bot-card fetch is in flight
+            let expandedSuit = null; // two-click: suit currently spread open
+            let showLastTrick = false; // "last trick" review panel open?
 
             function dcolorSuits(text) {
                 return escapeHtml(text)
@@ -2175,10 +2304,6 @@
                     trickNote = "no contract was reached";
                 }
                 const matchDone = state.mode === "team" && state.matchDone;
-                const replay =
-                    state.play && (state.play.plays || []).length >= 4
-                        ? playHistoryHtml()
-                        : "";
                 return `
                     <div class="cb-done pop-in">
                         <div class="cb-done-head">
@@ -2196,7 +2321,6 @@
                             </div>
                         </div>
                         ${state.hands ? doneDiagramHtml(state.hands, state.humanSeat, state.dealer, state.calls) : ""}
-                        ${replay}
                         <div class="cb-done-foot">
                             <button id="nextBoardBtn" class="cb-btn-green">
                                 <span class="material-symbols-outlined text-sm">${matchDone ? "restart_alt" : "casino"}</span>
@@ -2246,11 +2370,12 @@
             function topBarHtml() {
                 const team = state.mode === "team";
                 const list = state.boards || [];
-                let no, sub;
+                let title, sub;
                 if (team) {
                     const partner =
                         state.yourSeat === 2 ? state.partner : state.host;
-                    no = state.noBoard ? "—" : state.boardSel;
+                    const no = state.noBoard ? "—" : state.boardSel;
+                    title = `Hand ${no}`;
                     const done = list.filter((b) => b.done).length;
                     sub =
                         escapeHtml(partner || "") +
@@ -2258,8 +2383,10 @@
                             ? ` · ${done}/${list.length} boards · ${signed(state.matchImps || 0)} IMPs`
                             : "");
                 } else {
-                    no = stats ? stats.boards + (state.done ? 0 : 1) : 1;
-                    sub = `${state.boardMode === "play" ? "Play bridge" : "Bid only"} · you + bot vs 2 bots · dealer ${SEAT_NAMES[state.dealer][0]} · ${VULN_NAMES[state.vuln]} vuln`;
+                    // No running "total hands played" counter in solo.
+                    title =
+                        state.boardMode === "play" ? "Play bridge" : "Bid only";
+                    sub = `you + bot vs 2 bots · dealer ${SEAT_NAMES[state.dealer][0]} · ${VULN_NAMES[state.vuln]} vuln`;
                 }
                 const arrows =
                     team && list.length
@@ -2302,7 +2429,7 @@
                             <span class="material-symbols-outlined">chevron_left</span>
                         </button>
                         <div class="cb-title">
-                            <div class="t">Hand ${no}</div>
+                            <div class="t">${title}</div>
                             <div class="s">${sub}</div>
                         </div>
                         ${arrows}${jump}${bell}${menu}
@@ -2310,12 +2437,22 @@
             }
 
             // ---- Card-play rendering ----
-            // During the play phase the human sees their own hand and the dummy
-            // face up; the two hidden seats are card backs with a count. The
-            // declarer-side bot plays declarer and dummy, so when the human is
-            // declarer they click cards for both those seats.
+            // Your own hand stays along the bottom (exactly where it sits while
+            // bidding, same big cards and colors) laid out as a grid: one column
+            // per suit, high ranks at the top towards the table center. The
+            // table above shows the dummy face up, the two hidden seats as card
+            // backs and the trick in the middle. The declarer-side bot plays
+            // declarer and dummy, so when the human declares they click their
+            // own cards in the footer and the dummy's on the table.
+            //
+            // The server advances ONE bot card per request and the client
+            // reveals the plays one at a time (revealCount), at least
+            // PLAY_PACE_MS apart, so a card lands as soon as it is computed
+            // rather than after every remaining bot has been simulated.
 
             const PLAY_RANK_ORDER = "AKQJT98765432";
+            // Hand-grid columns, left to right: alternating black/red suits.
+            const HAND_SUIT_ORDER = ["S", "H", "C", "D"];
 
             function handToCards(handStr) {
                 const parts = String(handStr || "").split(".");
@@ -2332,11 +2469,29 @@
                 return null;
             }
 
+            // The subset of plays currently on screen (paced by revealCount).
+            function revealedPlays() {
+                if (!state || !state.play) return [];
+                return (state.play.plays || []).slice(0, revealCount);
+            }
+
+            // True once every known play is on screen and the human may act.
+            function playReady() {
+                return (
+                    !!state &&
+                    !!state.play &&
+                    state.play.yourTurn &&
+                    revealCount >= (state.play.plays || []).length &&
+                    !busy &&
+                    !stepping
+                );
+            }
+
             function remainingOf(seat) {
                 const orig = origHandOf(seat);
                 if (orig == null) return null;
                 const played = new Set(
-                    (state.play.plays || [])
+                    revealedPlays()
                         .filter((p) => p.seat === seat)
                         .map((p) => p.card),
                 );
@@ -2368,12 +2523,61 @@
                 return `<div class="cb-pcard ${red ? "red" : "blk"} ${cls || ""}" ${dataAttr || ""}><span>${rank}</span><span class="su">${SUIT_SYMBOL[s]}</span></div>`;
             }
 
-            function cardSpan(token) {
+            function sortByRankDesc(cards) {
+                return cards
+                    .slice()
+                    .sort(
+                        (a, b) =>
+                            PLAY_RANK_ORDER.indexOf(a[0]) -
+                            PLAY_RANK_ORDER.indexOf(b[0]),
+                    );
+            }
+
+            // One card face of the hand grid: same markup/colors as the bidding
+            // fan card (.cb-card), just stacked per suit.
+            function gridCardHtml(token, cls, dataAttr) {
                 const r = token[0],
                     s = token[1];
                 const red = s === "H" || s === "D";
                 const rank = r === "T" ? "10" : r;
-                return `<span style="color:${red ? "#f08a8a" : "#bababa"};font-weight:600">${rank}${SUIT_SYMBOL[s]}</span>`;
+                return `<span class="cb-card ${red ? "red" : "blk"} ${cls || ""}" ${dataAttr || ""}><span class="cb-corner"><b>${rank}</b><i>${SUIT_SYMBOL[s]}</i></span><span class="cb-midsuit">${SUIT_SYMBOL[s]}</span></span>`;
+            }
+
+            // A hand as a grid: one column per suit (HAND_SUIT_ORDER), each
+            // column ranked high->low from the top (towards the table center /
+            // declarer). opts:
+            //   play     -- play-phase hand (adds playable/spent classes)
+            //   acting   -- THIS is the hand the human plays right now, so its
+            //               legal cards are clickable (two-click to play)
+            //   playable -- Set of cards legal to play now
+            //   small    -- compact variant (the dummy inside the table)
+            function handGridHtml(cards, opts) {
+                opts = opts || {};
+                const playable = opts.playable || new Set();
+                const cols = HAND_SUIT_ORDER.map((suit) => {
+                    const suitCards = sortByRankDesc(
+                        cards.filter((c) => c[1] === suit),
+                    );
+                    if (!suitCards.length)
+                        return `<div class="cb-suitcol"><div class="cb-suitvoid">${SUIT_SYMBOL[suit]}</div></div>`;
+                    const open = opts.acting && expandedSuit === suit;
+                    const inner = suitCards
+                        .map((c) => {
+                            if (!opts.acting) return gridCardHtml(c);
+                            const ok = playable.has(c);
+                            return gridCardHtml(
+                                c,
+                                ok ? "playable" : "spent",
+                                ok ? `data-play="${c}"` : "",
+                            );
+                        })
+                        .join("");
+                    return `<div class="cb-suitcol${open ? " expanded" : ""}">${inner}</div>`;
+                }).join("");
+                const cls = ["cb-handgrid"];
+                if (opts.play) cls.push("play");
+                if (opts.small) cls.push("sm");
+                return `<div class="${cls.join(" ")}">${cols}</div>`;
             }
 
             function playSeatHtml(seat) {
@@ -2381,33 +2585,41 @@
                 const isDummy = seat === p.dummy;
                 const isDecl = seat === p.declarer;
                 const isYou = seat === state.humanSeat;
-                const faceUp = isDummy || isYou;
-                const acting = p.yourTurn && p.actSeat === seat;
+                const ready = playReady();
+                const acting = ready && p.actSeat === seat;
                 const botActing = !p.yourTurn && p.nextSeat === seat;
                 const tags = [];
                 if (isYou) tags.push('<span class="you">you</span>');
                 if (isDecl) tags.push('<span class="role">declarer</span>');
                 else if (isDummy) tags.push('<span class="role">dummy</span>');
                 let body;
-                if (faceUp) {
-                    const cards = remainingOf(seat) || [];
-                    const legalSet = new Set(acting ? p.legal || [] : []);
+                if (isYou) {
+                    // your cards live in the bottom hand grid, not on the table
+                    const cnt = (remainingOf(seat) || []).length;
+                    body = `<div class="cb-pcount">${cnt} card${cnt === 1 ? "" : "s"}</div>`;
+                } else if (isDummy && p.declarer === state.humanSeat) {
+                    // you are declarer: the dummy is face up and you play it
+                    body = handGridHtml(remainingOf(seat) || [], {
+                        play: true,
+                        small: true,
+                        acting: acting,
+                        playable: new Set(acting ? p.legal || [] : []),
+                    });
+                } else if (isDummy) {
+                    // a bot tables this dummy: face up, not clickable
                     body =
                         `<div class="cb-phand">` +
-                        cards
-                            .map((c) => {
-                                if (!acting) return pcard(c);
-                                const ok = legalSet.has(c);
-                                return pcard(
-                                    c,
-                                    ok ? "playable" : "spent",
-                                    ok ? `data-play="${c}"` : "",
-                                );
-                            })
-                            .join("") +
+                        (remainingOf(seat) || []).map((c) => pcard(c)).join("") +
                         `</div>`;
                 } else {
-                    const cnt = (p.counts || [])[seat] || 0;
+                    // hidden opponent: card backs + a count that shrinks in
+                    // step with the paced reveal (not the server's running total)
+                    const cnt = Math.max(
+                        0,
+                        13 -
+                            revealedPlays().filter((pl) => pl.seat === seat)
+                                .length,
+                    );
                     let backs = "";
                     const shown = Math.min(cnt, 6);
                     for (let i = 0; i < shown; i++)
@@ -2422,13 +2634,35 @@
             }
 
             function trickToDisplay() {
-                const plays = state.play.plays || [];
+                const plays = revealedPlays();
                 const n = plays.length;
                 const cur = plays.slice(Math.floor(n / 4) * 4);
-                if (cur.length) return { cards: cur, complete: false };
+                if (cur.length) return { cards: cur, complete: cur.length === 4 };
                 if (n >= 4)
                     return { cards: plays.slice(n - 4, n), complete: true };
                 return { cards: [], complete: false };
+            }
+
+            // Four cards of a trick laid out crosswise (compass), shared by the
+            // live table center and the "last trick" review panel.
+            function trickCrossHtml(cards, win) {
+                const pos = { 0: "tk-n", 1: "tk-e", 2: "tk-s", 3: "tk-w" };
+                const cells = cards
+                    .map((pc) => {
+                        const r = pc.card[0],
+                            s = pc.card[1];
+                        const red = s === "H" || s === "D";
+                        const rank = r === "T" ? "10" : r;
+                        const w =
+                            win !== null &&
+                            win !== undefined &&
+                            pc.seat === win
+                                ? " win"
+                                : "";
+                        return `<div class="tk ${pos[pc.seat]}"><span class="who">${SEAT_NAMES[pc.seat][0]}</span><div class="tkc ${red ? "red" : "blk"}${w}"><span>${rank}</span><span>${SUIT_SYMBOL[s]}</span></div></div>`;
+                    })
+                    .join("");
+                return `<div class="cb-ptrick">${cells}</div>`;
             }
 
             function trickCenterHtml() {
@@ -2439,18 +2673,7 @@
                 const win = td.complete
                     ? trickWinnerJS(td.cards, p.trump)
                     : null;
-                const pos = { 0: "tk-n", 1: "tk-e", 2: "tk-s", 3: "tk-w" };
-                const cells = td.cards
-                    .map((pc) => {
-                        const r = pc.card[0],
-                            s = pc.card[1];
-                        const red = s === "H" || s === "D";
-                        const rank = r === "T" ? "10" : r;
-                        const w = win !== null && pc.seat === win ? " win" : "";
-                        return `<div class="tk ${pos[pc.seat]}"><span class="who">${SEAT_NAMES[pc.seat][0]}</span><div class="tkc ${red ? "red" : "blk"}${w}"><span>${rank}</span><span>${SUIT_SYMBOL[s]}</span></div></div>`;
-                    })
-                    .join("");
-                return `<div class="cb-ptrick">${cells}</div>`;
+                return trickCrossHtml(td.cards, win);
             }
 
             function playInfoHtml() {
@@ -2472,14 +2695,23 @@
 
             function playTallyHtml() {
                 const p = state.play;
-                const plays = p.plays || [];
+                const plays = revealedPlays();
+                let decl = 0;
+                for (let t = 0; t * 4 + 4 <= plays.length; t++) {
+                    const w = trickWinnerJS(
+                        plays.slice(t * 4, t * 4 + 4),
+                        p.trump,
+                    );
+                    if (w === p.declarer || w === p.dummy) decl++;
+                }
+                const done = Math.floor(plays.length / 4);
+                const def = done - decl;
                 const humanOnDecl =
                     p.declarer === state.humanSeat ||
                     p.dummy === state.humanSeat;
-                const yours = humanOnDecl ? p.declTricks : p.defTricks;
-                const theirs = humanOnDecl ? p.defTricks : p.declTricks;
-                const trickNo =
-                    Math.floor(plays.length / 4) + (plays.length % 4 ? 1 : 0);
+                const yours = humanOnDecl ? decl : def;
+                const theirs = humanOnDecl ? def : decl;
+                const trickNo = done + (plays.length % 4 ? 1 : 0);
                 return `<div class="cb-ptally">
                     <span>You <b>${yours}</b></span>
                     <span>Them <b>${theirs}</b></span>
@@ -2490,37 +2722,47 @@
             function playPromptHtml() {
                 const p = state.play;
                 if (busy) return spinner("Playing the hand…");
-                if (p.yourTurn) {
+                if (playReady()) {
                     const seatName = SEAT_NAMES[p.actSeat];
-                    const lead = (p.plays || []).length % 4 === 0 ? "lead" : "play";
+                    const lead = revealedPlays().length % 4 === 0 ? "lead" : "play";
                     const who =
                         p.actSeat === p.dummy && p.actSeat !== state.humanSeat
                             ? " (dummy)"
                             : "";
                     return `Your turn — ${lead} from ${seatName}${who}`;
                 }
-                return spinner(SEAT_NAMES[p.nextSeat] + " is playing…");
+                const plays = p.plays || [];
+                const nextSeat =
+                    revealCount < plays.length
+                        ? plays[revealCount].seat
+                        : p.nextSeat;
+                return spinner(SEAT_NAMES[nextSeat] + " is playing…");
             }
 
-            function playHistoryHtml() {
+            // The most recent COMPLETED trick (four cards), or null before one.
+            function lastTrickPlays() {
+                const plays = revealedPlays();
+                const full = Math.floor(plays.length / 4) * 4;
+                if (full === 0) return null;
+                return plays.slice(full - 4, full);
+            }
+
+            // Req 6: no running record of past tricks -- just the last one,
+            // shown only on click, crosswise and in the table's card style.
+            function lastTrickHtml() {
                 const p = state.play;
-                const plays = p.plays || [];
-                const rows = [];
-                for (let t = 0; t * 4 + 4 <= plays.length; t++) {
-                    const trick = plays.slice(t * 4, t * 4 + 4);
-                    const win = trickWinnerJS(trick, p.trump);
-                    const cells = trick
-                        .map(
-                            (pc) =>
-                                `${SEAT_NAMES[pc.seat][0]} ${cardSpan(pc.card)}`,
-                        )
-                        .join(" · ");
-                    rows.push(
-                        `<div class="cb-phist-row"><span class="no">${t + 1}</span><span class="cd">${cells}</span><span class="wn">${SEAT_NAMES[win][0]} wins</span></div>`,
-                    );
-                }
-                if (!rows.length) return "";
-                return `<div class="cb-phist">${rows.join("")}</div>`;
+                const trick = lastTrickPlays();
+                const open = showLastTrick && trick;
+                const btn = `<button id="lastTrickBtn" class="cb-trickbtn${open ? " on" : ""}"${trick ? "" : " disabled"}>
+                    <span class="material-symbols-outlined">${open ? "expand_less" : "style"}</span>Last trick</button>`;
+                if (!open) return `<div class="cb-trickbar">${btn}</div>`;
+                const win = trickWinnerJS(trick, p.trump);
+                const no = Math.floor(revealedPlays().length / 4);
+                return `<div class="cb-trickbar">${btn}</div>
+                    <div class="cb-lasttrick">
+                        <div class="cap">${SEAT_NAMES[win]} won trick ${no}</div>
+                        ${trickCrossHtml(trick, win)}
+                    </div>`;
             }
 
             function playTableView() {
@@ -2535,19 +2777,169 @@
                     </div>
                     ${playTallyHtml()}
                     <div class="cb-pprompt">${playPromptHtml()}</div>
-                    ${playHistoryHtml()}`;
+                    ${lastTrickHtml()}`;
+            }
+
+            // Two-click play: the first tap on a legal card opens its suit
+            // (spreads + enlarges it); the next tap on a card plays it.
+            function onCardClick(card) {
+                if (!state || state.phase !== "play" || !playReady()) return;
+                const suit = card[1];
+                if (expandedSuit === suit) makePlay(card);
+                else {
+                    expandedSuit = suit;
+                    render();
+                }
             }
 
             async function makePlay(card) {
-                if (!state || busy || state.done) return;
-                if (state.phase !== "play" || !state.play || !state.play.yourTurn)
+                if (!state || busy || stepping || state.done) return;
+                if (state.phase !== "play" || !state.play || !playReady())
                     return;
+                expandedSuit = null;
                 await post(`/api/play/${state.id}/card`, { card: card });
+            }
+
+            // ---- Play pacing ----
+            // Reveal the known plays one at a time (>= PLAY_PACE_MS apart), and
+            // when they are all on screen but the hand is not finished and it
+            // is not the human's turn, fetch the next single bot card. Each
+            // bot card appears as soon as it is computed, never batched.
+            function drivePlay() {
+                clearTimeout(paceTimer);
+                paceTimer = null;
+                if (
+                    !state ||
+                    state.mode !== "solo" ||
+                    state.phase !== "play" ||
+                    !state.play
+                )
+                    return;
+                const plays = state.play.plays || [];
+                if (revealCount < plays.length) {
+                    const next = plays[revealCount];
+                    const human =
+                        (state.play.humanSeats || []).indexOf(next.seat) >= 0;
+                    const wait = human
+                        ? 0
+                        : Math.max(0, PLAY_PACE_MS - (Date.now() - lastRevealTs));
+                    paceTimer = setTimeout(() => {
+                        revealCount++;
+                        lastRevealTs = Date.now();
+                        render();
+                    }, wait);
+                    return;
+                }
+                if (state.done) return; // scored: the done view takes over
+                if (state.play.done) {
+                    // all 52 revealed but not scored yet: fetch to score it
+                    if (!stepping && !busy) fetchPlayStep();
+                    return;
+                }
+                if (state.play.yourTurn) return; // wait for the human to click
+                if (!stepping && !busy) fetchPlayStep();
+            }
+
+            async function fetchPlayStep() {
+                if (!state || stepping || busy) return;
+                if (state.mode !== "solo" || state.phase !== "play") return;
+                stepping = true;
+                try {
+                    const res = await fetch(`/api/play/${state.id}`);
+                    if (res.status === 401) {
+                        stepping = false;
+                        handleResponse(res);
+                        return;
+                    }
+                    const data = await res.json().catch(() => null);
+                    if (!res.ok || !data) {
+                        stepping = false;
+                        autoRetries++;
+                        // announce only the first failure of a streak, then
+                        // quietly retry with a capped backoff
+                        if (autoRetries === 1 && data && data.error)
+                            showToast(data.error, true);
+                        paceTimer = setTimeout(
+                            () => drivePlay(),
+                            Math.min(1500 + autoRetries * 1500, 6000),
+                        );
+                        return;
+                    }
+                    data.mode = "solo";
+                    state = data;
+                    if (data.stats) stats = data.stats;
+                    autoRetries = 0;
+                    stepping = false;
+                    render();
+                } catch (e) {
+                    stepping = false;
+                    autoRetries++;
+                    paceTimer = setTimeout(
+                        () => drivePlay(),
+                        Math.min(1500 + autoRetries * 1500, 6000),
+                    );
+                }
+            }
+
+            // Keep the reveal cursor and the two-click picker in sync with the
+            // board. On a fresh load (or a new board) everything already played
+            // is shown at once; only subsequent cards are paced. The open suit
+            // is collapsed whenever the acting context changes, but survives
+            // between the two clicks that pick a card.
+            let expandedCtx = null;
+            function syncPlayUI() {
+                if (!state) {
+                    revealBoardId = null;
+                    revealCount = 0;
+                    expandedSuit = null;
+                    expandedCtx = null;
+                    return;
+                }
+                if (state.id !== revealBoardId) {
+                    revealBoardId = state.id;
+                    revealCount =
+                        state.play && state.play.plays
+                            ? state.play.plays.length
+                            : 0;
+                    lastRevealTs = 0;
+                    expandedSuit = null;
+                    showLastTrick = false;
+                }
+                const ctx =
+                    state.phase === "play" && state.play
+                        ? `${state.play.actSeat}|${revealCount}|${state.play.yourTurn}`
+                        : "";
+                if (ctx !== expandedCtx) {
+                    expandedCtx = ctx;
+                    expandedSuit = null;
+                }
             }
 
             function handFooterHtml() {
                 if (state.noBoard || !state.hand || state.done) return "";
-                if (state.phase === "play") return ""; // hands are on the table
+                if (state.phase === "play") {
+                    // Your hand stays here at the bottom during play too (same
+                    // cards and colors as while bidding), laid out as a grid and
+                    // played with two clicks when it is your turn from South.
+                    const p = state.play;
+                    const youAct = playReady() && p.actSeat === state.humanSeat;
+                    const cards = remainingOf(state.humanSeat) || [];
+                    const role =
+                        p.declarer === state.humanSeat
+                            ? " · declarer"
+                            : p.dummy === state.humanSeat
+                              ? " · dummy"
+                              : "";
+                    return `
+                    <div class="cb-handfoot">
+                        <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]}${role} · ${hcpOf(state.hand)} HCP</div>
+                        ${handGridHtml(cards, {
+                            play: true,
+                            acting: youAct,
+                            playable: new Set(youAct ? p.legal || [] : []),
+                        })}
+                    </div>`;
+                }
                 return `
                     <div class="cb-handfoot">
                         <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]} ${hcpOf(state.hand)} HCP</div>
@@ -2596,16 +2988,6 @@
                         ${topBarHtml()}
                         <div class="${midCls}">${mid}</div>
                         ${handFooterHtml()}
-                    </div>`;
-            }
-
-            function statsBarHtml() {
-                if (!stats || !stats.boards) return "";
-                return `
-                    <div class="flex flex-wrap items-center gap-2 mb-4">
-                        <span class="cb-pill"><span class="material-symbols-outlined text-base text-[#e8e6e3]">military_tech</span>Avg <b class="font-headline text-sm ${impsColor(stats.avgImps)}">${signed(stats.avgImps.toFixed(2))}</b> IMPs/board vs par</span>
-                        <span class="cb-pill"><span class="material-symbols-outlined text-base text-[#8f8c88]">style</span><b class="font-headline text-sm">${stats.boards}</b> boards</span>
-                        <span class="cb-pill"><span class="material-symbols-outlined text-base text-[#bababa]">trending_up</span>Total <b class="font-headline text-sm ${impsColor(stats.impsTotal)}">${signed(stats.impsTotal)}</b> IMPs</span>
                     </div>`;
             }
 
@@ -2840,7 +3222,6 @@
             function lobbyHtml() {
                 if (PLAY_MODE === "play") {
                     return `
-                        ${statsBarHtml()}
                         <div class="grid gap-3">${soloCardHtml()}</div>
                         ${rankingsHtml()}
                         ${recentHtml()}`;
@@ -2850,7 +3231,6 @@
                         ? `<div class="grid gap-3">${soloCardHtml()}</div>`
                         : `<div class="grid gap-3">${teamCardHtml()}</div>`;
                 return `
-                    ${statsBarHtml()}
                     ${bidTabsHtml()}
                     ${body}
                     ${teamGamesHtml()}
@@ -3097,6 +3477,7 @@
             function render() {
                 const content = document.getElementById("main-content");
                 if (!content) return;
+                syncPlayUI();
                 const header = content.previousElementSibling;
                 if (header && header.tagName === "HEADER") {
                     header.style.display = state ? "none" : "";
@@ -3268,8 +3649,14 @@
                 wireBidArea(document);
                 wireAlertChips(content);
                 content.querySelectorAll("[data-play]").forEach((el) => {
-                    el.onclick = () => makePlay(el.dataset.play);
+                    el.onclick = () => onCardClick(el.dataset.play);
                 });
+                const lastTrick = document.getElementById("lastTrickBtn");
+                if (lastTrick)
+                    lastTrick.onclick = () => {
+                        showLastTrick = !showLastTrick;
+                        render();
+                    };
                 const retry = document.getElementById("retryBtn");
                 if (retry) retry.onclick = () => refreshBoard(true);
 
@@ -3284,6 +3671,7 @@
                 if (miniAuc) miniAuc.scrollTop = miniAuc.scrollHeight;
                 renderOverlay();
                 schedulePoll();
+                drivePlay();
             }
 
             function schedulePoll() {
@@ -3295,6 +3683,13 @@
                     return;
                 }
                 if (state) {
+                    // Solo card play is driven by drivePlay()'s paced loop.
+                    if (
+                        state.mode === "solo" &&
+                        state.phase === "play" &&
+                        !state.done
+                    )
+                        return;
                     if (
                         !busy &&
                         !state.done &&
@@ -3338,8 +3733,16 @@
                     showToast(pendingTurnToast);
                     pendingTurnToast = null;
                 }
-                if (!document.hidden && state && window.currentUser && !busy)
-                    refreshBoard(true);
+                if (document.hidden || !state || !window.currentUser || busy)
+                    return;
+                // resume the paced reveal loop rather than a bulk refresh
+                if (
+                    state.mode === "solo" &&
+                    state.phase === "play" &&
+                    !state.done
+                )
+                    drivePlay();
+                else refreshBoard(true);
             });
 
             // the service worker (Web Push) is registered site-wide in shared.js
