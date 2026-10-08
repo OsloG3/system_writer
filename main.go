@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -182,6 +184,7 @@ func main() {
 	http.HandleFunc("POST /api/tree/{id}/copy", handleTreeCopy)
 	http.HandleFunc("POST /api/play/new", handlePlayNew)
 	http.HandleFunc("GET /api/play/stats", handlePlayStats)
+	http.HandleFunc("GET /api/play/rankings", handleRankings)
 	http.HandleFunc("GET /api/play/{id}", handlePlayGet)
 	http.HandleFunc("POST /api/play/{id}/call", handlePlayCall)
 	http.HandleFunc("POST /api/play/{id}/card", handlePlayCard)
@@ -199,9 +202,14 @@ func main() {
 	// Static/HTML Pages
 	// The service worker must be served from the origin root so its scope
 	// covers /play; the manifest gets its proper MIME type explicitly.
+	// Everything here is served no-cache (revalidated by ETag) except
+	// /static/ files whose ?v= stamp matches the current asset version --
+	// those are immutable for a year, so an update is picked up the moment
+	// the version changes (see assetVersion / serveHTML).
 	http.HandleFunc("GET /sw.js", serveHTML("static/sw.js"))
 	http.HandleFunc("GET /manifest.webmanifest", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/manifest+json")
+		w.Header().Set("Cache-Control", "no-cache")
 		http.ServeFile(w, r, "static/manifest.webmanifest")
 	})
 	http.HandleFunc("/edit/", serveHTML("static/edit.html"))
@@ -209,7 +217,7 @@ func main() {
 	http.HandleFunc("/practice/", serveHTML("static/practice.html"))
 	http.HandleFunc("/play", serveHTML("static/play.html"))
 	http.HandleFunc("/play/", serveHTML("static/play.html"))
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static/"))))
+	http.Handle("/static/", staticFileHandler())
 	http.HandleFunc("/", serveHTML("static/index.html")) // Homepage to create new
 
 	fmt.Println("Server running on http://localhost:8080")
@@ -972,10 +980,109 @@ func saveTree(id string, tree *TreeNote) error {
 	return os.WriteFile(filepath.Join(sistemsDir(), id+".json"), data, 0644)
 }
 
-// Helper to serve HTML files
+// ---- Static asset versioning ----
+//
+// The asset version is a short digest over every file in static/ (name, size,
+// mtime), recomputed at most every few seconds so editing a file without a
+// restart is picked up too. serveHTML stamps it onto every /static/ reference
+// as ?v=<version>; staticFileHandler answers a matching ?v= with a year of
+// immutable cache and anything else with no-cache. HTML itself is always
+// no-cache with an ETag, so after an update the browser fetches fresh pages,
+// which point at freshly versioned assets -- no stale CSS/JS.
+
+var (
+	assetVerMu       sync.Mutex
+	assetVerCached   string
+	assetVerComputed time.Time
+)
+
+func computeAssetVersion() string {
+	h := sha256.New()
+	if entries, err := os.ReadDir(staticDir()); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(h, "%s|%d|%d\n", e.Name(), info.Size(), info.ModTime().UnixNano())
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil))[:12]
+}
+
+func assetVersion() string {
+	assetVerMu.Lock()
+	defer assetVerMu.Unlock()
+	if assetVerCached == "" || time.Since(assetVerComputed) > 3*time.Second {
+		assetVerCached = computeAssetVersion()
+		assetVerComputed = time.Now()
+	}
+	return assetVerCached
+}
+
+func staticDir() string { return "./static" }
+
+// staticRefRe matches quoted /static/... URLs in HTML so they can be stamped
+// with the current asset version.
+var staticRefRe = regexp.MustCompile(`"/static/([A-Za-z0-9._/-]+)"`)
+
+// staticFileHandler serves /static/ with version-aware cache headers.
+func staticFileHandler() http.Handler {
+	fs := http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir())))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if v := r.URL.Query().Get("v"); v != "" && v == assetVersion() {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		fs.ServeHTTP(w, r)
+	})
+}
+
+// serveHTML serves one page: no-cache with an ETag, and (for .html) every
+// /static/ reference stamped with the current asset version. Also used for
+// /sw.js, so the content type follows the file extension.
 func serveHTML(filename string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filename)
+		info, err := os.Stat(filename)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		ver := assetVersion()
+		etag := fmt.Sprintf(`"%s-%d-%d"`, ver, info.ModTime().UnixNano(), info.Size())
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("ETag", etag)
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		if filepath.Ext(filename) == ".html" {
+			data = staticRefRe.ReplaceAll(data, []byte(`"/static/${1}?v=`+ver+`"`))
+		}
+		// explicit types: X-Content-Type-Options: nosniff makes a wrong or
+		// missing type fatal, and mime.TypeByExtension depends on the OS
+		ct := map[string]string{
+			".html": "text/html; charset=utf-8",
+			".js":   "text/javascript; charset=utf-8",
+			".css":  "text/css; charset=utf-8",
+		}[filepath.Ext(filename)]
+		if ct == "" {
+			ct = mime.TypeByExtension(filepath.Ext(filename))
+		}
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		w.Header().Set("Content-Type", ct)
+		w.Write(data)
 	}
 }
 

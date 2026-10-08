@@ -5,8 +5,8 @@
     "start_url": "/play",
     "scope": "/",
     "display": "standalone",
-    "background_color": "#151a24",
-    "theme_color": "#151a24",
+    "background_color": "#161512",
+    "theme_color": "#161512",
     "icons": [
         {
             "src": "/static/icon-192.png",

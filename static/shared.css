@@ -1,7 +1,8 @@
 /* ============================================================
-   Bridge Trainer — game design system
-   Dark HUD chrome (header/sidebar) around a light play area,
-   felt tables, playing-card tiles, gold accents, juicy motion.
+   Bridge Trainer — design system
+   Lichess-style flat dark theme: warm neutral greys everywhere.
+   Color is reserved for suits, cards and the bidding/vulnerability
+   markers themselves.
    ============================================================ */
 
 /* ---- Base ---- */
@@ -15,16 +16,12 @@
 }
 
 html {
-    scrollbar-color: #9aa5ad #e8ebe8;
+    scrollbar-color: #5c5854 #1d1b19;
 }
 
 body {
     -webkit-tap-highlight-color: transparent;
-    background-color: #f2f2ee;
-    background-image:
-        radial-gradient(1200px 500px at 85% -10%, rgba(43, 122, 75, 0.07), transparent 60%),
-        radial-gradient(900px 420px at -10% 0%, rgba(212, 160, 23, 0.09), transparent 55%);
-    background-attachment: fixed;
+    background-color: #161512;
 }
 
 /* Every button feels physical: it sinks a hair when pressed */
@@ -44,11 +41,11 @@ button:active:not(:disabled) {
     height: 8px;
 }
 *::-webkit-scrollbar-thumb {
-    background: #b9c0bf;
+    background: #4a4642;
     border-radius: 6px;
 }
 *::-webkit-scrollbar-thumb:hover {
-    background: #9aa5ad;
+    background: #5c5854;
 }
 *::-webkit-scrollbar-track {
     background: transparent;
@@ -76,10 +73,10 @@ button:active:not(:disabled) {
 @keyframes pulse-dot {
     0%,
     100% {
-        box-shadow: 0 0 0 0 rgba(212, 160, 23, 0.6);
+        box-shadow: 0 0 0 0 rgba(232, 230, 227, 0.5);
     }
     50% {
-        box-shadow: 0 0 0 5px rgba(212, 160, 23, 0);
+        box-shadow: 0 0 0 5px rgba(232, 230, 227, 0);
     }
 }
 
@@ -101,12 +98,12 @@ button:active:not(:disabled) {
 /* ---- Game panels: cards that lift on hover ---- */
 
 .game-panel {
-    background: #ffffff;
-    border: 1px solid rgba(23, 61, 36, 0.1);
+    background: #302e2c;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 1rem;
     box-shadow:
-        0 1px 2px rgba(16, 22, 30, 0.06),
-        0 8px 24px -18px rgba(16, 22, 30, 0.35);
+        0 1px 2px rgba(0, 0, 0, 0.25),
+        0 8px 24px -18px rgba(0, 0, 0, 0.6);
     transition:
         transform 0.18s ease,
         box-shadow 0.18s ease,
@@ -115,18 +112,16 @@ button:active:not(:disabled) {
 .game-panel-hover:hover {
     transform: translateY(-3px);
     box-shadow:
-        0 2px 4px rgba(16, 22, 30, 0.08),
-        0 18px 34px -18px rgba(16, 22, 30, 0.4);
-    border-color: rgba(43, 122, 75, 0.35);
+        0 2px 4px rgba(0, 0, 0, 0.3),
+        0 18px 34px -18px rgba(0, 0, 0, 0.65);
+    border-color: rgba(255, 255, 255, 0.22);
 }
 
 /* Gold CTA shared by pages */
 .btn-gold {
-    background: linear-gradient(180deg, #f2ca4c, #d4a017);
-    color: #241a02;
-    box-shadow:
-        0 3px 0 rgba(0, 0, 0, 0.35),
-        inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    background: #e8e6e3;
+    color: #161512;
+    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
     transition:
         filter 0.15s ease,
         transform 0.1s ease,
@@ -137,9 +132,7 @@ button:active:not(:disabled) {
 }
 .btn-gold:active {
     transform: translateY(2px);
-    box-shadow:
-        0 1px 0 rgba(0, 0, 0, 0.35),
-        inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0.4);
 }
 
 /* ---- Playing cards ---- */
@@ -217,11 +210,11 @@ button:active:not(:disabled) {
             rgba(255, 255, 255, 0.14) 0 2px,
             transparent 2px 5px
         ),
-        linear-gradient(160deg, #3c6de0 0%, #274b9e 55%, #1b3574 100%);
-    border: 1px solid rgba(255, 255, 255, 0.55);
+        linear-gradient(160deg, #4a4642 0%, #3d3a36 55%, #302e2c 100%);
+    border: 1px solid rgba(255, 255, 255, 0.35);
     box-shadow:
         0 1px 2px rgba(0, 0, 0, 0.45),
-        inset 0 0 0 2px rgba(9, 20, 51, 0.35);
+        inset 0 0 0 2px rgba(0, 0, 0, 0.3);
 }
 /* Fanned row of hidden cards */
 .card-fan {
@@ -246,12 +239,12 @@ button:active:not(:disabled) {
 
 /* Player plates on the table area */
 .player-plate {
-    background: linear-gradient(180deg, #fbfcf9, #eef0e9);
+    background: #302e2c;
     border-radius: 0.85rem;
-    border: 1px solid rgba(16, 22, 30, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow:
-        0 2px 4px rgba(0, 0, 0, 0.12),
-        inset 0 1px 0 #ffffff;
+        0 2px 4px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
     transition:
         transform 0.18s ease,
         box-shadow 0.18s ease;
@@ -266,12 +259,12 @@ button:active:not(:disabled) {
     0%,
     100% {
         box-shadow:
-            0 0 0 0 rgba(242, 202, 76, 0.65),
+            0 0 0 0 rgba(232, 230, 227, 0.55),
             0 2px 4px rgba(0, 0, 0, 0.25);
     }
     50% {
         box-shadow:
-            0 0 0 8px rgba(242, 202, 76, 0),
+            0 0 0 8px rgba(232, 230, 227, 0),
             0 2px 4px rgba(0, 0, 0, 0.25);
     }
 }
@@ -294,14 +287,14 @@ button:active:not(:disabled) {
     flex-shrink: 0;
 }
 .avatar-you {
-    background: linear-gradient(180deg, #f2ca4c, #d4a017);
-    color: #241a02;
+    background: #e8e6e3;
+    color: #161512;
 }
 .avatar-partner {
-    background: linear-gradient(180deg, #5b8def, #2a5193);
+    background: #6f6c68;
 }
 .avatar-bot {
-    background: linear-gradient(180deg, #43b78d, #1c5535);
+    background: #4a4642;
 }
 
 /* ---- Bidding box (real bridge bidding-box colors) ---- */
@@ -339,12 +332,12 @@ button:active:not(:disabled) {
     transform: translateY(1px);
 }
 .bid-tile.selected {
-    background: linear-gradient(180deg, #f2ca4c, #d4a017);
-    color: #241a02;
+    background: #e8e6e3;
+    color: #161512;
     box-shadow:
-        0 2px 0 rgba(120, 90, 10, 0.6),
-        inset 0 1px 0 rgba(255, 255, 255, 0.5);
-    border-color: rgba(120, 90, 10, 0.5);
+        0 0 0 3px rgba(232, 230, 227, 0.55),
+        0 2px 0 rgba(0, 0, 0, 0.3);
+    border-color: #bababa;
 }
 
 .btn-pass {
@@ -387,7 +380,7 @@ button:active:not(:disabled) {
 /* A selected Pass/Double/Redouble in the two-step bidding box: gold ring */
 .special-selected {
     box-shadow:
-        0 0 0 3px rgba(242, 202, 76, 0.95),
+        0 0 0 3px rgba(232, 230, 227, 0.9),
         0 3px 0 rgba(0, 0, 0, 0.4),
         inset 0 1px 0 rgba(255, 255, 255, 0.25);
     transform: translateY(-1px);
@@ -406,12 +399,12 @@ button:active:not(:disabled) {
     font-family: Manrope, sans-serif;
     font-weight: 800;
     font-size: 12px;
-    background: rgba(255, 255, 255, 0.82);
-    color: #2d3435;
-    border: 1px solid rgba(16, 22, 30, 0.16);
+    background: #3d3a36;
+    color: #bababa;
+    border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow:
-        0 2px 0 rgba(16, 22, 30, 0.12),
-        inset 0 1px 0 #fff;
+        0 2px 0 rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
     transition:
         transform 0.12s ease,
         box-shadow 0.12s ease,
@@ -426,36 +419,36 @@ button:active:not(:disabled) {
     box-shadow: 0 0 0 rgba(0, 0, 0, 0);
 }
 .board-chip.chip-selected {
-    background: linear-gradient(180deg, #f2ca4c, #d4a017);
-    color: #241a02;
-    border-color: rgba(120, 90, 10, 0.55);
+    background: #e8e6e3;
+    color: #161512;
+    border-color: #bababa;
     box-shadow:
-        0 2px 0 rgba(120, 90, 10, 0.6),
-        inset 0 1px 0 rgba(255, 255, 255, 0.5),
-        0 0 0 3px rgba(242, 202, 76, 0.35);
+        0 2px 0 rgba(0, 0, 0, 0.35),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4),
+        0 0 0 3px rgba(232, 230, 227, 0.25);
 }
 .board-chip.chip-your-turn {
-    background: linear-gradient(180deg, #37b26a, #1e7d47);
-    color: #fff;
-    border-color: rgba(13, 77, 43, 0.6);
+    background: #8f8c88;
+    color: #161512;
+    border-color: rgba(255, 255, 255, 0.3);
     animation: chip-breathe 2.4s ease-in-out infinite;
 }
 @keyframes chip-breathe {
     0%,
     100% {
         box-shadow:
-            0 2px 0 rgba(13, 77, 43, 0.7),
-            0 0 0 0 rgba(55, 178, 106, 0.5);
+            0 2px 0 rgba(0, 0, 0, 0.4),
+            0 0 0 0 rgba(232, 230, 227, 0.45);
     }
     50% {
         box-shadow:
-            0 2px 0 rgba(13, 77, 43, 0.7),
-            0 0 0 6px rgba(55, 178, 106, 0);
+            0 2px 0 rgba(0, 0, 0, 0.4),
+            0 0 0 6px rgba(232, 230, 227, 0);
     }
 }
 .board-chip.chip-selected.chip-your-turn {
-    background: linear-gradient(180deg, #f2ca4c, #d4a017);
-    color: #241a02;
+    background: #e8e6e3;
+    color: #161512;
     animation: none;
 }
 
@@ -479,14 +472,14 @@ button:active:not(:disabled) {
 }
 .result-glow-pos {
     box-shadow:
-        0 0 0 1px rgba(55, 178, 106, 0.35),
-        0 0 34px -6px rgba(55, 178, 106, 0.55),
+        0 0 0 1px rgba(232, 230, 227, 0.3),
+        0 0 34px -6px rgba(232, 230, 227, 0.4),
         0 8px 24px -14px rgba(0, 0, 0, 0.4);
 }
 .result-glow-neg {
     box-shadow:
-        0 0 0 1px rgba(226, 84, 63, 0.3),
-        0 0 34px -6px rgba(226, 84, 63, 0.45),
+        0 0 0 1px rgba(232, 230, 227, 0.18),
+        0 0 34px -6px rgba(232, 230, 227, 0.25),
         0 8px 24px -14px rgba(0, 0, 0, 0.4);
 }
 
@@ -504,7 +497,7 @@ button:active:not(:disabled) {
     margin: 0 -10px;
     box-shadow:
         0 4px 10px rgba(0, 0, 0, 0.3),
-        inset 0 0 0 2px rgba(9, 20, 51, 0.35);
+        inset 0 0 0 2px rgba(0, 0, 0, 0.3);
 }
 .card-fan-deco .card-back:nth-child(1) {
     transform: rotate(-16deg) translateY(8px);
@@ -530,9 +523,10 @@ button:active:not(:disabled) {
     gap: 6px;
     padding: 6px 14px;
     border-radius: 9999px;
-    background: #ffffff;
-    border: 1px solid rgba(16, 22, 30, 0.1);
-    box-shadow: 0 2px 0 rgba(16, 22, 30, 0.08);
+    background: #302e2c;
+    color: #bababa;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
     font-size: 12px;
 }
 
@@ -549,7 +543,7 @@ button:active:not(:disabled) {
     vertical-align: middle;
 }
 .node-name-input:focus {
-    background-color: rgba(43, 122, 75, 0.09);
+    background-color: rgba(255, 255, 255, 0.07);
     border-radius: 4px;
 }
 .node-desc-input {
@@ -567,7 +561,7 @@ button:active:not(:disabled) {
     overflow: hidden;
 }
 .node-desc-input:focus {
-    background-color: rgba(43, 122, 75, 0.09);
+    background-color: rgba(255, 255, 255, 0.07);
     border-radius: 4px;
 }
 
@@ -578,9 +572,9 @@ button:active:not(:disabled) {
 .node-notes-input {
     width: 100%;
     min-height: 4.5rem;
-    border: 1px solid rgba(43, 122, 75, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 8px;
-    background: rgba(43, 122, 75, 0.04);
+    background: rgba(255, 255, 255, 0.04);
     padding: 8px 10px;
     outline: none;
     white-space: pre-wrap;
@@ -590,13 +584,13 @@ button:active:not(:disabled) {
     line-height: 1.45;
 }
 .node-notes-input:focus {
-    border-color: rgba(43, 122, 75, 0.5);
-    background: rgba(43, 122, 75, 0.07);
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.06);
 }
 .node-notes-view {
     white-space: pre-wrap;
-    border-left: 3px solid rgba(43, 122, 75, 0.35);
-    background: rgba(43, 122, 75, 0.05);
+    border-left: 3px solid rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.04);
     border-radius: 0 8px 8px 0;
     padding: 8px 12px;
     margin: 0.35rem 0 0 1.5rem;
@@ -608,15 +602,15 @@ button:active:not(:disabled) {
     opacity: 0.5;
 }
 .drag-above {
-    border-top: 2px solid #2b7a4b;
+    border-top: 2px solid #8f8c88;
     border-radius: 4px 4px 0 0;
 }
 .drag-below {
-    border-bottom: 2px solid #2b7a4b;
+    border-bottom: 2px solid #8f8c88;
     border-radius: 0 0 4px 4px;
 }
 .drag-as-child {
-    background-color: rgba(43, 122, 75, 0.07);
+    background-color: rgba(255, 255, 255, 0.06);
     border-radius: 4px;
 }
 
@@ -646,7 +640,7 @@ button:active:not(:disabled) {
         transform 0.15s ease;
 }
 .tree-list-item:hover {
-    background-color: rgba(43, 122, 75, 0.05);
+    background-color: rgba(255, 255, 255, 0.04);
 }
 
 /* ---- Toast notification ---- */
@@ -656,8 +650,8 @@ button:active:not(:disabled) {
     bottom: 24px;
     left: 50%;
     transform: translateX(-50%) translateY(14px) scale(0.95);
-    background: linear-gradient(180deg, #1a2432, #10161e);
-    color: #f9f9f9;
+    background: linear-gradient(180deg, #3d3a36, #2b2a27);
+    color: #e8e6e3;
     padding: 11px 22px;
     border-radius: 9999px;
     border: 1px solid rgba(255, 255, 255, 0.14);
@@ -675,8 +669,8 @@ button:active:not(:disabled) {
     transform: translateX(-50%) translateY(0) scale(1);
 }
 .app-toast-error {
-    background: linear-gradient(180deg, #b03226, #8f2a1f);
-    border-color: rgba(255, 255, 255, 0.18);
+    background: linear-gradient(180deg, #4a4642, #3d3a36);
+    border-color: rgba(255, 255, 255, 0.25);
 }
 
 /* ---- System name field (edit page) ---- */
@@ -692,7 +686,7 @@ button:active:not(:disabled) {
     transition: border-color 0.15s ease;
 }
 .system-name-input:focus {
-    border-bottom-color: #2b7a4b;
+    border-bottom-color: #bababa;
 }
 
 /* ---- Login / register / share dialogs ---- */
@@ -700,7 +694,7 @@ button:active:not(:disabled) {
 .unlock-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(6, 10, 14, 0.55);
+    background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(3px);
     display: flex;
     align-items: center;
@@ -708,15 +702,15 @@ button:active:not(:disabled) {
     z-index: 300;
 }
 .unlock-card {
-    background: #ffffff;
+    background: #302e2c;
     border-radius: 18px;
-    border: 1px solid rgba(16, 22, 30, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     padding: 28px;
     width: 360px;
     max-width: calc(100vw - 32px);
     box-shadow:
-        0 30px 60px rgba(0, 0, 0, 0.35),
-        0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+        0 30px 60px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(255, 255, 255, 0.06) inset;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -741,22 +735,22 @@ button:active:not(:disabled) {
 }
 .unlock-input {
     width: 100%;
-    border: 1.5px solid #c3c9c6;
+    border: 1.5px solid #55514b;
     border-radius: 10px;
     padding: 10px 14px;
     font-size: 14px;
     outline: none;
-    background: #f7f8f4;
-    color: #2d3435;
+    background: #262421;
+    color: #bababa;
     transition:
         border-color 0.15s ease,
         box-shadow 0.15s ease,
         background 0.15s ease;
 }
 .unlock-input:focus {
-    border-color: #2b7a4b;
-    background: #ffffff;
-    box-shadow: 0 0 0 4px rgba(43, 122, 75, 0.15);
+    border-color: #8f8c88;
+    background: #2b2a27;
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
 }
 
 /* ---- Practice (flashcard) page ---- */
@@ -784,15 +778,15 @@ button:active:not(:disabled) {
     position: relative;
     height: 10px;
     border-radius: 9999px;
-    background: #e2e5e0;
-    border: 1px solid rgba(16, 22, 30, 0.12);
+    background: #262421;
+    border: 1px solid rgba(255, 255, 255, 0.1);
     overflow: hidden;
 }
 .xp-bar-fill {
     position: absolute;
     inset: 0 auto 0 0;
     border-radius: 9999px;
-    background: linear-gradient(90deg, #d4a017, #f2ca4c);
+    background: #8f8c88;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
     transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -834,7 +828,7 @@ button:active:not(:disabled) {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(6, 10, 14, 0.55);
+    background: rgba(0, 0, 0, 0.6);
     z-index: 30;
 }
 #sidebarBackdrop.show {
@@ -872,7 +866,7 @@ button:active:not(:disabled) {
     position: fixed;
     inset: 0;
     z-index: 280;
-    background: rgba(6, 10, 14, 0.55);
+    background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(3px);
     display: flex;
     align-items: center;
@@ -880,9 +874,9 @@ button:active:not(:disabled) {
     padding: 16px;
 }
 .history-card {
-    background: #ffffff;
+    background: #302e2c;
     border-radius: 18px;
-    border: 1px solid rgba(16, 22, 30, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     width: min(780px, 100%);
     max-height: 88vh;
     overflow-y: auto;

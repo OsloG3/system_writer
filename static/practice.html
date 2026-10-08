@@ -180,7 +180,7 @@
                 content.innerHTML = `
                     <div class="game-panel pop-in flex flex-wrap items-center gap-3 px-4 py-3 mb-5">
                         <label for="scopeSelect" class="text-[10px] uppercase tracking-[0.2em] text-outline font-label font-bold flex items-center gap-1.5">
-                            <span class="material-symbols-outlined text-sm text-[#d4a017]">filter_alt</span>Scope
+                            <span class="material-symbols-outlined text-sm text-[#bababa]">filter_alt</span>Scope
                         </label>
                         <select id="scopeSelect" class="text-sm rounded-xl border-outline-variant/30 bg-surface-container-lowest text-on-surface px-3 py-2 font-label shadow-sm"></select>
                         <button id="restartBtn" title="Restart this scope: fresh shuffle, stats reset" class="flex items-center gap-1 px-2.5 py-2 bg-surface-container text-on-surface-variant rounded-xl font-label text-xs font-semibold hover:bg-surface-container-high transition-colors">
@@ -305,7 +305,7 @@
                         </div>
                         <p class="text-on-surface-variant text-lg font-headline font-bold mt-2">No cards to practice in this scope.</p>
                         <p class="text-sm text-on-surface-variant mt-2 max-w-md mx-auto leading-relaxed">
-                            Cards are root-to-leaf sequences whose nodes have descriptions. Add some in the <a href="/edit/${id}" class="text-[#2b7a4b] font-semibold">editor</a>.
+                            Cards are root-to-leaf sequences whose nodes have descriptions. Add some in the <a href="/edit/${id}" class="text-[#bababa] font-semibold underline">editor</a>.
                         </p>
                     </div>
                 `;
@@ -327,7 +327,7 @@
 
                 area.innerHTML = `
                     <div class="game-panel pop-in relative p-5 sm:p-8 min-h-[260px] overflow-hidden">
-                        <span class="absolute top-3 left-4 font-headline font-extrabold text-2xl text-[#17252a] select-none pointer-events-none">♠</span>
+                        <span class="absolute top-3 left-4 font-headline font-extrabold text-2xl text-[#bababa] select-none pointer-events-none">♠</span>
                         <span class="absolute bottom-3 right-4 font-headline font-extrabold text-2xl text-[#c0392b] rotate-180 select-none pointer-events-none">♥</span>
                         <div class="text-[10px] uppercase tracking-[0.2em] text-outline font-label font-bold mb-3 mt-1 text-center">
                             Sequence — what does each bid show?
@@ -400,11 +400,11 @@
                     document.getElementById("skipBtn").onclick = nextCard;
                 } else {
                     bar.innerHTML = `
-                        <button id="againBtn" class="flex items-center gap-2 px-6 py-3 rounded-xl font-label text-sm font-bold text-white bg-gradient-to-b from-[#e2543f] to-[#b03226] shadow-[0_3px_0_rgba(120,30,20,0.6)] hover:brightness-105 transition-all active:translate-y-0.5 active:shadow-none">
+                        <button id="againBtn" class="flex items-center gap-2 px-6 py-3 rounded-xl font-label text-sm font-bold text-[#e8e6e3] bg-[#4a4642] border border-white/10 shadow-[0_3px_0_rgba(0,0,0,0.4)] hover:brightness-105 transition-all active:translate-y-0.5 active:shadow-none">
                             <span class="material-symbols-outlined text-sm">close</span>
                             Again
                         </button>
-                        <button id="goodBtn" class="flex items-center gap-2 px-6 py-3 rounded-xl font-label text-sm font-bold text-white bg-gradient-to-b from-[#37b26a] to-[#1e7d47] shadow-[0_3px_0_rgba(13,77,43,0.6)] hover:brightness-105 transition-all active:translate-y-0.5 active:shadow-none">
+                        <button id="goodBtn" class="flex items-center gap-2 px-6 py-3 rounded-xl font-label text-sm font-bold text-[#161512] bg-[#e8e6e3] shadow-[0_3px_0_rgba(0,0,0,0.4)] hover:brightness-105 transition-all active:translate-y-0.5 active:shadow-none">
                             <span class="material-symbols-outlined text-sm">check</span>
                             Got it
                         </button>
@@ -433,7 +433,7 @@
                 const count = document.getElementById("deckCount");
                 if (count) count.innerText = `${deckPos}/${deck.length} cards`;
                 meta.innerHTML = `Card ${deckPos} of ${deck.length} · Reviewed ${seen}${
-                    pct !== null ? ` · <b class="${pct >= 70 ? "text-[#1e7d47]" : "text-[#b03226]"}">${pct}% recalled</b>` : ""
+                    pct !== null ? ` · <b class="${pct >= 70 ? "text-[#e8e6e3]" : "text-[#908f8d]"}">${pct}% recalled</b>` : ""
                 } <span class="text-outline-variant ml-3 hidden md:inline">Space: reveal / got it · M: again · S: skip</span>`;
             }
 

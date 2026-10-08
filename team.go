@@ -46,6 +46,7 @@ var (
 
 // TeamBoard is one dealt board inside a table (auction + DD result).
 type TeamBoard struct {
+	Ts       string      `json:"ts,omitempty"` // RFC3339, set when the board was scored
 	Dealer   int         `json:"dealer"`
 	Vuln     int         `json:"vuln"`
 	Hands    [4]string   `json:"hands"`
@@ -303,6 +304,9 @@ func (g *TeamGame) scoreLocked(b *TeamBoard) error {
 		Contract: out.Contract, Tricks: out.Tricks,
 		ParNS: out.ParNS, ScoreNS: out.ScoreNS, Imps: out.Imps,
 	}
+	if b.Ts == "" {
+		b.Ts = time.Now().UTC().Format(time.RFC3339)
+	}
 	b.Legal = nil
 	b.LegalLen = -1
 	g.Updated = time.Now()
@@ -555,22 +559,22 @@ func handleTeamList(w http.ResponseWriter, r *http.Request) {
 			g.mu.Unlock()
 			continue
 		}
-	s := gameSummary{
-		ID: g.ID, Host: g.Host, Partner: g.Partner,
-		YourSeat: seat, Updated: g.Updated,
-	}
-	for _, b := range g.Boards {
-		if b.Result != nil {
-			s.Boards++
-			s.ImpsTotal += b.Result.Imps
-			continue
+		s := gameSummary{
+			ID: g.ID, Host: g.Host, Partner: g.Partner,
+			YourSeat: seat, Updated: g.Updated,
 		}
-		s.InProgress = true
-		if (b.Dealer+len(b.Calls))%4 == seat {
-			s.YourTurn = true
+		for _, b := range g.Boards {
+			if b.Result != nil {
+				s.Boards++
+				s.ImpsTotal += b.Result.Imps
+				continue
+			}
+			s.InProgress = true
+			if (b.Dealer+len(b.Calls))%4 == seat {
+				s.YourTurn = true
+			}
 		}
-	}
-	g.mu.Unlock()
+		g.mu.Unlock()
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Updated.After(out[j].Updated) })

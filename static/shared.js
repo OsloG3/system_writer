@@ -1,71 +1,74 @@
 // Tailwind shared config
+// Palette: a lichess-style flat dark theme. Everything is warm neutral
+// grey/brown; the ONLY color on the site belongs to suits, cards and the
+// bidding/vulnerability markers themselves.
 if (typeof tailwind !== 'undefined') {
     tailwind.config = {
         darkMode: "class",
         theme: {
             extend: {
                 colors: {
-                    "outline-variant": "#adb3b4",
-                    "primary-container": "#d8e2ff",
-                    "on-tertiary-fixed-variant": "#634900",
-                    "surface-variant": "#dde4e5",
-                    "surface-dim": "#d4dbdd",
-                    "on-surface": "#2d3435",
-                    "inverse-on-surface": "#9c9d9d",
-                    "on-background": "#2d3435",
-                    "primary-fixed-dim": "#c2d4ff",
-                    "on-secondary-fixed": "#264350",
-                    "tertiary-dim": "#6b4e00",
-                    "on-error-container": "#752121",
-                    "on-tertiary-fixed": "#402d00",
-                    primary: "#385da0",
-                    "secondary-fixed": "#c9e7f7",
-                    background: "#f2f2ee",
-                    "tertiary-container": "#fec330",
-                    "inverse-primary": "#93b6ff",
-                    "surface-container-highest": "#dde4e5",
-                    "error-container": "#fe8983",
-                    "on-error": "#fff7f6",
-                    "error-dim": "#4e0309",
-                    tertiary: "#7a5a00",
-                    "on-tertiary-container": "#584000",
-                    "on-secondary": "#f3faff",
-                    "surface-bright": "#f9f9f9",
-                    surface: "#f9f9f9",
-                    "primary-fixed": "#d8e2ff",
-                    "secondary-fixed-dim": "#bbd9e9",
-                    "surface-container": "#ebeeef",
-                    error: "#9f403d",
-                    "secondary-container": "#c9e7f7",
-                    "surface-container-high": "#e4e9ea",
-                    "inverse-surface": "#0c0f0f",
-                    "on-primary-container": "#2a5092",
-                    "on-secondary-fixed-variant": "#435f6d",
-                    "on-primary-fixed": "#103d7e",
-                    "tertiary-fixed": "#fec330",
-                    "surface-tint": "#385da0",
-                    "on-surface-variant": "#5a6061",
-                    "primary-dim": "#2a5193",
-                    secondary: "#466370",
-                    "on-secondary-container": "#395663",
-                    "surface-container-low": "#f2f4f4",
-                    outline: "#757c7d",
-                    "on-primary-fixed-variant": "#355a9d",
-                    "on-tertiary": "#fff8f1",
-                    "surface-container-lowest": "#ffffff",
-                    "secondary-dim": "#3a5764",
-                    "tertiary-fixed-dim": "#efb520",
-                    "on-primary": "#f7f7ff",
-                    // game palette
-                    felt: "#2b7a4b",
-                    "felt-dark": "#1c5535",
-                    "felt-deep": "#0f3a24",
-                    gold: "#d4a017",
-                    "gold-light": "#f2ca4c",
-                    "on-gold": "#241a02",
-                    ink: "#10161e",
-                    "ink-light": "#1a2432",
-                    "ink-lighter": "#263447",
+                    "outline-variant": "#45423e",
+                    "primary-container": "#3d3a36",
+                    "on-tertiary-fixed-variant": "#bababa",
+                    "surface-variant": "#302e2c",
+                    "surface-dim": "#1d1b19",
+                    "on-surface": "#bababa",
+                    "inverse-on-surface": "#161512",
+                    "on-background": "#bababa",
+                    "primary-fixed-dim": "#4a4642",
+                    "on-secondary-fixed": "#e8e6e3",
+                    "tertiary-dim": "#6f6c68",
+                    "on-error-container": "#e8e6e3",
+                    "on-tertiary-fixed": "#e8e6e3",
+                    primary: "#bababa",
+                    "secondary-fixed": "#3d3a36",
+                    background: "#161512",
+                    "tertiary-container": "#4a4642",
+                    "inverse-primary": "#302e2c",
+                    "surface-container-highest": "#3d3a36",
+                    "error-container": "#4a4642",
+                    "on-error": "#161512",
+                    "error-dim": "#8f8c88",
+                    tertiary: "#8f8c88",
+                    "on-tertiary-container": "#e8e6e3",
+                    "on-secondary": "#161512",
+                    "surface-bright": "#3d3a36",
+                    surface: "#262421",
+                    "primary-fixed": "#4a4642",
+                    "secondary-fixed-dim": "#4a4642",
+                    "surface-container": "#262421",
+                    error: "#b5b1ad",
+                    "secondary-container": "#3d3a36",
+                    "surface-container-high": "#302e2c",
+                    "inverse-surface": "#e8e6e3",
+                    "on-primary-container": "#e8e6e3",
+                    "on-secondary-fixed-variant": "#bababa",
+                    "on-primary-fixed": "#e8e6e3",
+                    "tertiary-fixed": "#4a4642",
+                    "surface-tint": "#8f8c88",
+                    "on-surface-variant": "#908f8d",
+                    "primary-dim": "#8f8c88",
+                    secondary: "#7a7672",
+                    "on-secondary-container": "#bababa",
+                    "surface-container-low": "#211f1d",
+                    outline: "#5c5854",
+                    "on-primary-fixed-variant": "#bababa",
+                    "on-tertiary": "#161512",
+                    "surface-container-lowest": "#1a1917",
+                    "secondary-dim": "#5c5854",
+                    "tertiary-fixed-dim": "#5c5854",
+                    "on-primary": "#161512",
+                    // game palette (all neutral; suits/cards keep their own colors)
+                    felt: "#302e2c",
+                    "felt-dark": "#262421",
+                    "felt-deep": "#1d1b19",
+                    gold: "#8f8c88",
+                    "gold-light": "#e8e6e3",
+                    "on-gold": "#161512",
+                    ink: "#161512",
+                    "ink-light": "#2b2a27",
+                    "ink-lighter": "#3d3a36",
                 },
                 fontFamily: {
                     headline: ["Manrope"],
@@ -92,8 +95,8 @@ if (typeof tailwind !== 'undefined') {
         "data:image/svg+xml," +
         encodeURIComponent(
             "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>" +
-            "<rect width='24' height='24' rx='5' fill='#10161e'/>" +
-            "<path d='M12 3.5 5.2 10.4c-1.7 1.8-1.5 4.4.2 5.6 1.4.9 3 .6 4-.4l-1.1 4h7.4l-1.1-4c1 1 2.6 1.3 4 .4 1.7-1.2 1.9-3.8.2-5.6L12 3.5z' fill='#f2ca4c'/>" +
+            "<rect width='24' height='24' rx='5' fill='#161512'/>" +
+            "<path d='M12 3.5 5.2 10.4c-1.7 1.8-1.5 4.4.2 5.6 1.4.9 3 .6 4-.4l-1.1 4h7.4l-1.1-4c1 1 2.6 1.3 4 .4 1.7-1.2 1.9-3.8.2-5.6L12 3.5z' fill='#bababa'/>" +
             "</svg>",
         );
     document.head.appendChild(link);
@@ -242,7 +245,7 @@ function showAuthDialog(tab) {
                 <input id="authUser" type="text" autocomplete="username" placeholder="Username" class="unlock-input mb-2" />
                 <input id="authPass" type="password" autocomplete="current-password" placeholder="Password" class="unlock-input" />
                 <input id="authPass2" type="password" autocomplete="new-password" placeholder="Confirm password" class="unlock-input mt-2" style="display:none;" />
-                <div id="authError" class="text-xs mt-2" style="color:#9f403d; display:none;"></div>
+                <div id="authError" class="text-xs mt-2" style="color:#b5b1ad; display:none;"></div>
                 <div class="flex justify-end gap-2 mt-4">
                     <button type="button" id="authCancel" class="px-4 py-2 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">Cancel</button>
                     <button type="submit" id="authSubmit" class="px-4 py-2 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors"></button>
@@ -410,7 +413,7 @@ async function showShareDialog(tree) {
                     <datalist id="editorUserList"></datalist>
                     <button type="submit" class="shrink-0 px-3 py-2 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">Add</button>
                 </div>
-                <div id="shareError" class="text-xs mt-2" style="color:#9f403d; display:none;"></div>
+                <div id="shareError" class="text-xs mt-2" style="color:#b5b1ad; display:none;"></div>
             </form>
             <div class="flex justify-end mt-4 w-full">
                 <button type="button" id="shareClose" class="px-4 py-2 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">Close</button>
@@ -523,7 +526,7 @@ function renderLayout(options) {
     const badgeColor = options.badgeColor || 'bg-gold/90 text-on-gold';
     const modeLabel = mode === 'edit' ? 'Edit Mode' : mode === 'view' ? 'View Mode' : mode === 'practice' ? 'Practice Mode' : mode === 'bridge' ? 'Play Bridge' : mode === 'play' ? 'Bid Only' : 'Home';
 
-    const btnGhost = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-white text-ink rounded font-label text-sm hover:bg-white/90 shadow-sm transition-all no-underline active:translate-y-px";
+    const btnGhost = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-[#3d3a36] text-[#e8e6e3] border border-white/10 rounded font-label text-sm hover:bg-[#4a4642] transition-all no-underline active:translate-y-px";
     const btnPrimary = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-gradient-to-b from-gold-light to-gold text-on-gold rounded font-label text-sm hover:brightness-105 shadow-[0_2px_0_rgba(0,0,0,0.3)] transition-all no-underline active:translate-y-px active:shadow-none";
     const btnDanger = "flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-error-container/40 text-on-error-container rounded font-label text-sm hover:bg-error-container/70 transition-all active:translate-y-px";
     const deleteBtn = `
@@ -590,11 +593,11 @@ function renderLayout(options) {
     }
 
     const navBase = "flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-headline font-bold text-sm tracking-tight transition-all no-underline";
-    const navActive = `${navBase} bg-white/12 text-gold-light shadow-[inset_0_0_0_1px_rgba(242,202,76,0.35)]`;
+    const navActive = `${navBase} bg-white/12 text-gold-light shadow-[inset_0_0_0_1px_rgba(232,230,227,0.35)]`;
     const navIdle = `${navBase} text-white/60 hover:text-white hover:bg-white/10`;
 
     const sideBase = "flex items-center gap-3 h-11 px-4 mx-3 rounded-xl font-label text-xs uppercase tracking-widest transition-all no-underline";
-    const sideActive = `${sideBase} bg-white/10 text-gold-light shadow-[inset_0_0_0_1px_rgba(242,202,76,0.3)]`;
+    const sideActive = `${sideBase} bg-white/10 text-gold-light shadow-[inset_0_0_0_1px_rgba(232,230,227,0.3)]`;
     const sideIdle = `${sideBase} text-white/55 hover:text-white hover:bg-white/8`;
     const sideLink = "flex items-center cursor-pointer";
 
@@ -731,3 +734,135 @@ document.addEventListener("keydown", (e) => {
 window.addEventListener("resize", () => {
     if (window.innerWidth >= 768) closeSidebar();
 });
+
+// ---- Home-screen install (PWA) ----
+// The push service worker is registered site-wide (it used to be play-page
+// only). On mobile, when the app is not installed yet, suggest adding it to
+// the home screen: the native prompt where the browser offers one
+// (beforeinstallprompt), and a short Share -> Add to Home Screen explainer on
+// iOS Safari, which has no such event. A dismissal is remembered for 30 days.
+
+(function () {
+    if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+
+    const DISMISS_KEY = "atheneum_install_dismissed";
+    const DISMISS_MS = 30 * 24 * 3600 * 1000;
+    let deferredPrompt = null;
+
+    function isStandalone() {
+        return (
+            (window.matchMedia &&
+                window.matchMedia("(display-mode: standalone)").matches) ||
+            window.navigator.standalone === true
+        );
+    }
+    function isMobile() {
+        return (
+            (window.matchMedia &&
+                window.matchMedia("(pointer: coarse)").matches) ||
+            window.innerWidth < 820
+        );
+    }
+    function isIOS() {
+        return (
+            /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+        );
+    }
+    function dismissed() {
+        try {
+            const t = Number(localStorage.getItem(DISMISS_KEY) || 0);
+            return t > 0 && Date.now() - t < DISMISS_MS;
+        } catch (e) {
+            return false;
+        }
+    }
+    function rememberDismissal() {
+        try {
+            localStorage.setItem(DISMISS_KEY, String(Date.now()));
+        } catch (e) {}
+    }
+    function hideBanner() {
+        const el = document.getElementById("installBanner");
+        if (el) el.remove();
+    }
+
+    const btnPrimary =
+        "flex-shrink:0;border:0;border-radius:10px;padding:8px 14px;font:700 12px Inter,sans-serif;background:#e8e6e3;color:#161512;cursor:pointer;";
+    const btnGhost =
+        "flex-shrink:0;border:0;border-radius:10px;padding:8px 10px;font:600 12px Inter,sans-serif;background:transparent;color:#908f8d;cursor:pointer;";
+
+    function showBanner(mode) {
+        if (document.getElementById("installBanner") || !document.body) return;
+        const el = document.createElement("div");
+        el.id = "installBanner";
+        el.style.cssText =
+            "position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:190;" +
+            "display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;" +
+            "background:#302e2c;border:1px solid rgba(255,255,255,0.12);box-shadow:0 12px 32px rgba(0,0,0,0.5);";
+        const msg =
+            mode === "ios"
+                ? 'Tap <b style="color:#bababa">Share</b>, then <b style="color:#bababa">Add to Home Screen</b>.'
+                : "Add it to your home screen for full-screen play and turn alerts.";
+        el.innerHTML = `
+            <img src="/static/icon-192.png" alt="" style="width:34px;height:34px;border-radius:8px;flex-shrink:0;" />
+            <div style="flex:1;min-width:0;">
+                <div style="font:800 13px/1.25 Manrope,sans-serif;color:#e8e6e3;">Install Bridge Trainer</div>
+                <div style="font:400 12px/1.35 Inter,sans-serif;color:#908f8d;">${msg}</div>
+            </div>
+            ${
+                mode === "ios"
+                    ? `<button id="installOkBtn" style="${btnPrimary}">Got it</button>`
+                    : `<button id="installNowBtn" style="${btnPrimary}">Install</button>
+                       <button id="installLaterBtn" style="${btnGhost}">Not now</button>`
+            }`;
+        document.body.appendChild(el);
+        const now = document.getElementById("installNowBtn");
+        if (now)
+            now.onclick = async () => {
+                hideBanner();
+                if (!deferredPrompt) return;
+                try {
+                    deferredPrompt.prompt();
+                    await deferredPrompt.userChoice;
+                } catch (e) {}
+                deferredPrompt = null;
+            };
+        const later = document.getElementById("installLaterBtn");
+        if (later)
+            later.onclick = () => {
+                rememberDismissal();
+                hideBanner();
+            };
+        const ok = document.getElementById("installOkBtn");
+        if (ok)
+            ok.onclick = () => {
+                rememberDismissal();
+                hideBanner();
+            };
+    }
+
+    function maybeShow() {
+        if (isStandalone() || dismissed() || !isMobile()) return;
+        if (deferredPrompt) showBanner("prompt");
+        else if (isIOS()) showBanner("ios");
+    }
+
+    window.addEventListener("beforeinstallprompt", (e) => {
+        e.preventDefault(); // we show our own banner instead of the infobar
+        deferredPrompt = e;
+        maybeShow();
+    });
+    window.addEventListener("appinstalled", () => {
+        deferredPrompt = null;
+        hideBanner();
+        rememberDismissal(); // never nag again
+    });
+    if (document.readyState === "loading")
+        document.addEventListener("DOMContentLoaded", () =>
+            setTimeout(maybeShow, 1500),
+        );
+    else setTimeout(maybeShow, 1500);
+})();

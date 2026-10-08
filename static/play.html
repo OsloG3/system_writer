@@ -6,7 +6,7 @@
         <meta content="width=device-width, initial-scale=1.0" name="viewport" />
         <title>Bridge Trainer | Play vs Bots</title>
         <link rel="manifest" href="/manifest.webmanifest" />
-        <meta name="theme-color" content="#151a24" />
+        <meta name="theme-color" content="#161512" />
         <link rel="apple-touch-icon" href="/static/icon-192.png" />
         <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
         <link
@@ -21,38 +21,38 @@
         <link rel="stylesheet" href="/static/shared.css" />
         <style>
             body.cb-page {
-                background: #151a24;
+                background: #161512;
             }
             body.cb-page main {
-                background: #151a24 !important;
+                background: #161512 !important;
             }
             body.cb-page .page-enter > header h1 {
-                color: #f2f4f8;
+                color: #e8e6e3;
             }
             body.cb-page .page-enter > header p {
-                color: #93a0b4;
+                color: #908f8d;
             }
             body.cb-page .unlock-card {
-                background: #1c2330;
+                background: #302e2c;
                 border-color: rgba(255, 255, 255, 0.1);
             }
             body.cb-page .unlock-card .text-on-surface {
-                color: #eef1f5;
+                color: #e8e6e3;
             }
             body.cb-page .unlock-card .text-on-surface-variant {
-                color: #9aa7b8;
+                color: #908f8d;
             }
             body.cb-page .unlock-card .bg-surface-container {
-                background: #2a3240;
-                color: #cbd5e1;
+                background: #4a4642;
+                color: #bababa;
             }
             body.cb-page .unlock-input {
-                background: #151a24;
-                border-color: #39424f;
-                color: #e5e9f0;
+                background: #161512;
+                border-color: #55514b;
+                color: #e8e6e3;
             }
             body.cb-page .history-card {
-                background: #1c2330;
+                background: #302e2c;
                 border-color: rgba(255, 255, 255, 0.08);
             }
 
@@ -72,9 +72,9 @@
                 width: 2.35rem;
                 height: 2.35rem;
                 border-radius: 0.7rem;
-                background: #202836;
+                background: #3d3a36;
                 border: 1px solid rgba(255, 255, 255, 0.08);
-                color: #e5e9f0;
+                color: #e8e6e3;
                 flex-shrink: 0;
             }
             .cb-iconbtn:disabled {
@@ -86,7 +86,7 @@
                 justify-content: center;
                 width: 2.35rem;
                 height: 2.35rem;
-                color: #dfe5ee;
+                color: #bababa;
                 flex-shrink: 0;
             }
             .cb-title {
@@ -98,12 +98,12 @@
                 font-family: Manrope, sans-serif;
                 font-weight: 800;
                 font-size: 1.05rem;
-                color: #f2f4f8;
+                color: #e8e6e3;
                 line-height: 1.15;
             }
             .cb-title .s {
                 font-size: 0.72rem;
-                color: #8fa0b5;
+                color: #908f8d;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
@@ -114,13 +114,13 @@
                 gap: 0.35rem;
                 padding: 0.5rem 0.7rem;
                 border-radius: 0.8rem;
-                background: linear-gradient(180deg, #3fae6c, #25854c);
+                background: linear-gradient(180deg, #6f6c68, #4a4642);
                 color: #fff;
                 font-family: Inter, sans-serif;
                 font-weight: 700;
                 font-size: 0.72rem;
                 letter-spacing: 0.02em;
-                box-shadow: 0 3px 0 rgba(13, 77, 43, 0.7);
+                box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
                 flex-shrink: 0;
                 white-space: nowrap;
             }
@@ -134,7 +134,7 @@
                 top: calc(100% + 6px);
                 z-index: 60;
                 min-width: 190px;
-                background: #1c2330;
+                background: #302e2c;
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 0.9rem;
                 padding: 0.35rem;
@@ -147,7 +147,7 @@
                 width: 100%;
                 padding: 0.5rem 0.6rem;
                 border-radius: 0.6rem;
-                color: #dfe5ee;
+                color: #bababa;
                 font-size: 0.8rem;
                 font-family: Inter, sans-serif;
             }
@@ -180,7 +180,7 @@
             }
 
             .cb-auction {
-                background: #1e3c3c;
+                background: #302e2c;
                 border-radius: 1rem;
                 overflow: hidden;
                 border: 1px solid rgba(255, 255, 255, 0.06);
@@ -193,20 +193,20 @@
                 font-size: 0.62rem;
                 letter-spacing: 0.08em;
                 text-transform: uppercase;
-                color: #7fa0a0;
+                color: #787572;
                 font-family: Inter, sans-serif;
             }
             .cb-auc-head {
                 display: grid;
                 grid-template-columns: repeat(4, 1fr);
-                background: #152c33;
+                background: #262421;
             }
             .cb-auc-head > div {
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 height: 2.2rem;
-                color: #cfd8e3;
+                color: #bababa;
                 font-family: Manrope, sans-serif;
                 font-weight: 800;
                 font-size: 0.85rem;
@@ -229,10 +229,10 @@
                 color: #d7ecdc;
             }
             .cb-seatv.dlr {
-                box-shadow: 0 0 0 2px #f2ca4c;
+                box-shadow: 0 0 0 2px #e8e6e3;
             }
             .cb-seatv.you {
-                border: 2px solid #e8ecf2;
+                border: 2px solid #e8e6e3;
                 border-radius: 50%;
             }
             .cb-vuln-v { color: #f08a8a; }
@@ -256,7 +256,7 @@
             .cb-auc-empty {
                 padding: 2.5rem 0;
                 text-align: center;
-                color: #5f8f8f;
+                color: #787572;
                 font-size: 0.75rem;
                 font-family: Inter, sans-serif;
             }
@@ -299,18 +299,18 @@
                 width: 13px;
                 height: 13px;
                 border-radius: 50%;
-                background: #f2ca4c;
+                background: #e8e6e3;
                 color: #1b1f27;
                 font: 800 9px/13px Inter, sans-serif;
                 font-style: normal;
                 text-align: center;
             }
             .cb-alertbox {
-                background: #1b2330;
+                background: #262421;
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 0.8rem;
                 padding: 0.45rem 0.7rem;
-                color: #cbd5e1;
+                color: #bababa;
                 font-family: Inter, sans-serif;
                 font-size: 0.72rem;
                 line-height: 1.45;
@@ -320,12 +320,12 @@
             }
             .cb-alertbox .material-symbols-outlined {
                 font-size: 15px;
-                color: #f2ca4c;
+                color: #e8e6e3;
                 flex-shrink: 0;
                 align-self: center;
             }
             .cb-alertbox b { color: #fff; }
-            .cb-alertbox .dim { color: #8fa0b5; }
+            .cb-alertbox .dim { color: #908f8d; }
             .cb-q {
                 display: flex;
                 align-items: center;
@@ -334,7 +334,7 @@
                 height: 1.7rem;
                 border-radius: 0.5rem;
                 background: #e8eaed;
-                color: #39424f;
+                color: #55514b;
                 font-family: Manrope, sans-serif;
                 font-weight: 800;
                 animation: cb-pulse 1.6s ease-in-out infinite;
@@ -356,8 +356,8 @@
                 flex: 1;
                 height: 2.2rem;
                 border-radius: 0.6rem 0.6rem 0 0;
-                background: #1b2330;
-                color: #8fa0b5;
+                background: #262421;
+                color: #908f8d;
                 font-family: Manrope, sans-serif;
                 font-weight: 800;
                 font-size: 0.95rem;
@@ -368,7 +368,7 @@
                 opacity: 0.35;
             }
             .cb-level.sel {
-                background: #1e3c3c;
+                background: #302e2c;
                 color: #fff;
                 height: 2.4rem;
                 border-color: transparent;
@@ -376,7 +376,7 @@
             .cb-bidpanel {
                 position: relative;
                 z-index: 1;
-                background: #1e3c3c;
+                background: #302e2c;
                 border-radius: 1rem;
                 padding: 0.75rem 0.6rem 0.65rem;
                 display: flex;
@@ -449,30 +449,30 @@
             }
 
             .cb-wait {
-                background: #1e3c3c;
+                background: #302e2c;
                 border-radius: 1rem;
                 padding: 1rem;
                 display: flex;
                 align-items: center;
                 gap: 0.6rem;
                 flex-wrap: wrap;
-                color: #a9c3c3;
+                color: #908f8d;
                 font-size: 0.85rem;
                 font-family: Inter, sans-serif;
             }
             .cb-ready {
-                background: #1e3c3c;
+                background: #302e2c;
                 border-radius: 1rem;
                 padding: 2.2rem 1.5rem;
                 text-align: center;
-                color: #dfe5ee;
+                color: #bababa;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
             }
 
             .cb-result {
-                background: #1e3c3c;
+                background: #302e2c;
                 border-radius: 1rem;
                 padding: 0.9rem 1rem;
                 display: flex;
@@ -486,12 +486,12 @@
                 gap: 0.4rem;
                 padding: 0.55rem 0.9rem;
                 border-radius: 0.8rem;
-                background: linear-gradient(180deg, #3fae6c, #25854c);
+                background: linear-gradient(180deg, #6f6c68, #4a4642);
                 color: #fff;
                 font-family: Inter, sans-serif;
                 font-weight: 700;
                 font-size: 0.8rem;
-                box-shadow: 0 3px 0 rgba(13, 77, 43, 0.7);
+                box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
             }
             .cb-btn-ghost {
                 display: inline-flex;
@@ -499,9 +499,9 @@
                 gap: 0.4rem;
                 padding: 0.55rem 0.8rem;
                 border-radius: 0.8rem;
-                background: #202836;
+                background: #3d3a36;
                 border: 1px solid rgba(255, 255, 255, 0.1);
-                color: #dfe5ee;
+                color: #bababa;
                 font-size: 0.78rem;
                 font-family: Inter, sans-serif;
                 font-weight: 600;
@@ -518,7 +518,7 @@
                 width: 100%;
             }
             .cb-handlabel {
-                color: #e5e9f0;
+                color: #e8e6e3;
                 font-family: Inter, sans-serif;
                 font-size: 0.85rem;
             }
@@ -594,7 +594,7 @@
                     "w . e"
                     ". s .";
                 gap: 0.55rem 0.5rem;
-                background: #1b2330;
+                background: #262421;
                 border-radius: 0.8rem;
                 padding: 0.7rem 0.6rem;
             }
@@ -613,7 +613,7 @@
                 font-size: 0.66rem;
                 letter-spacing: 0.06em;
                 text-transform: uppercase;
-                color: #8fa0b5;
+                color: #908f8d;
                 margin-bottom: 2px;
                 white-space: nowrap;
                 overflow: hidden;
@@ -626,7 +626,7 @@
                 font-weight: 700;
                 font-size: 0.78rem;
                 line-height: 1.35;
-                color: #dfe5ee;
+                color: #bababa;
                 white-space: nowrap;
             }
             .cb-dg-su {
@@ -647,13 +647,13 @@
                 flex-wrap: wrap;
                 align-items: center;
                 gap: 0.4rem 0.7rem;
-                background: #1e3c3c;
+                background: #302e2c;
                 border: 1px solid rgba(255, 255, 255, 0.06);
                 border-radius: 0.8rem;
                 padding: 0.45rem 0.7rem;
                 font-family: Inter, sans-serif;
                 font-size: 0.72rem;
-                color: #cdd7e4;
+                color: #bababa;
             }
             .cb-pinfo b { color: #fff; }
             .cb-pinfo .sep { opacity: 0.35; }
@@ -667,7 +667,7 @@
                 gap: 0.5rem 0.6rem;
                 align-items: center;
                 justify-items: center;
-                background: radial-gradient(circle at 50% 45%, #24504a, #17322f 70%);
+                background: radial-gradient(circle at 50% 45%, #35322e, #262421 70%);
                 border: 1px solid rgba(255, 255, 255, 0.07);
                 border-radius: 1rem;
                 padding: 0.7rem 0.6rem;
@@ -693,22 +693,22 @@
                 font-size: 0.62rem;
                 letter-spacing: 0.06em;
                 text-transform: uppercase;
-                color: #9fb0c4;
+                color: #908f8d;
                 display: flex;
                 align-items: center;
                 gap: 0.3rem;
                 white-space: nowrap;
             }
-            .cb-pseat-name .you { color: #f2ca4c; font-weight: 700; }
+            .cb-pseat-name .you { color: #e8e6e3; font-weight: 700; }
             .cb-pseat-name .role {
                 background: rgba(255, 255, 255, 0.12);
                 border-radius: 999px;
                 padding: 0 0.35rem;
                 font-size: 0.56rem;
             }
-            .cb-pseat.act .cb-pseat-name { color: #6ee7a0; }
+            .cb-pseat.act .cb-pseat-name { color: #e8e6e3; }
             .cb-pseat.act {
-                filter: drop-shadow(0 0 6px rgba(110, 231, 160, 0.35));
+                filter: drop-shadow(0 0 6px rgba(232, 230, 227, 0.25));
             }
             .cb-phand {
                 display: flex;
@@ -741,20 +741,20 @@
             .cb-pcard .su { font-size: 0.68rem; }
             .cb-pcard.playable {
                 cursor: pointer;
-                border-color: #43b78d;
-                box-shadow: 0 0 0 1px #43b78d, 0 2px 6px rgba(0, 0, 0, 0.5);
+                border-color: #8f8c88;
+                box-shadow: 0 0 0 1px #8f8c88, 0 2px 6px rgba(0, 0, 0, 0.5);
                 transform: translateY(-2px);
             }
             .cb-pcard.playable:hover {
                 transform: translateY(-6px);
-                box-shadow: 0 0 0 2px #6ee7a0, 0 4px 10px rgba(0, 0, 0, 0.5);
+                box-shadow: 0 0 0 2px #e8e6e3, 0 4px 10px rgba(0, 0, 0, 0.5);
             }
             .cb-pcard.spent { opacity: 0.28; filter: grayscale(0.6); }
             .cb-pback {
                 width: 1.5rem;
                 height: 2.15rem;
                 border-radius: 0.28rem;
-                background: repeating-linear-gradient(45deg, #2a5193, #2a5193 3px, #234578 3px, #234578 6px);
+                background: repeating-linear-gradient(45deg, #4a4642, #4a4642 3px, #3d3a36 3px, #3d3a36 6px);
                 border: 1px solid rgba(0, 0, 0, 0.45);
                 box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
                 margin-left: -0.9rem;
@@ -764,7 +764,7 @@
             .cb-pcount {
                 font-family: Inter, sans-serif;
                 font-size: 0.62rem;
-                color: #8fa0b5;
+                color: #908f8d;
             }
             .cb-ptrick {
                 position: relative;
@@ -785,7 +785,7 @@
             .cb-ptrick .tk .who {
                 font-family: Inter, sans-serif;
                 font-size: 0.54rem;
-                color: #cfe3d8;
+                color: #908f8d;
                 text-transform: uppercase;
                 letter-spacing: 0.05em;
             }
@@ -807,7 +807,7 @@
             }
             .cb-ptrick .tkc.red { color: #c0392b; }
             .cb-ptrick .tkc.blk { color: #1b1f27; }
-            .cb-ptrick .tkc.win { box-shadow: 0 0 0 2px #f2ca4c, 0 2px 6px rgba(0,0,0,.5); }
+            .cb-ptrick .tkc.win { box-shadow: 0 0 0 2px #e8e6e3, 0 2px 6px rgba(0,0,0,.5); }
             .cb-ptrick-empty {
                 position: absolute;
                 inset: 0;
@@ -825,7 +825,7 @@
                 justify-content: center;
                 font-family: Inter, sans-serif;
                 font-size: 0.7rem;
-                color: #cdd7e4;
+                color: #bababa;
                 margin-top: 0.2rem;
             }
             .cb-ptally b { font-size: 0.9rem; }
@@ -833,11 +833,11 @@
                 text-align: center;
                 font-family: Inter, sans-serif;
                 font-size: 0.78rem;
-                color: #6ee7a0;
+                color: #e8e6e3;
                 min-height: 1.2rem;
             }
             .cb-phist {
-                background: #1b2330;
+                background: #262421;
                 border: 1px solid rgba(255, 255, 255, 0.06);
                 border-radius: 0.8rem;
                 padding: 0.4rem 0.6rem;
@@ -854,13 +854,13 @@
                 border-bottom: 1px solid rgba(255, 255, 255, 0.04);
             }
             .cb-phist-row:last-child { border-bottom: 0; }
-            .cb-phist-row .no { color: #6b7a8d; width: 1.2rem; }
-            .cb-phist-row .cd { color: #e5e9f0; }
-            .cb-phist-row .wn { margin-left: auto; color: #f2ca4c; font-size: 0.62rem; }
+            .cb-phist-row .no { color: #787572; width: 1.2rem; }
+            .cb-phist-row .cd { color: #e8e6e3; }
+            .cb-phist-row .wn { margin-left: auto; color: #e8e6e3; font-size: 0.62rem; }
             .cb-phist-toggle {
                 background: none;
                 border: 0;
-                color: #8fa0b5;
+                color: #908f8d;
                 font-family: Inter, sans-serif;
                 font-size: 0.68rem;
                 cursor: pointer;
@@ -884,7 +884,7 @@
             }
 
             .cb-done {
-                background: #1e3c3c;
+                background: #302e2c;
                 border-radius: 1rem;
                 padding: 0.7rem 0.75rem 0.75rem;
                 display: flex;
@@ -906,7 +906,7 @@
             }
             .cb-done-tricks {
                 font-size: 0.68rem;
-                color: #9fc0c0;
+                color: #908f8d;
                 margin-top: 2px;
             }
             .cb-done-imps {
@@ -922,7 +922,7 @@
                 font-size: 0.56rem;
                 letter-spacing: 0.14em;
                 text-transform: uppercase;
-                color: #7fa0a0;
+                color: #787572;
             }
             .cb-done-imps .victory-imps {
                 font-family: Manrope, sans-serif;
@@ -941,7 +941,7 @@
                 font-family: Manrope, sans-serif;
                 font-weight: 800;
                 font-size: 1.15rem;
-                color: #e5e9f0;
+                color: #e8e6e3;
             }
             .cb-done-foot { display: flex; }
 
@@ -973,9 +973,9 @@
                 font-weight: 700;
                 font-size: 0.55rem;
                 letter-spacing: 0.05em;
-                color: #8fa0b5;
+                color: #908f8d;
             }
-            .cb-auc-mini-head span.dlr { color: #f2ca4c; }
+            .cb-auc-mini-head span.dlr { color: #e8e6e3; }
             .cb-mini {
                 display: flex;
                 align-items: center;
@@ -1015,7 +1015,7 @@
             }
 
             .cb-cardpanel {
-                background: #1b2330;
+                background: #262421;
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 1rem;
             }
@@ -1025,23 +1025,23 @@
                 gap: 6px;
                 padding: 6px 14px;
                 border-radius: 9999px;
-                background: #1b2330;
+                background: #262421;
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 font-size: 12px;
-                color: #cbd5e1;
+                color: #bababa;
             }
             .cb-input {
                 width: 100%;
-                border: 1.5px solid #39424f;
+                border: 1.5px solid #55514b;
                 border-radius: 10px;
                 padding: 10px 14px;
                 font-size: 14px;
-                background: #151a24;
-                color: #e5e9f0;
+                background: #161512;
+                color: #e8e6e3;
                 outline: none;
             }
             .cb-input:focus {
-                border-color: #3fae6c;
+                border-color: #6f6c68;
             }
         </style>
     </head>
@@ -1087,6 +1087,8 @@
             let games = null;
             let allUsers = [];
             let bidTab = "solo"; // bid-only lobby tab: "solo" | "partner"
+            let rankings = null; // {soloBid, soloPlay, pairBid}
+            let rankTab = PLAY_MODE === "play" ? "soloPlay" : "soloBid";
             let busy = false;
             let autoRetries = 0;
             let bidLevelSel = null;
@@ -1226,9 +1228,9 @@
             }
 
             function impsColor(imps) {
-                if (imps > 0) return "text-[#6ee7a0]";
-                if (imps < 0) return "text-[#f08a8a]";
-                return "text-[#9aa7b8]";
+                if (imps > 0) return "text-[#e8e6e3]";
+                if (imps < 0) return "text-[#908f8d]";
+                return "text-[#908f8d]";
             }
 
             function timeAgo(ts) {
@@ -1827,6 +1829,16 @@
                 }
                 state = null;
                 refreshLobby();
+                // refresh personal stats + rankings so the lobby shows the
+                // board just finished
+                (async () => {
+                    try {
+                        const r = await fetch("/api/play/stats");
+                        if (r.ok) stats = await r.json();
+                    } catch (e) {}
+                    await loadRankings();
+                    if (!state) render();
+                })();
             }
 
             async function teamDelete(id) {
@@ -1901,6 +1913,9 @@
                 } catch (e) {}
                 await loadGames();
                 await loadUsers();
+                loadRankings().then(() => {
+                    if (!state) render();
+                });
 
                 // partner tables are bid-only: restored only in "Bid only"
                 if (PLAY_MODE === "bid") {
@@ -1944,8 +1959,8 @@
 
             function spinner(msg) {
                 return `
-                    <span class="material-symbols-outlined text-[#8fd694] animate-spin">progress_activity</span>
-                    <span class="text-sm text-[#a9c3c3] font-label">${msg}</span>`;
+                    <span class="material-symbols-outlined text-[#bababa] animate-spin">progress_activity</span>
+                    <span class="text-sm text-[#908f8d] font-label">${msg}</span>`;
             }
 
             function bidAreaHtml() {
@@ -2067,7 +2082,7 @@
                 } else if (partnerSeat) {
                     inner = spinner(escapeHtml(partnerSeat) + " is thinking…");
                 } else if (state.yourTurn) {
-                    inner = `<span class="material-symbols-outlined text-[#9aa7b8]">wifi_off</span>
+                    inner = `<span class="material-symbols-outlined text-[#908f8d]">wifi_off</span>
                              <span class="flex-1">Could not load your options.</span>
                              <button id="retryBtn" class="cb-btn-ghost">
                                  <span class="material-symbols-outlined text-sm">refresh</span>
@@ -2194,9 +2209,9 @@
             function teamReadyHtml() {
                 return `
                     <div class="cb-ready pop-in">
-                        <span class="material-symbols-outlined text-4xl text-[#f2ca4c]" style="font-variation-settings:'FILL' 1;">playing_cards</span>
+                        <span class="material-symbols-outlined text-4xl text-[#e8e6e3]" style="font-variation-settings:'FILL' 1;">playing_cards</span>
                         <p class="font-headline font-extrabold text-xl text-white mt-3">Table ready</p>
-                        <p class="text-xs text-[#9aa7b8] mt-2 leading-relaxed max-w-xs">You &amp; ${escapeHtml(state.partner)} vs the East/West bots. An 8-board match is dealt all at once — every board runs its own auction, and you bid them in any order.</p>
+                        <p class="text-xs text-[#908f8d] mt-2 leading-relaxed max-w-xs">You &amp; ${escapeHtml(state.partner)} vs the East/West bots. An 8-board match is dealt all at once — every board runs its own auction, and you bid them in any order.</p>
                         <button id="dealFirstBtn" class="cb-btn-green mt-5">
                             <span class="material-symbols-outlined text-sm">casino</span>Start 8-board match
                         </button>
@@ -2265,7 +2280,7 @@
                            </button>`
                         : "";
                 const bell = team
-                    ? `<button id="alertBellBtn" class="cb-iconbtn" title="${turnAlertsOn ? "Turn alerts on (also while the page is closed) — tap to disable" : "Turn alerts off — tap to enable"}" style="${turnAlertsOn ? "color:#f2ca4c;" : "opacity:.5;"}">
+                    ? `<button id="alertBellBtn" class="cb-iconbtn" title="${turnAlertsOn ? "Turn alerts on (also while the page is closed) — tap to disable" : "Turn alerts off — tap to enable"}" style="${turnAlertsOn ? "color:#e8e6e3;" : "opacity:.5;"}">
                            <span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' ${turnAlertsOn ? 1 : 0};">${turnAlertsOn ? "notifications_active" : "notifications_off"}</span>
                        </button>`
                     : "";
@@ -2358,7 +2373,7 @@
                     s = token[1];
                 const red = s === "H" || s === "D";
                 const rank = r === "T" ? "10" : r;
-                return `<span style="color:${red ? "#f08a8a" : "#cdd7e4"};font-weight:600">${rank}${SUIT_SYMBOL[s]}</span>`;
+                return `<span style="color:${red ? "#f08a8a" : "#bababa"};font-weight:600">${rank}${SUIT_SYMBOL[s]}</span>`;
             }
 
             function playSeatHtml(seat) {
@@ -2588,9 +2603,9 @@
                 if (!stats || !stats.boards) return "";
                 return `
                     <div class="flex flex-wrap items-center gap-2 mb-4">
-                        <span class="cb-pill"><span class="material-symbols-outlined text-base text-[#f2ca4c]">military_tech</span>Avg <b class="font-headline text-sm ${impsColor(stats.avgImps)}">${signed(stats.avgImps.toFixed(2))}</b> IMPs/board vs par</span>
-                        <span class="cb-pill"><span class="material-symbols-outlined text-base text-[#43b78d]">style</span><b class="font-headline text-sm">${stats.boards}</b> boards</span>
-                        <span class="cb-pill"><span class="material-symbols-outlined text-base text-[#7ea2e8]">trending_up</span>Total <b class="font-headline text-sm ${impsColor(stats.impsTotal)}">${signed(stats.impsTotal)}</b> IMPs</span>
+                        <span class="cb-pill"><span class="material-symbols-outlined text-base text-[#e8e6e3]">military_tech</span>Avg <b class="font-headline text-sm ${impsColor(stats.avgImps)}">${signed(stats.avgImps.toFixed(2))}</b> IMPs/board vs par</span>
+                        <span class="cb-pill"><span class="material-symbols-outlined text-base text-[#8f8c88]">style</span><b class="font-headline text-sm">${stats.boards}</b> boards</span>
+                        <span class="cb-pill"><span class="material-symbols-outlined text-base text-[#bababa]">trending_up</span>Total <b class="font-headline text-sm ${impsColor(stats.impsTotal)}">${signed(stats.impsTotal)}</b> IMPs</span>
                     </div>`;
             }
 
@@ -2603,14 +2618,14 @@
                     : "You sit South with a bidding-dt bot as your North partner against two bot opponents. Bid the auction; each board is scored in IMPs against double-dummy par. The cards are not played out — pure bidding practice.";
                 return `
                     <div class="cb-cardpanel p-5 flex flex-col">
-                        <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-b from-[#5b8def] to-[#2a5193] shadow-[0_3px_0_rgba(0,0,0,0.25)]">
+                        <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-b from-[#6f6c68] to-[#4a4642] shadow-[0_3px_0_rgba(0,0,0,0.25)]">
                             <span class="material-symbols-outlined text-2xl text-white" style="font-variation-settings:'FILL' 1;">${icon}</span>
                         </span>
                         <div class="font-headline font-extrabold text-white mt-3 text-lg">
                             ${title}
-                            <span class="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-white/10 text-[#9aa7b8] align-middle">you + bot vs 2 bots</span>
+                            <span class="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-white/10 text-[#908f8d] align-middle">you + bot vs 2 bots</span>
                         </div>
-                        <p class="text-sm text-[#9aa7b8] mt-1.5 flex-1 leading-relaxed">
+                        <p class="text-sm text-[#908f8d] mt-1.5 flex-1 leading-relaxed">
                             ${desc}
                         </p>
                         <button id="dealBtn" class="cb-btn-green mt-4 justify-center !px-5 !py-3 !text-sm">
@@ -2622,14 +2637,14 @@
             function teamCardHtml() {
                 return `
                     <div class="cb-cardpanel p-5 flex flex-col">
-                        <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-b from-[#43b78d] to-[#1c5535] shadow-[0_3px_0_rgba(0,0,0,0.25)]">
+                        <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-b from-[#8f8c88] to-[#3d3a36] shadow-[0_3px_0_rgba(0,0,0,0.25)]">
                             <span class="material-symbols-outlined text-2xl text-white" style="font-variation-settings:'FILL' 1;">group</span>
                         </span>
                         <div class="font-headline font-extrabold text-white mt-3 text-lg">
                             Partner table
                             <span class="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-gold/90 text-on-gold align-middle">2 players vs 2 bots</span>
                         </div>
-                        <p class="text-sm text-[#9aa7b8] mt-1.5 flex-1 leading-relaxed">
+                        <p class="text-sm text-[#908f8d] mt-1.5 flex-1 leading-relaxed">
                             Team up with a partner (North–South) against the East/West bots. Each match is 8 boards dealt all at once — bid them in any order, switching between boards as the auctions unfold. Tables stay open while you are disconnected.
                         </p>
                         <div class="mt-4 flex flex-col gap-2">
@@ -2653,30 +2668,30 @@
                         let status, cls;
                         if (g.inProgress && g.yourTurn) {
                             status = "your turn";
-                            cls = "bg-gradient-to-b from-[#37b26a] to-[#1e7d47] text-white";
+                            cls = "bg-gradient-to-b from-[#6f6c68] to-[#4a4642] text-white";
                         } else if (g.inProgress) {
                             status = g.boards
                                 ? "match in progress"
                                 : "in progress";
-                            cls = "bg-white/10 text-[#9aa7b8]";
+                            cls = "bg-white/10 text-[#908f8d]";
                         } else {
                             status = g.boards
                                 ? "match complete"
                                 : "ready to start";
-                            cls = "bg-gold/20 text-[#e5c558]";
+                            cls = "bg-gold/20 text-[#bababa]";
                         }
                         return `
                         <div class="cb-cardpanel flex items-center gap-3 px-3 py-2.5">
-                            <span class="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-b from-[#43b78d] to-[#1c5535] shrink-0">
+                            <span class="flex items-center justify-center w-9 h-9 rounded-full bg-gradient-to-b from-[#8f8c88] to-[#3d3a36] shrink-0">
                                 <span class="material-symbols-outlined text-lg text-white" style="font-variation-settings:'FILL' 1;">group</span>
                             </span>
                             <div class="min-w-0 flex-1">
                                 <div class="text-sm font-label font-semibold text-white truncate">You &amp; ${label}</div>
-                                <div class="text-[11px] text-[#8fa0b5] font-label">${g.boards} board${g.boards === 1 ? "" : "s"} · ${timeAgo(g.updated)}</div>
+                                <div class="text-[11px] text-[#908f8d] font-label">${g.boards} board${g.boards === 1 ? "" : "s"} · ${timeAgo(g.updated)}</div>
                             </div>
                             <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider whitespace-nowrap ${cls}">${status}</span>
                             <button data-open-game="${g.id}" class="cb-btn-green !px-4 !py-2 !text-xs">Resume</button>
-                            <button data-del-game="${g.id}" title="Delete table" class="shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-[#8fa0b5] hover:bg-[#e2543f]/20 hover:text-[#f08a8a] transition-colors">
+                            <button data-del-game="${g.id}" title="Delete table" class="shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-[#908f8d] hover:bg-white/10 hover:text-[#e8e6e3] transition-colors">
                                 <span class="material-symbols-outlined text-base">delete</span>
                             </button>
                         </div>`;
@@ -2684,23 +2699,26 @@
                     .join("");
                 return `
                     <div class="mt-6">
-                        <div class="text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label mb-2">Your tables</div>
+                        <div class="text-[10px] uppercase tracking-widest text-[#908f8d] font-label mb-2">Your tables</div>
                         <div class="space-y-2">${rows}</div>
                     </div>`;
             }
 
             function recentHtml() {
-                if (!stats || !stats.recent || stats.recent.length === 0)
-                    return "";
-                const rows = stats.recent
+                const recs =
+                    (PLAY_MODE === "play"
+                        ? stats && stats.recentPlay
+                        : stats && stats.recent) || [];
+                if (recs.length === 0) return "";
+                const rows = recs
                     .slice(0, 12)
                     .map(
                         (rec) => `
                         <tr class="border-t border-white/5">
-                            <td class="px-3 py-1.5 text-xs text-[#8fa0b5] whitespace-nowrap">${timeAgo(rec.ts)}</td>
-                            <td class="px-3 py-1.5 text-xs text-[#8fa0b5] whitespace-nowrap">${SEAT_NAMES[rec.dealer][0]} · ${VULN_NAMES[rec.vuln]}</td>
+                            <td class="px-3 py-1.5 text-xs text-[#908f8d] whitespace-nowrap">${timeAgo(rec.ts)}</td>
+                            <td class="px-3 py-1.5 text-xs text-[#908f8d] whitespace-nowrap">${SEAT_NAMES[rec.dealer][0]} · ${VULN_NAMES[rec.vuln]}</td>
                             <td class="px-3 py-1.5 text-sm font-headline font-semibold text-white">${contractHtml(rec.contract)}</td>
-                            <td class="px-3 py-1.5 text-xs text-[#8fa0b5] whitespace-nowrap">${tricksLabel(rec) || "—"} · par ${scoreText(rec.parNs)}</td>
+                            <td class="px-3 py-1.5 text-xs text-[#908f8d] whitespace-nowrap">${tricksLabel(rec) || "—"} · par ${scoreText(rec.parNs)}</td>
                             <td class="px-3 py-1.5 text-sm font-headline font-bold text-right ${impsColor(rec.imps)}">${signed(rec.imps)}</td>
                         </tr>`,
                     )
@@ -2708,21 +2726,21 @@
                 return `
                     <div class="mt-8">
                         <div class="flex items-center justify-between mb-2">
-                            <div class="text-[10px] uppercase tracking-[0.2em] text-[#8fa0b5] font-label font-bold flex items-center gap-1.5">
-                                <span class="material-symbols-outlined text-sm text-[#f2ca4c]">history</span>Recent solo boards
+                            <div class="text-[10px] uppercase tracking-[0.2em] text-[#908f8d] font-label font-bold flex items-center gap-1.5">
+                                <span class="material-symbols-outlined text-sm text-[#e8e6e3]">history</span>Recent boards
                             </div>
-                            <button id="historyBtn" class="flex items-center gap-1 text-xs font-label font-semibold text-[#6ee7a0] hover:text-[#8fd694]">
+                            <button id="historyBtn" class="flex items-center gap-1 text-xs font-label font-semibold text-[#bababa] hover:text-[#e8e6e3]">
                                 <span class="material-symbols-outlined text-sm">style</span>Review cards &amp; auctions
                             </button>
                         </div>
                         <div class="cb-cardpanel overflow-x-auto">
                             <table class="w-full border-collapse min-w-[520px]">
                                 <thead><tr>
-                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label">When</th>
-                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label">Deal</th>
-                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label">Contract</th>
-                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label">Result</th>
-                                    <th class="px-3 py-1.5 text-right text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label">IMPs</th>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#908f8d] font-label">When</th>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#908f8d] font-label">Deal</th>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#908f8d] font-label">Contract</th>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#908f8d] font-label">Result</th>
+                                    <th class="px-3 py-1.5 text-right text-[10px] uppercase tracking-widest text-[#908f8d] font-label">IMPs</th>
                                 </tr></thead>
                                 <tbody>${rows}</tbody>
                             </table>
@@ -2730,9 +2748,86 @@
                     </div>`;
             }
 
+            async function loadRankings() {
+                try {
+                    const res = await fetch("/api/play/rankings");
+                    if (res.ok) rankings = await res.json();
+                } catch (e) {}
+            }
+
+            function rankRowsHtml(list, isPair) {
+                if (!list || !list.length)
+                    return `<tr><td colspan="4" class="px-3 py-6 text-center text-xs text-[#787572] italic">Nobody is ranked yet — score 16+ boards in the last 3 months.</td></tr>`;
+                const me = window.currentUser;
+                return list
+                    .map((e, i) => {
+                        const mine =
+                            !isPair && e.name === me
+                                ? " background:rgba(255,255,255,0.06);"
+                                : isPair &&
+                                    me &&
+                                    (e.name === me || e.partner === me)
+                                  ? " background:rgba(255,255,255,0.06);"
+                                  : "";
+                        const who = isPair
+                            ? `${escapeHtml(e.name)} &amp; ${escapeHtml(e.partner || "")}`
+                            : escapeHtml(e.name);
+                        return `
+                        <tr class="border-t border-white/5" style="${mine}">
+                            <td class="px-3 py-1.5 text-xs text-[#787572] w-8">${i + 1}</td>
+                            <td class="px-3 py-1.5 text-sm font-label font-semibold text-[#e8e6e3] truncate">${who}</td>
+                            <td class="px-3 py-1.5 text-sm font-headline font-bold text-right ${impsColor(e.milliImps / 1000)} w-24">${signed(e.milliImps)}</td>
+                            <td class="px-3 py-1.5 text-xs text-[#908f8d] text-right w-20">${e.boards}</td>
+                        </tr>`;
+                    })
+                    .join("");
+            }
+
+            function rankingsHtml() {
+                const tabs = [
+                    ["soloBid", "Solo bidding"],
+                    ["pairBid", "Pair bidding"],
+                    ["soloPlay", "Solo play"],
+                ];
+                const tabBtns = tabs
+                    .map(
+                        ([id, label]) => `
+                        <button data-ranktab="${id}" class="flex-1 px-2 py-1.5 rounded-lg font-label text-[11px] font-bold uppercase tracking-wider transition-all ${rankTab === id ? "bg-[#4a4642] text-[#e8e6e3]" : "bg-white/5 text-[#787572] hover:bg-white/10"}">${label}</button>`,
+                    )
+                    .join("");
+                const isPair = rankTab === "pairBid";
+                const list = rankings ? rankings[rankTab] || [] : null;
+                const body = !rankings
+                    ? `<tr><td colspan="4" class="px-3 py-6 text-center text-xs text-[#787572]">${spinner("Loading rankings…")}</td></tr>`
+                    : rankRowsHtml(list, isPair);
+                return `
+                    <div class="mt-8">
+                        <div class="flex items-center justify-between mb-2 gap-2">
+                            <div class="text-[10px] uppercase tracking-[0.2em] text-[#908f8d] font-label font-bold flex items-center gap-1.5">
+                                <span class="material-symbols-outlined text-sm">trophy</span>Rankings
+                            </div>
+                            <div class="text-[10px] text-[#787572] font-label text-right">
+                                avg milli-IMPs/board over the last 128 boards · 16+ boards in 3 months to qualify
+                            </div>
+                        </div>
+                        <div class="flex gap-1.5 mb-2">${tabBtns}</div>
+                        <div class="cb-cardpanel overflow-x-auto">
+                            <table class="w-full border-collapse min-w-[380px]">
+                                <thead><tr>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#787572] font-label w-8">#</th>
+                                    <th class="px-3 py-1.5 text-left text-[10px] uppercase tracking-widest text-[#787572] font-label">${isPair ? "Pair" : "Player"}</th>
+                                    <th class="px-3 py-1.5 text-right text-[10px] uppercase tracking-widest text-[#787572] font-label w-24">mIMP/board</th>
+                                    <th class="px-3 py-1.5 text-right text-[10px] uppercase tracking-widest text-[#787572] font-label w-20">Boards</th>
+                                </tr></thead>
+                                <tbody>${body}</tbody>
+                            </table>
+                        </div>
+                    </div>`;
+            }
+
             function bidTabsHtml() {
                 const tab = (id, label, icon, on) => `
-                    <button data-bidtab="${id}" class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-label text-xs font-bold uppercase tracking-wider transition-all ${on ? "bg-gradient-to-b from-[#37b26a] to-[#1e7d47] text-white shadow-[0_2px_0_rgba(0,0,0,0.3)]" : "bg-white/5 text-[#8fa0b5] hover:bg-white/10"}">
+                    <button data-bidtab="${id}" class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-label text-xs font-bold uppercase tracking-wider transition-all ${on ? "bg-gradient-to-b from-[#6f6c68] to-[#4a4642] text-white shadow-[0_2px_0_rgba(0,0,0,0.3)]" : "bg-white/5 text-[#908f8d] hover:bg-white/10"}">
                         <span class="material-symbols-outlined text-sm">${icon}</span>${label}
                     </button>`;
                 return `
@@ -2747,6 +2842,7 @@
                     return `
                         ${statsBarHtml()}
                         <div class="grid gap-3">${soloCardHtml()}</div>
+                        ${rankingsHtml()}
                         ${recentHtml()}`;
                 }
                 const body =
@@ -2758,6 +2854,7 @@
                     ${bidTabsHtml()}
                     ${body}
                     ${teamGamesHtml()}
+                    ${rankingsHtml()}
                     ${recentHtml()}`;
             }
 
@@ -2768,7 +2865,7 @@
                             <span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span>
                         </div>
                         <p class="text-white text-xl font-headline font-extrabold mt-2">Log in to play</p>
-                        <p class="text-sm text-[#9aa7b8] mt-2 max-w-sm mx-auto leading-relaxed">Solo history and persistent partner tables are kept for your account. Climb the IMP ladder.</p>
+                        <p class="text-sm text-[#908f8d] mt-2 max-w-sm mx-auto leading-relaxed">Solo history and persistent partner tables are kept for your account. Climb the IMP ladder.</p>
                         <button id="loginBtn" class="cb-btn-green mt-6 !px-7 !py-3 !text-sm">
                             <span class="material-symbols-outlined text-sm">login</span>
                             Log in
@@ -2850,10 +2947,12 @@
                         overlay.error = true;
                     }
                 } else {
-                    overlay.items = (stats && stats.recent
-                        ? stats.recent
-                        : []
-                    ).map(historyItemFromSolo);
+                    const recs = [
+                        ...((stats && stats.recent) || []),
+                        ...((stats && stats.recentPlay) || []),
+                    ];
+                    recs.sort((a, b) => new Date(b.ts || 0) - new Date(a.ts || 0));
+                    overlay.items = recs.map(historyItemFromSolo);
                 }
                 overlay.loading = false;
                 renderOverlay();
@@ -2882,11 +2981,11 @@
                 const tl = tricksLabel(item);
                 const resultTxt = tl ? ` · ${tl}` : "";
                 return `
-                    <button data-hist-item="${idx}" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:brightness-125 transition-all" style="background:#202836;">
-                        <span class="text-xs text-[#8fa0b5] font-label w-20 shrink-0">${label}</span>
+                    <button data-hist-item="${idx}" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:brightness-125 transition-all" style="background:#3d3a36;">
+                        <span class="text-xs text-[#908f8d] font-label w-20 shrink-0">${label}</span>
                         <span class="text-sm font-headline font-semibold text-white min-w-0 truncate">${contractHtml(item.contract)}</span>
-                        <span class="text-xs text-[#8fa0b5] font-label hidden sm:inline">${VULN_NAMES[item.vuln]}${resultTxt}</span>
-                        <span class="ml-auto text-xs text-[#8fa0b5] font-label">par ${scoreText(item.parNs)}</span>
+                        <span class="text-xs text-[#908f8d] font-label hidden sm:inline">${VULN_NAMES[item.vuln]}${resultTxt}</span>
+                        <span class="ml-auto text-xs text-[#908f8d] font-label">par ${scoreText(item.parNs)}</span>
                         <span class="text-sm font-headline font-bold ${impsColor(item.imps)} w-10 text-right">${signed(item.imps)}</span>
                     </button>`;
             }
@@ -2898,9 +2997,9 @@
                 return `
                     <div class="mb-4">
                         <div class="flex items-center gap-2 px-1 pb-1.5">
-                            <span class="text-[10px] uppercase tracking-widest text-[#8fa0b5] font-label font-bold">Match ${g.no}</span>
-                            <span class="text-[10px] text-[#8fa0b5] font-label">${scored} board${scored === 1 ? "" : "s"} scored</span>
-                            <span class="ml-auto text-[9px] uppercase tracking-widest text-[#8fa0b5] font-label">overall</span>
+                            <span class="text-[10px] uppercase tracking-widest text-[#908f8d] font-label font-bold">Match ${g.no}</span>
+                            <span class="text-[10px] text-[#908f8d] font-label">${scored} board${scored === 1 ? "" : "s"} scored</span>
+                            <span class="ml-auto text-[9px] uppercase tracking-widest text-[#908f8d] font-label">overall</span>
                             <span class="text-base font-headline font-extrabold ${impsColor(g.total)} w-14 text-right">${signed(g.total, 1)}</span>
                         </div>
                         <div class="space-y-1.5">${g.boards.map((it) => historyRowHtml(it)).join("")}</div>
@@ -2911,16 +3010,16 @@
                 const youSeat = state ? state.humanSeat : 2;
                 const hands = item.hands
                     ? `<div class="mt-3">${handsDiagramHtml(item.hands, youSeat)}</div>`
-                    : `<p class="text-xs text-[#8fa0b5] mt-3 italic">Cards were not recorded for this board.</p>`;
+                    : `<p class="text-xs text-[#908f8d] mt-3 italic">Cards were not recorded for this board.</p>`;
                 return `
                     <div class="flex items-center gap-2 mb-3">
                         <button id="histBackBtn" class="cb-btn-ghost">
                             <span class="material-symbols-outlined text-sm">arrow_back</span>All boards
                         </button>
                         <div class="font-headline font-bold text-white min-w-0 truncate">${contractHtml(item.contract)}</div>
-                        ${item.no ? `<span class="text-xs text-[#8fa0b5] font-label">· board ${item.no}${item.match ? ` · match ${item.match}` : ""}</span>` : ""}
+                        ${item.no ? `<span class="text-xs text-[#908f8d] font-label">· board ${item.no}${item.match ? ` · match ${item.match}` : ""}</span>` : ""}
                     </div>
-                    <div class="text-xs text-[#8fa0b5] font-label">
+                    <div class="text-xs text-[#908f8d] font-label">
                         ${SEAT_NAMES[item.dealer]} dealt · ${VULN_NAMES[item.vuln]} vuln
                         ${tricksLabel(item) ? ` · ${tricksLabel(item)}` : ""}
                         · par ${scoreText(item.parNs)} · your score ${scoreText(item.scoreNs)}
@@ -2935,20 +3034,20 @@
                 if (overlay.loading) {
                     body = `<div class="flex items-center gap-2 py-6 justify-center">${spinner("Loading boards…")}</div>`;
                 } else if (overlay.error) {
-                    body = `<p class="text-sm text-[#9aa7b8] italic py-6 text-center">Could not load the boards just now.</p>`;
+                    body = `<p class="text-sm text-[#908f8d] italic py-6 text-center">Could not load the boards just now.</p>`;
                 } else if (overlay.groups) {
                     body = overlay.groups.length
                         ? overlay.groups.map(matchGroupHtml).join("")
-                        : `<p class="text-sm text-[#9aa7b8] italic py-6 text-center">No completed boards yet.</p>`;
+                        : `<p class="text-sm text-[#908f8d] italic py-6 text-center">No completed boards yet.</p>`;
                 } else if (!overlay.items || overlay.items.length === 0) {
-                    body = `<p class="text-sm text-[#9aa7b8] italic py-6 text-center">No completed boards yet.</p>`;
+                    body = `<p class="text-sm text-[#908f8d] italic py-6 text-center">No completed boards yet.</p>`;
                 } else {
                     body = `<div class="space-y-1.5">${overlay.items.map(historyRowHtml).join("")}</div>`;
                 }
                 return `
                     <div class="flex items-center justify-between mb-3">
                         <div class="font-headline font-bold text-white">${overlay.groups ? "Match history" : "Board history"}</div>
-                        <button id="histCloseBtn" class="material-symbols-outlined text-[#9aa7b8] hover:text-white">close</button>
+                        <button id="histCloseBtn" class="material-symbols-outlined text-[#908f8d] hover:text-white">close</button>
                     </div>
                     ${body}`;
             }
@@ -3057,6 +3156,12 @@
                     btn.onclick = () => {
                         if (busy) return;
                         bidTab = btn.dataset.bidtab;
+                        render();
+                    };
+                });
+                content.querySelectorAll("[data-ranktab]").forEach((btn) => {
+                    btn.onclick = () => {
+                        rankTab = btn.dataset.ranktab;
                         render();
                     };
                 });
@@ -3237,9 +3342,7 @@
                     refreshBoard(true);
             });
 
-            if ("serviceWorker" in navigator) {
-                navigator.serviceWorker.register("/sw.js").catch(() => {});
-            }
+            // the service worker (Web Push) is registered site-wide in shared.js
             refreshAuthState();
         </script>
     </body>

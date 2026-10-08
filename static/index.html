@@ -65,14 +65,14 @@
                                 (t) => `
                             <div class="tree-list-item game-panel game-panel-hover flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4">
                                 <div class="flex items-center gap-3.5 min-w-0">
-                                    <span class="flex items-center justify-center w-11 h-11 rounded-2xl bg-gradient-to-b from-[#5b8def] to-[#2a5193] shadow-[0_3px_0_rgba(0,0,0,0.22)] shrink-0">
+                                    <span class="flex items-center justify-center w-11 h-11 rounded-2xl bg-gradient-to-b from-[#6f6c68] to-[#4a4642] shadow-[0_3px_0_rgba(0,0,0,0.22)] shrink-0">
                                         <span class="material-symbols-outlined text-xl text-white" style="font-variation-settings:'FILL' 1;">account_tree</span>
                                     </span>
                                     <div class="min-w-0">
                                         <span class="font-headline font-extrabold text-on-surface truncate block">${colorSuits(t.name)}</span>
                                         <span class="text-xs text-on-surface-variant font-label">by ${t.owner ? escapeHtml(t.owner) : "<em>unclaimed</em>"}${
                                             treeCanEdit(t) && !treeIsOwner(t)
-                                                ? ' <span class="text-[#2b7a4b] font-semibold">· you can edit</span>'
+                                                ? ' <span class="text-[#bababa] font-semibold">· you can edit</span>'
                                                 : ""
                                         }</span>
                                     </div>
@@ -150,7 +150,7 @@
                 overlay.className = "unlock-overlay";
                 overlay.innerHTML = `
                     <div class="unlock-card">
-                        <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-b from-[#5b8def] to-[#2a5193] mb-3 shadow-[0_3px_0_rgba(0,0,0,0.25)]">
+                        <span class="flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-b from-[#6f6c68] to-[#4a4642] mb-3 shadow-[0_3px_0_rgba(0,0,0,0.25)]">
                             <span class="material-symbols-outlined text-2xl text-white" style="font-variation-settings:'FILL' 1;">account_tree</span>
                         </span>
                         <h2 class="font-headline font-extrabold text-on-surface text-lg mb-1">New system</h2>

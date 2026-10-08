@@ -31,7 +31,7 @@ const (
 	humanSeat       = 2  // South
 	maxAuctionCalls = 24 // model sequence cap (MAX_CALLS in bidding-dt)
 	playBoardTTL    = 6 * time.Hour
-	playRecentMax   = 50
+	playRecentMax   = 128 // ranking window: last 128 boards per mode
 
 	botTimeout      = 30 * time.Second  // deal / bid / legal
 	botScoreTimeout = 90 * time.Second  // score (cold double-dummy solve)
@@ -130,11 +130,14 @@ type PlayRecord struct {
 	Plays    []PlayCard `json:"plays,omitempty"` // the card-play sequence
 }
 
-// PlayStats is the persisted per-user history (data/play_stats.json)
+// PlayStats is the persisted per-user history (data/play_stats.json).
+// Recent holds bid-only boards and RecentPlay full-play boards, each newest
+// first and capped at playRecentMax (128) -- the ranking window.
 type PlayStats struct {
-	Boards    int          `json:"boards"`
-	ImpsTotal float64      `json:"impsTotal"`
-	Recent    []PlayRecord `json:"recent"`
+	Boards     int          `json:"boards"`
+	ImpsTotal  float64      `json:"impsTotal"`
+	Recent     []PlayRecord `json:"recent"`
+	RecentPlay []PlayRecord `json:"recentPlay,omitempty"`
 }
 
 func initPlay() {
@@ -166,6 +169,29 @@ func loadPlayStats() {
 	if err := json.Unmarshal(data, &m); err != nil {
 		log.Printf("Could not parse play_stats.json: %v", err)
 		return
+	}
+	// One-time shape-up: records saved before the per-mode split all sit in
+	// Recent; move the full-play ones (mode "play", or a played-trick count)
+	// into RecentPlay and stamp the mode on the rest. Idempotent.
+	for u, s := range m {
+		var bid []PlayRecord
+		for _, r := range s.Recent {
+			if r.Mode == "play" || (r.Mode == "" && r.Played != nil) {
+				r.Mode = "play"
+				s.RecentPlay = append(s.RecentPlay, r)
+			} else {
+				r.Mode = "bid"
+				bid = append(bid, r)
+			}
+		}
+		s.Recent = bid
+		if len(s.Recent) > playRecentMax {
+			s.Recent = s.Recent[:playRecentMax]
+		}
+		if len(s.RecentPlay) > playRecentMax {
+			s.RecentPlay = s.RecentPlay[:playRecentMax]
+		}
+		m[u] = s
 	}
 	playMu.Lock()
 	playStats = m
@@ -209,9 +235,16 @@ func recordPlayResult(b *PlayBoard) {
 	if b.Play != nil {
 		rec.Plays = append([]PlayCard(nil), b.Play.Plays...)
 	}
-	s.Recent = append([]PlayRecord{rec}, s.Recent...)
-	if len(s.Recent) > playRecentMax {
-		s.Recent = s.Recent[:playRecentMax]
+	if b.Mode == "play" {
+		s.RecentPlay = append([]PlayRecord{rec}, s.RecentPlay...)
+		if len(s.RecentPlay) > playRecentMax {
+			s.RecentPlay = s.RecentPlay[:playRecentMax]
+		}
+	} else {
+		s.Recent = append([]PlayRecord{rec}, s.Recent...)
+		if len(s.Recent) > playRecentMax {
+			s.Recent = s.Recent[:playRecentMax]
+		}
 	}
 	playStats[b.User] = s
 	if err := savePlayStatsLocked(); err != nil {
@@ -807,11 +840,16 @@ func statsSummary(s PlayStats) map[string]any {
 	if recent == nil {
 		recent = []PlayRecord{}
 	}
+	recentPlay := s.RecentPlay
+	if recentPlay == nil {
+		recentPlay = []PlayRecord{}
+	}
 	return map[string]any{
-		"boards":    s.Boards,
-		"impsTotal": s.ImpsTotal,
-		"avgImps":   avg,
-		"recent":    recent,
+		"boards":     s.Boards,
+		"impsTotal":  s.ImpsTotal,
+		"avgImps":    avg,
+		"recent":     recent,
+		"recentPlay": recentPlay,
 	}
 }
 
