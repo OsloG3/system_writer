@@ -1,0 +1,36 @@
+# CPU smoke run for the hand-inference encoder/decoder on the human cache.
+# Trains a tiny model on a small subsample for a few minutes, to check the
+# whole pipeline (cache -> dataset -> VQ model -> checkpoints) end to end
+# before committing to a full run.
+#
+#     uv run --extra cpu python -m bidding_dt.hand.train --preset tiny \
+#         --config configs/hand_cache_smoke.yaml --out runs/hand_smoke
+#
+# Watch runs/hand_smoke/log.jsonl: `ce` should fall from ~log(52)=3.95 toward
+# the 13-of-52 prior (~2.09) and below. best.pt is what play_server --hand-ckpt
+# would load (a smoke model is only a wiring check, not a good guesser).
+
+model:
+  n_codes: 8
+  codebook_size: 64
+  code_dim: 32
+  revive_every: 50
+
+gen:
+  deals: 0                # no rollouts; train on the cache subsample below
+
+train:
+  batch_size: 64
+  lr: 3.0e-4
+  epochs: 1
+  warmup_steps: 50
+  log_every: 20
+  val_every: 100
+  val_batches: 4
+  val_samples: 4
+  mask_aug: 0.5
+
+data:
+  sources: [cache]
+  max_deals: 20000        # subsample each split so a CPU run stays short
+  num_workers: 0

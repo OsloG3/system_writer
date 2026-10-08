@@ -19,3 +19,12 @@ models/*.tmp
 *~
 backup_*/
 .#*
+
+bidding-dt/.venv/
+bidding-dt/__pycache__/
+*.pyc
+bidding-dt/.pytest_cache/
+bidding-dt/cache/
+bidding-dt/runs/
+bidding-dt/*.pt
+bidding-dt/training.txt

@@ -1,0 +1,53 @@
+# Recommended for the card-play bot: generate auctions from the SAME bidding
+# models the site plays with, mix in the human cache, and train the hand VQ on
+# all of it -- so the guesser reads the bots' own conventions, not just human
+# ones (an RL run invents its own; see rl/analyze.py).
+#
+#   uv run --extra cpu python -m bidding_dt.hand.train \
+#       --config configs/hand_cache_gen.yaml --threads 8 --cpu-bf16 --out runs/hand_gen
+#   # GPU box: --extra cuda (drop --threads/--cpu-bf16)
+#
+# Generation is rollouts only (no DD solving, no endplay). It writes a reusable
+# store under <out>/gen; pass --reuse-gen on a re-run to skip regenerating it.
+# The policies below default to the checkpoints this repo ships; edit them to
+# whatever bidding models you actually serve (PLAY_BOTS in the site).
+
+model:
+  d_model: 176
+  d_ff: 448
+  n_heads: 8
+  n_enc_layers: 6
+  n_slot_layers: 2
+  n_dec_layers: 6
+  n_codes: 16
+  codebook_size: 1024
+  code_dim: 64
+  commit_beta: 0.25
+  revive_frac: 0.02
+  revive_every: 500
+
+gen:
+  deals: 400000           # bot auctions to roll out (0 = use sources only)
+  chunk: 512
+  temp: 1.0               # sample the rollouts (covers off-path auctions)
+  policies:
+    - bc:runs/bc_small/best.pt
+    - rl:runs/rl_tinyt/best.pt
+    - random@0.1          # 10% noise tables
+
+train:
+  batch_size: 256
+  lr: 3.0e-4
+  epochs: 2
+  warmup_steps: 2000
+  log_every: 100
+  val_every: 2000
+  val_batches: 40
+  val_samples: 8
+  prefix: random
+  mask_aug: 0.5
+  mask_cards: 13
+
+data:
+  sources: [cache]        # mix the human cache with the generated <out>/gen store
+  num_workers: 8

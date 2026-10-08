@@ -1,0 +1,56 @@
+# Train the hand-inference VQ encoder/decoder directly on the human auction
+# cache -- no bidding-model rollouts, so this needs no other checkpoint.
+#
+# The cache is the store in `cache/` (hands/calls/lengths/dealer/vuln + train/
+# val/test splits) built once from training.txt by:
+#     uv run python -m bidding_dt.data.parse --input training.txt --cache cache
+# `data.sources: [cache]` below points training at it and `gen.deals: 0` turns
+# rollout generation off. Add more stores to `data.sources` (repeatable) to mix
+# in generated bot auctions (see hand_cache_gen.yaml / the README).
+#
+# Train (GPU box):
+#     uv run --extra cuda python -m bidding_dt.hand.train \
+#         --config configs/hand_cache.yaml --out runs/hand_cache
+# Train (CPU; slower -- add threads and bf16):
+#     uv run --extra cpu python -m bidding_dt.hand.train \
+#         --config configs/hand_cache.yaml --threads 8 --cpu-bf16 --out runs/hand_cache
+# Then serve it to the card-play bot:
+#     ... python -m bidding_dt.play_server --ckpt runs/rl_tinyt/best.pt \
+#         --hand-ckpt runs/hand_cache/best.pt --port 8081
+#
+# The model block below is the full "small" shape, so --preset is optional
+# (pass --preset base/large to widen it; the yaml keys still win).
+
+model:
+  d_model: 176
+  d_ff: 448
+  n_heads: 8
+  n_enc_layers: 6
+  n_slot_layers: 2
+  n_dec_layers: 6
+  n_codes: 16             # z = 16 VQ codes
+  codebook_size: 1024     # ... of 1024 entries each
+  code_dim: 64
+  commit_beta: 0.25
+  revive_frac: 0.02
+  revive_every: 500       # reseed dead codes every 500 steps
+
+gen:
+  deals: 0                # 0 = do not roll out the bidding models; use sources
+
+train:
+  batch_size: 256
+  lr: 3.0e-4
+  epochs: 2
+  warmup_steps: 2000
+  log_every: 100
+  val_every: 2000
+  val_batches: 40
+  val_samples: 8
+  prefix: random          # one auction prefix per (deal, seat) row per epoch
+  mask_aug: 0.5           # half the rows carry a random known-cards mask
+  mask_cards: 13          # ... of 13 cards (one full other hand)
+
+data:
+  sources: [cache]        # the human auction store (data/parse.py layout)
+  num_workers: 8
