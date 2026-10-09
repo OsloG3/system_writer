@@ -788,8 +788,9 @@ func (b *PlayBoard) stateLocked(stats PlayStats) map[string]any {
 }
 
 // playStateLocked renders the card-play phase for the client. The human's own
-// hand travels in stateLocked("hand"); the dummy is face up here. Hidden seats
-// are exposed only as a card count.
+// hand travels in stateLocked("hand"). The dummy is only exposed once the
+// opening lead has been made (before that it is face down, as at a real table);
+// hidden seats are exposed only as a card count.
 func (b *PlayBoard) playStateLocked(withLegal bool) map[string]any {
 	p := b.Play
 	seat := p.nextSeat()
@@ -805,6 +806,11 @@ func (b *PlayBoard) playStateLocked(withLegal bool) map[string]any {
 	for s := 0; s < 4; s++ {
 		counts[s] = len(b.remainingHand(s))
 	}
+	// The dummy stays face down until the opening lead is on the table.
+	dummyHand := ""
+	if len(plays) > 0 {
+		dummyHand = b.Hands[p.Dummy]
+	}
 	m := map[string]any{
 		"contract":   p.Contract,
 		"declarer":   p.Declarer,
@@ -816,7 +822,7 @@ func (b *PlayBoard) playStateLocked(withLegal bool) map[string]any {
 		"declTricks": p.DeclTricks,
 		"defTricks":  p.completedTricks() - p.DeclTricks,
 		"humanSeats": humanSeats,
-		"dummyHand":  b.Hands[p.Dummy],
+		"dummyHand":  dummyHand,
 		"counts":     counts,
 		"done":       p.Done,
 		"yourTurn":   false,

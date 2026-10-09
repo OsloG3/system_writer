@@ -815,46 +815,6 @@
             .cb-pseat.act {
                 filter: drop-shadow(0 0 6px rgba(232, 230, 227, 0.25));
             }
-            .cb-phand {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 2px;
-                justify-content: center;
-                max-width: 10.5rem;
-            }
-            .cb-pcard {
-                position: relative;
-                width: 1.55rem;
-                height: 2.2rem;
-                border-radius: 0.28rem;
-                background: linear-gradient(180deg, #fff, #eeece6);
-                border: 1px solid rgba(0, 0, 0, 0.4);
-                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: flex-start;
-                line-height: 1;
-                font-family: Manrope, sans-serif;
-                font-weight: 800;
-                padding-top: 0.12rem;
-                font-size: 0.72rem;
-                flex-shrink: 0;
-            }
-            .cb-pcard.red { color: #c0392b; }
-            .cb-pcard.blk { color: #1b1f27; }
-            .cb-pcard .su { font-size: 0.68rem; }
-            .cb-pcard.playable {
-                cursor: pointer;
-                border-color: #8f8c88;
-                box-shadow: 0 0 0 1px #8f8c88, 0 2px 6px rgba(0, 0, 0, 0.5);
-                transform: translateY(-2px);
-            }
-            .cb-pcard.playable:hover {
-                transform: translateY(-6px);
-                box-shadow: 0 0 0 2px #e8e6e3, 0 4px 10px rgba(0, 0, 0, 0.5);
-            }
-            .cb-pcard.spent { opacity: 0.28; filter: grayscale(0.6); }
             .cb-pback {
                 width: 1.5rem;
                 height: 2.15rem;
@@ -2465,7 +2425,9 @@
             function origHandOf(seat) {
                 if (!state.play) return null;
                 if (seat === state.humanSeat) return state.hand;
-                if (seat === state.play.dummy) return state.play.dummyHand;
+                // the dummy is only known once it is tabled (after the opening
+                // lead); before that the server sends an empty dummyHand
+                if (seat === state.play.dummy) return state.play.dummyHand || null;
                 return null;
             }
 
@@ -2513,14 +2475,6 @@
                     }
                 }
                 return win.seat;
-            }
-
-            function pcard(token, cls, dataAttr) {
-                const r = token[0],
-                    s = token[1];
-                const red = s === "H" || s === "D";
-                const rank = r === "T" ? "10" : r;
-                return `<div class="cb-pcard ${red ? "red" : "blk"} ${cls || ""}" ${dataAttr || ""}><span>${rank}</span><span class="su">${SUIT_SYMBOL[s]}</span></div>`;
             }
 
             function sortByRankDesc(cards) {
@@ -2592,28 +2546,30 @@
                 if (isYou) tags.push('<span class="you">you</span>');
                 if (isDecl) tags.push('<span class="role">declarer</span>');
                 else if (isDummy) tags.push('<span class="role">dummy</span>');
+                // The dummy is only face up once the opening lead is on the
+                // table; until then it is a face-down hand like any opponent.
+                const dummyUp = isDummy && revealedPlays().length > 0;
                 let body;
                 if (isYou) {
                     // your cards live in the bottom hand grid, not on the table
                     const cnt = (remainingOf(seat) || []).length;
                     body = `<div class="cb-pcount">${cnt} card${cnt === 1 ? "" : "s"}</div>`;
-                } else if (isDummy && p.declarer === state.humanSeat) {
-                    // you are declarer: the dummy is face up and you play it
+                } else if (dummyUp) {
+                    // the tabled dummy: same suit-column grid as your own hand;
+                    // clickable only when you are the declarer and it acts
+                    const youPlay = p.declarer === state.humanSeat;
                     body = handGridHtml(remainingOf(seat) || [], {
                         play: true,
                         small: true,
-                        acting: acting,
-                        playable: new Set(acting ? p.legal || [] : []),
+                        acting: youPlay && acting,
+                        playable: new Set(
+                            youPlay && acting ? p.legal || [] : [],
+                        ),
                     });
-                } else if (isDummy) {
-                    // a bot tables this dummy: face up, not clickable
-                    body =
-                        `<div class="cb-phand">` +
-                        (remainingOf(seat) || []).map((c) => pcard(c)).join("") +
-                        `</div>`;
                 } else {
-                    // hidden opponent: card backs + a count that shrinks in
-                    // step with the paced reveal (not the server's running total)
+                    // a hidden opponent (or the dummy before the opening lead):
+                    // card backs + a count that shrinks in step with the paced
+                    // reveal, not the server's running total
                     const cnt = Math.max(
                         0,
                         13 -
