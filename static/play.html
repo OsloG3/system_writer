@@ -2873,32 +2873,21 @@
 
             function handFooterHtml() {
                 if (state.noBoard || !state.hand || state.done) return "";
-                if (state.phase === "play") {
-                    // Your hand stays here at the bottom during play too (same
-                    // cards and colors as while bidding), laid out as a grid and
-                    // played with two clicks when it is your turn from South.
-                    const p = state.play;
-                    const youAct = playReady() && p.actSeat === state.humanSeat;
-                    const cards = remainingOf(state.humanSeat) || [];
-                    const role =
+                // Your hand stays at the bottom exactly as during bidding —
+                // no rearrangement between phases, same card faces and colours.
+                const p = state.play;
+                let role = "";
+                if (p && p.phase === "play") {
+                    role =
                         p.declarer === state.humanSeat
                             ? " · declarer"
                             : p.dummy === state.humanSeat
                               ? " · dummy"
                               : "";
-                    return `
-                    <div class="cb-handfoot">
-                        <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]}${role} · ${hcpOf(state.hand)} HCP</div>
-                        ${handGridHtml(cards, {
-                            play: true,
-                            acting: youAct,
-                            playable: new Set(youAct ? p.legal || [] : []),
-                        })}
-                    </div>`;
                 }
                 return `
                     <div class="cb-handfoot">
-                        <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]} ${hcpOf(state.hand)} HCP</div>
+                        <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]}${role} · ${hcpOf(state.hand)} HCP</div>
                         ${cardFan(state.hand, false)}
                     </div>`;
             }
