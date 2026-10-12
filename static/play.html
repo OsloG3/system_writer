@@ -588,12 +588,14 @@
 
             /* ---- Card-play hands on the table ----
                Your hand stays along the bottom in the same big .cb-card faces
-               as while bidding, but only the cards you still hold, grouped by
-               suit in one overlapping row (like the reference photo). The
-               tabled dummy is laid out face up at its seat: one overlapping
-               row (top seat) or column (side seats) grouped by suit. Hidden
-               seats show one card back per card still held. Tapping a legal
-               card selects it (lifts / gold ring); tapping it again plays it. */
+               as while bidding, but only the cards you still hold: all 13 (or
+               fewer) in one continuous overlapping line, suits in order with
+               no gaps (like the reference photo). The tabled dummy is laid out
+               face up at its seat the same way: one row (top seat) or column
+               (side seats). Hidden seats show one card back per card still
+               held. Tapping a legal card selects it (lifts / gold ring);
+               tapping it again plays it. Cards you may not play look like any
+               other card -- they are simply not clickable. */
             .cb-fan-play {
                 flex-wrap: nowrap;
                 justify-content: safe center;
@@ -602,25 +604,19 @@
                 overscroll-behavior-x: contain;
                 padding-top: 0.8rem; /* room for the lifted card */
             }
-            .cb-fan-play .cb-fan-suit {
-                display: flex;
-                flex-shrink: 0;
-            }
-            .cb-fan-play .cb-fan-suit + .cb-fan-suit {
-                margin-left: 0.3rem;
-            }
             .cb-fan-play .cb-card {
                 transition:
                     transform 0.14s ease,
                     box-shadow 0.14s ease;
             }
-            .cb-fan-play .cb-card.playable { cursor: pointer; }
+            .cb-fan-play .cb-card.playable {
+                cursor: pointer;
+                box-shadow:
+                    0 0 0 1.5px rgba(232, 230, 227, 0.5),
+                    0 2px 6px rgba(0, 0, 0, 0.45);
+            }
             .cb-fan-play .cb-card.playable:hover {
                 transform: translateY(-4px);
-            }
-            .cb-fan-play .cb-card.spent {
-                opacity: 0.45;
-                filter: grayscale(0.5);
             }
             .cb-fan-play .cb-card.sel,
             .cb-flat .cb-card.sel {
@@ -630,18 +626,13 @@
                     0 6px 12px rgba(0, 0, 0, 0.55);
                 z-index: 5;
             }
-            /* the tabled dummy: every remaining card, face up */
+            /* the tabled dummy: every remaining card, face up, one line */
             .cb-flat {
                 display: flex;
                 padding: 0.15rem 0.1rem;
             }
             .cb-flat-h { flex-direction: row; }
             .cb-flat-v { flex-direction: column; }
-            .cb-flat-suit { display: flex; }
-            .cb-flat-h .cb-flat-suit { flex-direction: row; flex-shrink: 0; }
-            .cb-flat-v .cb-flat-suit { flex-direction: column; }
-            .cb-flat-h .cb-flat-suit + .cb-flat-suit { margin-left: 0.35rem; }
-            .cb-flat-v .cb-flat-suit + .cb-flat-suit { margin-top: 0.35rem; }
             .cb-flat .cb-card {
                 width: 2.15rem;
                 height: 3.05rem;
@@ -668,10 +659,11 @@
                 gap: 1px;
             }
             .cb-flat-v .cb-corner i { margin-top: 0; }
-            .cb-flat .cb-card.playable { cursor: pointer; }
-            .cb-flat .cb-card.spent {
-                opacity: 0.45;
-                filter: grayscale(0.5);
+            .cb-flat .cb-card.playable {
+                cursor: pointer;
+                box-shadow:
+                    0 0 0 1.5px rgba(232, 230, 227, 0.5),
+                    0 1px 4px rgba(0, 0, 0, 0.45);
             }
             .cb-flat .cb-card.sel { transform: none; }
             @media (max-width: 400px) {
@@ -924,15 +916,69 @@
                 color: #e8e6e3;
                 min-height: 1.2rem;
             }
-            /* "Last trick" review: a button that opens the most recent
-               completed trick crosswise (same layout and card style as the
-               live table center). Nothing else about past tricks is kept. */
-            .cb-trickbar {
+            /* ---- The single play screen ----
+               Table and your hand are ONE view that always fits the screen:
+               nothing scrolls. The table floats in the middle, the prompt row
+               and your fan pin to the bottom. */
+            .cb-playview {
+                position: relative;
+                flex: 1;
+                min-height: 0;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                gap: 0.25rem;
+                max-width: 42rem;
+                width: 100%;
+                margin: 0 auto;
+                padding: 0.3rem 0.6rem
+                    calc(0.4rem + env(safe-area-inset-bottom));
+            }
+            .cb-playview .cb-ptable {
+                flex: 0 1 auto;
+                min-height: 0;
+                margin: auto 0;
+                overflow: hidden; /* never spill onto the hand below */
+            }
+            .cb-playview .cb-fan-play { flex-shrink: 0; }
+            .cb-playrow {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 0.5rem;
-                margin-top: 0.15rem;
+                gap: 0.6rem;
+                flex-shrink: 0;
+            }
+            .cb-playrow .cb-pprompt { flex: 1; min-width: 0; }
+            /* short screens: compress the table so everything still fits */
+            @media (max-height: 640px) {
+                .cb-ptable { padding: 0.45rem 0.5rem; gap: 0.35rem 0.5rem; }
+                .cb-ptrick { width: 7.4rem; height: 6.1rem; }
+                .cb-ptrick .tkc,
+                .cb-ptrick .tk-slot { width: 1.8rem; height: 2.55rem; }
+                .cb-flat .cb-card { width: 1.9rem; height: 2.7rem; }
+                .cb-flat .cb-card + .cb-card { margin-left: -1.35rem; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -1.85rem; }
+                .cb-flat .cb-corner b { font-size: 0.62rem; }
+                .cb-flat .cb-corner i { font-size: 0.54rem; }
+                .cb-pback { width: 1.3rem; height: 1.85rem; margin-left: -0.8rem; }
+                .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.35rem; }
+                .cb-fan .cb-card { width: 2.6rem; height: 3.8rem; margin-left: -1.35rem; }
+                .cb-pinfo { padding: 0.3rem 0.6rem; font-size: 0.66rem; }
+            }
+            @media (max-height: 540px) {
+                .cb-pinfo,
+                .cb-ptally { display: none; }
+                .cb-ptable { padding: 0.35rem 0.4rem; gap: 0.3rem 0.4rem; }
+                .cb-ptrick { width: 6.6rem; height: 5.4rem; }
+                .cb-ptrick .tkc,
+                .cb-ptrick .tk-slot { width: 1.6rem; height: 2.3rem; }
+                .cb-flat .cb-card { width: 1.7rem; height: 2.4rem; }
+                .cb-flat-v .cb-corner i { display: none; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -1.6rem; }
+                .cb-pback { width: 1.15rem; height: 1.6rem; margin-left: -0.7rem; }
+                .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.15rem; }
+                .cb-fan .cb-card { width: 2.3rem; height: 3.4rem; margin-left: -1.2rem; }
+                .cb-pprompt { font-size: 0.7rem; }
             }
             .cb-trickbtn {
                 display: inline-flex;
@@ -952,12 +998,23 @@
                 color: #e8e6e3;
                 border-color: rgba(255, 255, 255, 0.25);
             }
+            /* the reviewed trick floats over the table so the single
+               screen never grows taller */
             .cb-lasttrick {
-                margin-top: 0.35rem;
+                position: absolute;
+                left: 50%;
+                top: 45%;
+                transform: translate(-50%, -50%);
+                z-index: 30;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 gap: 0.15rem;
+                background: rgba(38, 36, 33, 0.97);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 0.8rem;
+                padding: 0.5rem 0.7rem;
+                box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
             }
             .cb-lasttrick .cap {
                 font-family: Inter, sans-serif;
@@ -2501,16 +2558,6 @@
                 return win.seat;
             }
 
-            function sortByRankDesc(cards) {
-                return cards
-                    .slice()
-                    .sort(
-                        (a, b) =>
-                            PLAY_RANK_ORDER.indexOf(a[0]) -
-                            PLAY_RANK_ORDER.indexOf(b[0]),
-                    );
-            }
-
             // One card face: same markup/colors as the bidding fan card.
             function gridCardHtml(token, cls, dataAttr) {
                 const r = token[0],
@@ -2522,33 +2569,32 @@
 
             // One card of an interactive hand (footer fan or tabled dummy):
             // while the hand acts, legal cards carry data-play and are
-            // clickable (two-click: lift, then tap again to play); the rest
-            // are dimmed. Outside the hand's acting turns cards are plain.
+            // clickable (two-click: lift, then tap again to play). Cards that
+            // cannot be played look like any other card, just not clickable.
             function playCardHtml(token, acting, playable) {
-                if (!acting) return gridCardHtml(token);
-                const ok = playable.has(token);
-                const cls = ok
-                    ? selectedCard === token
-                        ? "playable sel"
-                        : "playable"
-                    : "spent";
-                return gridCardHtml(
-                    token,
-                    cls,
-                    ok ? `data-play="${token}"` : "",
-                );
+                if (!acting || !playable.has(token)) return gridCardHtml(token);
+                const cls = selectedCard === token ? "playable sel" : "playable";
+                return gridCardHtml(token, cls, `data-play="${token}"`);
             }
 
-            // Cards grouped by suit (HAND_SUIT_ORDER), high rank first.
-            function cardsBySuit(cards) {
-                return HAND_SUIT_ORDER.map((suit) =>
-                    sortByRankDesc(cards.filter((c) => c[1] === suit)),
-                ).filter((g) => g.length);
+            // Cards in display order: suit by suit (HAND_SUIT_ORDER), high
+            // rank first, one continuous line with no gaps between suits.
+            function sortHand(cards) {
+                return cards.slice().sort((a, b) => {
+                    const d =
+                        HAND_SUIT_ORDER.indexOf(a[1]) -
+                        HAND_SUIT_ORDER.indexOf(b[1]);
+                    return (
+                        d ||
+                        PLAY_RANK_ORDER.indexOf(a[0]) -
+                            PLAY_RANK_ORDER.indexOf(b[0])
+                    );
+                });
             }
 
             // The tabled dummy: every remaining card face up, one overlapping
-            // row (top seat) or column (side seats) grouped by suit. Clickable
-            // only when you declared and it is the dummy's turn to play.
+            // row (top seat) or column (side seats). Clickable only when you
+            // declared and it is the dummy's turn to play.
             function dummyLayoutHtml(seat) {
                 const p = state.play;
                 const acting =
@@ -2556,30 +2602,24 @@
                     playReady() &&
                     p.actSeat === seat;
                 const playable = new Set(acting ? p.legal || [] : []);
-                const groups = cardsBySuit(remainingOf(seat) || [])
-                    .map(
-                        (g) =>
-                            `<div class="cb-flat-suit">${g.map((c) => playCardHtml(c, acting, playable)).join("")}</div>`,
-                    )
+                const cards = sortHand(remainingOf(seat) || [])
+                    .map((c) => playCardHtml(c, acting, playable))
                     .join("");
-                return `<div class="cb-flat ${seat === 0 ? "cb-flat-h" : "cb-flat-v"}">${groups}</div>`;
+                return `<div class="cb-flat ${seat === 0 ? "cb-flat-h" : "cb-flat-v"}">${cards}</div>`;
             }
 
             // Your play-phase hand: the same big fan as while bidding, but
-            // only the cards you still hold, grouped by suit; legal cards
+            // only the cards you still hold, all in one line; legal cards
             // lift on tap and play on the second tap.
             function playFanHtml() {
                 const p = state.play;
                 const seat = state.humanSeat;
                 const acting = playReady() && p.actSeat === seat;
                 const playable = new Set(acting ? p.legal || [] : []);
-                const groups = cardsBySuit(remainingOf(seat) || [])
-                    .map(
-                        (g) =>
-                            `<div class="cb-fan-suit">${g.map((c) => playCardHtml(c, acting, playable)).join("")}</div>`,
-                    )
+                const cards = sortHand(remainingOf(seat) || [])
+                    .map((c) => playCardHtml(c, acting, playable))
                     .join("");
-                return `<div class="cb-fan cb-fan-play">${groups}</div>`;
+                return `<div class="cb-fan cb-fan-play">${cards}</div>`;
             }
 
             function playSeatHtml(seat) {
@@ -2717,11 +2757,9 @@
                     p.dummy === state.humanSeat;
                 const yours = humanOnDecl ? decl : def;
                 const theirs = humanOnDecl ? def : decl;
-                const trickNo = done + (plays.length % 4 ? 1 : 0);
                 return `<div class="cb-ptally">
                     <span>You <b>${yours}</b></span>
                     <span>Them <b>${theirs}</b></span>
-                    <span>Trick <b>${Math.min(13, Math.max(1, trickNo))}</b>/13</span>
                 </div>`;
             }
 
@@ -2755,20 +2793,25 @@
 
             // Req 6: no running record of past tricks -- just the last one,
             // shown only on click, crosswise and in the table's card style.
-            function lastTrickHtml() {
-                const p = state.play;
+            // The panel floats over the table so the single screen keeps its
+            // height; the button lives in the prompt row.
+            function lastTrickBtnHtml() {
                 const trick = lastTrickPlays();
                 const open = showLastTrick && trick;
-                const btn = `<button id="lastTrickBtn" class="cb-trickbtn${open ? " on" : ""}"${trick ? "" : " disabled"}>
+                return `<button id="lastTrickBtn" class="cb-trickbtn${open ? " on" : ""}"${trick ? "" : " disabled"}>
                     <span class="material-symbols-outlined">${open ? "expand_less" : "style"}</span>Last trick</button>`;
-                if (!open) return `<div class="cb-trickbar">${btn}</div>`;
+            }
+
+            function lastTrickPanelHtml() {
+                const p = state.play;
+                const trick = lastTrickPlays();
+                if (!showLastTrick || !trick) return "";
                 const win = trickWinnerJS(trick, p.trump);
                 const no = Math.floor(revealedPlays().length / 4);
-                return `<div class="cb-trickbar">${btn}</div>
-                    <div class="cb-lasttrick">
-                        <div class="cap">${SEAT_NAMES[win]} won trick ${no}</div>
-                        ${trickCrossHtml(trick, win)}
-                    </div>`;
+                return `<div class="cb-lasttrick">
+                    <div class="cap">${SEAT_NAMES[win]} won trick ${no}</div>
+                    ${trickCrossHtml(trick, win)}
+                </div>`;
             }
 
             function playTableView() {
@@ -2782,8 +2825,11 @@
                         <div class="cb-pt-s">${playSeatHtml(2)}</div>
                     </div>
                     ${playTallyHtml()}
-                    <div class="cb-pprompt">${playPromptHtml()}</div>
-                    ${lastTrickHtml()}`;
+                    <div class="cb-playrow">
+                        <div class="cb-pprompt">${playPromptHtml()}</div>
+                        ${lastTrickBtnHtml()}
+                    </div>
+                    ${lastTrickPanelHtml()}`;
             }
 
             // Two-click play: the first tap on a legal card lifts it (select);
@@ -2924,24 +2970,9 @@
 
             function handFooterHtml() {
                 if (state.noBoard || !state.hand || state.done) return "";
-                const p = state.play;
-                if (state.phase === "play" && p) {
-                    // During play the fan shows the cards you still hold
-                    // (played cards leave the fan); legal ones lift on tap.
-                    const role =
-                        p.declarer === state.humanSeat
-                            ? " · declarer"
-                            : p.dummy === state.humanSeat
-                              ? " · dummy"
-                              : "";
-                    return `
-                    <div class="cb-handfoot">
-                        <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]}${role} · ${hcpOf(state.hand)} HCP</div>
-                        ${playFanHtml()}
-                    </div>`;
-                }
-                // Bidding: the hand exactly as dealt — same card faces,
-                // colours and position it keeps while playing.
+                // During play the hand lives inside the single play view
+                // (cb-playview), not in a separate footer.
+                if (state.phase === "play") return "";
                 return `
                     <div class="cb-handfoot">
                         <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]} · ${hcpOf(state.hand)} HCP</div>
@@ -2951,6 +2982,18 @@
 
             function tableView() {
                 const team = state.mode === "team";
+                if (state.phase === "play" && !state.done) {
+                    // One single screen, no scrolling: the table (seats, trick,
+                    // tally, prompt) and your hand below it in one view.
+                    return `
+                        <div class="flex-1 min-h-0 flex flex-col">
+                            ${topBarHtml()}
+                            <div class="cb-playview">
+                                ${playTableView()}
+                                ${playFanHtml()}
+                            </div>
+                        </div>`;
+                }
                 let mid;
                 let midCls = "cb-mid";
                 if (team && state.noBoard) {
@@ -2959,8 +3002,6 @@
                     // End of hand: one card — score, par, diagram with the
                     // mini auction at the table's center, next board
                     mid = doneViewHtml();
-                } else if (state.phase === "play") {
-                    mid = playTableView();
                 } else {
                     midCls = "cb-mid cb-mid-bid";
                     const parts = [
