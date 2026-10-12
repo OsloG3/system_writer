@@ -605,14 +605,24 @@
                 padding-top: 0.8rem; /* room for the lifted card */
             }
             .cb-fan-play .cb-card {
-                width: 3.15rem;
+                width: 3.05rem;
                 height: 4.5rem;
-                margin-left: -1.55rem;
+                margin-left: -1.4rem;
                 transition:
                     transform 0.14s ease,
                     box-shadow 0.14s ease;
             }
             .cb-fan-play .cb-card:first-child { margin-left: 0; }
+            /* big, uncut indices: the overlap step (1.65rem) is wider than the
+               widest rank ("10") plus its inset */
+            .cb-fan-play .cb-corner { left: 0.18rem; top: 0.18rem; }
+            .cb-fan-play .cb-corner b { font-size: 1.05rem; }
+            .cb-fan-play .cb-corner i { font-size: 0.95rem; margin-top: 0; }
+            .cb-fan-play .cb-midsuit {
+                font-size: 1.6rem;
+                right: 0.25rem;
+                bottom: 0.3rem;
+            }
             .cb-fan-play .cb-card.playable {
                 cursor: pointer;
                 box-shadow:
@@ -646,11 +656,14 @@
                 flex-shrink: 0;
                 transition: box-shadow 0.14s ease;
             }
-            .cb-flat-h .cb-card + .cb-card { margin-left: -1.75rem; }
-            .cb-flat-v .cb-card + .cb-card { margin-top: -2.6rem; }
+            .cb-flat-h .cb-card + .cb-card { margin-left: -1.35rem; }
+            .cb-flat-v .cb-card + .cb-card { margin-top: -2.35rem; }
             .cb-flat .cb-card:first-child { margin-left: 0; margin-top: 0; }
-            .cb-flat .cb-corner b { font-size: 0.8rem; }
-            .cb-flat .cb-corner i { font-size: 0.7rem; }
+            /* indices as big as the visible strip allows: 1.25rem of each card
+               shows in a row, 1.35rem in a column (sideways corner) */
+            .cb-flat .cb-corner { left: 0.15rem; top: 0.15rem; }
+            .cb-flat .cb-corner b { font-size: 0.9rem; }
+            .cb-flat .cb-corner i { font-size: 0.8rem; }
             .cb-flat .cb-midsuit { display: none; }
             /* in a column only a thin top strip of each card shows, so the
                corner turns sideways: rank and suit side by side */
@@ -672,15 +685,17 @@
                     width: 2.2rem;
                     height: 3.2rem;
                 }
-                .cb-flat-h .cb-card + .cb-card { margin-left: -1.5rem; }
-                .cb-flat-v .cb-card + .cb-card { margin-top: -2.3rem; }
-                .cb-flat .cb-corner b { font-size: 0.7rem; }
-                .cb-flat .cb-corner i { font-size: 0.6rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.1rem; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -2rem; }
+                .cb-flat .cb-corner b { font-size: 0.8rem; }
+                .cb-flat .cb-corner i { font-size: 0.7rem; }
                 .cb-fan-play .cb-card {
-                    width: 2.8rem;
+                    width: 2.75rem;
                     height: 4.1rem;
-                    margin-left: -1.5rem;
+                    margin-left: -1.3rem;
                 }
+                .cb-fan-play .cb-corner b { font-size: 0.95rem; }
+                .cb-fan-play .cb-corner i { font-size: 0.85rem; }
             }
 
             .cb-diagram {
@@ -835,11 +850,6 @@
                 flex-shrink: 0;
             }
             .cb-pseat.act .cb-pbadge { background: #ffd54a; }
-            .cb-pcount {
-                font-family: Inter, sans-serif;
-                font-size: 0.62rem;
-                color: #908f8d;
-            }
             .cb-ptrick {
                 position: relative;
                 width: 9.5rem;
@@ -876,7 +886,7 @@
                 justify-content: center;
                 font-family: Manrope, sans-serif;
                 font-weight: 800;
-                font-size: 1.05rem;
+                font-size: 1.25rem;
                 line-height: 1;
             }
             .cb-ptrick .tkc.red { color: #c0392b; }
@@ -964,13 +974,13 @@
                 .cb-ptrick .tkc,
                 .cb-ptrick .tk-slot { width: 2rem; height: 2.9rem; }
                 .cb-flat .cb-card { width: 2.3rem; height: 3.3rem; }
-                .cb-flat-h .cb-card + .cb-card { margin-left: -1.55rem; }
-                .cb-flat-v .cb-card + .cb-card { margin-top: -2.35rem; }
-                .cb-flat .cb-corner b { font-size: 0.68rem; }
-                .cb-flat .cb-corner i { font-size: 0.58rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.25rem; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -2.25rem; }
+                .cb-flat .cb-corner b { font-size: 0.8rem; }
+                .cb-flat .cb-corner i { font-size: 0.68rem; }
                 .cb-pback { width: 1.5rem; height: 2.15rem; margin-left: -0.9rem; }
                 .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.5rem; }
-                .cb-fan-play .cb-card { width: 2.9rem; height: 4.2rem; margin-left: -1.5rem; }
+                .cb-fan-play .cb-card { width: 2.9rem; height: 4.2rem; margin-left: -1.4rem; }
             }
             @media (max-height: 540px) {
                 .cb-ptable { padding: 0.3rem 0.2rem; gap: 0.3rem 0.4rem; }
@@ -978,13 +988,15 @@
                 .cb-ptrick .tkc,
                 .cb-ptrick .tk-slot { width: 1.7rem; height: 2.45rem; }
                 .cb-flat .cb-card { width: 2rem; height: 2.9rem; }
-                .cb-flat-h .cb-card + .cb-card { margin-left: -1.4rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.1rem; }
                 .cb-flat-v .cb-corner i { display: none; }
                 .cb-flat-v .cb-card + .cb-card { margin-top: -2.05rem; }
-                .cb-flat .cb-corner b { font-size: 0.6rem; }
+                .cb-flat .cb-corner b { font-size: 0.68rem; }
                 .cb-pback { width: 1.3rem; height: 1.85rem; margin-left: -0.75rem; }
                 .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.3rem; }
                 .cb-fan-play .cb-card { width: 2.6rem; height: 3.8rem; margin-left: -1.35rem; }
+                .cb-fan-play .cb-corner b { font-size: 0.85rem; }
+                .cb-fan-play .cb-corner i { font-size: 0.75rem; }
                 .cb-pprompt { font-size: 0.7rem; }
             }
             /* Laptops and desktops: the play view used to sit in a small
@@ -1038,6 +1050,31 @@
                 letter-spacing: 0.06em;
                 text-transform: uppercase;
                 color: #787572;
+            }
+            /* the auction that led here, on demand: same toggle behaviour as
+               the last-trick button, panel pops up above the button row */
+            .cb-auctionpop {
+                position: absolute;
+                bottom: calc(100% + 0.3rem);
+                left: 0;
+                right: 0;
+                z-index: 30;
+                max-height: min(26rem, 52vh);
+                overflow-y: auto;
+                overscroll-behavior: contain;
+                background: rgba(38, 36, 33, 0.97);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 0.8rem;
+                padding: 0.35rem;
+                box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+            }
+            .cb-auctionpop .cb-auction {
+                background: transparent;
+                border: none;
+            }
+            .cb-auctionpop .cb-auc-body {
+                min-height: 0;
+                overflow: visible;
             }
 
             @media (max-width: 400px) {
@@ -1283,6 +1320,7 @@
             let stepping = false; // a paced bot-card fetch is in flight
             let selectedCard = null; // two-click: card currently lifted, awaiting confirmation
             let showLastTrick = false; // "last trick" review panel open?
+            let showAuction = false; // "bidding" review panel open?
 
             function dcolorSuits(text) {
                 return escapeHtml(text)
@@ -2650,9 +2688,7 @@
                 const dummyUp = isDummy && !isYou && revealedPlays().length > 0;
                 let body;
                 if (isYou) {
-                    // your cards live in the bottom fan, not on the table
-                    const cnt = (remainingOf(seat) || []).length;
-                    body = `<div class="cb-pcount">${cnt} card${cnt === 1 ? "" : "s"}</div>`;
+                    body = ""; // your cards live in the bottom fan
                 } else if (dummyUp) {
                     body = dummyLayoutHtml(seat);
                 } else {
@@ -2813,6 +2849,21 @@
                 </div>`;
             }
 
+            // The auction that produced the contract, on demand: a toggle
+            // button like the last-trick one, with the full bidding table in
+            // a panel that pops up above the button row.
+            function auctionBtnHtml() {
+                return `<button id="auctionBtn" class="cb-trickbtn${showAuction ? " on" : ""}">
+                    <span class="material-symbols-outlined">${showAuction ? "expand_less" : "gavel"}</span>Bidding</button>`;
+            }
+
+            function auctionPanelHtml() {
+                if (!showAuction) return "";
+                return `<div class="cb-auctionpop">
+                    ${auctionHtml(state.dealer, state.vuln, state.calls, null, state.humanSeat)}
+                </div>`;
+            }
+
             function playTableView() {
                 return `
                     <div class="cb-ptable">
@@ -2825,9 +2876,11 @@
                         <div class="cb-pt-s">${playSeatHtml(2)}</div>
                     </div>
                     <div class="cb-playbottom">
+                        ${auctionPanelHtml()}
                         ${lastTrickPanelHtml()}
                         <div class="cb-playrow">
                             <div class="cb-pprompt">${playPromptHtml()}</div>
+                            ${auctionBtnHtml()}
                             ${lastTrickBtnHtml()}
                         </div>
                     </div>`;
@@ -2958,6 +3011,7 @@
                     lastRevealTs = 0;
                     selectedCard = null;
                     showLastTrick = false;
+                    showAuction = false;
                 }
                 const ctx =
                     state.phase === "play" && state.play
@@ -3699,6 +3753,14 @@
                 if (lastTrick)
                     lastTrick.onclick = () => {
                         showLastTrick = !showLastTrick;
+                        if (showLastTrick) showAuction = false;
+                        render();
+                    };
+                const aucBtn = document.getElementById("auctionBtn");
+                if (aucBtn)
+                    aucBtn.onclick = () => {
+                        showAuction = !showAuction;
+                        if (showAuction) showLastTrick = false;
                         render();
                     };
                 const retry = document.getElementById("retryBtn");
