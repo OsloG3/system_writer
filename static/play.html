@@ -586,109 +586,103 @@
                 .cb-midsuit { font-size: 0.95rem; }
             }
 
-            /* ---- Hand grid (card-play phase) ----
-               During play your hand stays along the bottom -- the same place,
-               the same big .cb-card faces and red/black colors it has while
-               bidding -- but laid out as a grid: one column per suit, high
-               ranks at the top (towards the table center / declarer). A tap
-               expands a suit (spread + enlarge); a second tap plays the card.
-               Bidding itself still uses the single-row fan (see cardFan), so
-               the hand keeps the same position and colors across both phases. */
-            .cb-handgrid {
-                display: flex;
-                align-items: flex-end;
-                justify-content: center;
-                gap: 0.5rem;
-                padding: 0.35rem 0.4rem 0.15rem;
+            /* ---- Card-play hands on the table ----
+               Your hand stays along the bottom in the same big .cb-card faces
+               as while bidding, but only the cards you still hold, grouped by
+               suit in one overlapping row (like the reference photo). The
+               tabled dummy is laid out face up at its seat: one overlapping
+               row (top seat) or column (side seats) grouped by suit. Hidden
+               seats show one card back per card still held. Tapping a legal
+               card selects it (lifts / gold ring); tapping it again plays it. */
+            .cb-fan-play {
+                flex-wrap: nowrap;
+                justify-content: safe center;
+                max-width: 100%;
+                overflow-x: auto;
+                overscroll-behavior-x: contain;
+                padding-top: 0.8rem; /* room for the lifted card */
             }
-            .cb-suitcol {
+            .cb-fan-play .cb-fan-suit {
                 display: flex;
-                flex-direction: column;
-                align-items: center;
-                position: relative;
-                min-width: 2.6rem;
+                flex-shrink: 0;
             }
-            .cb-handgrid .cb-card {
-                width: 2.6rem;
-                height: 3.6rem;
-                margin-left: 0;
-                margin-top: -2.5rem; /* compact: rank corner of each card shows */
+            .cb-fan-play .cb-fan-suit + .cb-fan-suit {
+                margin-left: 0.3rem;
+            }
+            .cb-fan-play .cb-card {
                 transition:
-                    margin-top 0.16s ease,
-                    transform 0.16s ease,
-                    box-shadow 0.16s ease;
+                    transform 0.14s ease,
+                    box-shadow 0.14s ease;
             }
-            .cb-handgrid .cb-card:first-child { margin-top: 0; }
-            .cb-handgrid .cb-corner b { font-size: 0.8rem; }
-            .cb-handgrid .cb-corner i { font-size: 0.7rem; }
-            .cb-handgrid .cb-midsuit {
-                font-size: 1rem;
-                right: 0.25rem;
-                bottom: 0.3rem;
+            .cb-fan-play .cb-card.playable { cursor: pointer; }
+            .cb-fan-play .cb-card.playable:hover {
+                transform: translateY(-4px);
             }
-            .cb-suitvoid {
-                width: 2.6rem;
-                height: 3.6rem;
+            .cb-fan-play .cb-card.spent {
+                opacity: 0.45;
+                filter: grayscale(0.5);
+            }
+            .cb-fan-play .cb-card.sel,
+            .cb-flat .cb-card.sel {
+                transform: translateY(-0.55rem);
+                box-shadow:
+                    0 0 0 2px #ffd54a,
+                    0 6px 12px rgba(0, 0, 0, 0.55);
+                z-index: 5;
+            }
+            /* the tabled dummy: every remaining card, face up */
+            .cb-flat {
                 display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 1.4rem;
-                color: #43403c;
+                padding: 0.15rem 0.1rem;
             }
-            /* play phase: which cards may be played now */
-            .cb-handgrid.play .cb-card.playable {
-                cursor: pointer;
-                box-shadow: 0 0 0 1px #8f8c88, 0 2px 6px rgba(0, 0, 0, 0.5);
+            .cb-flat-h { flex-direction: row; }
+            .cb-flat-v { flex-direction: column; }
+            .cb-flat-suit { display: flex; }
+            .cb-flat-h .cb-flat-suit { flex-direction: row; flex-shrink: 0; }
+            .cb-flat-v .cb-flat-suit { flex-direction: column; }
+            .cb-flat-h .cb-flat-suit + .cb-flat-suit { margin-left: 0.35rem; }
+            .cb-flat-v .cb-flat-suit + .cb-flat-suit { margin-top: 0.35rem; }
+            .cb-flat .cb-card {
+                width: 2.15rem;
+                height: 3.05rem;
+                margin: 0;
+                border-radius: 0.35rem;
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+                flex-shrink: 0;
+                transition: box-shadow 0.14s ease;
             }
-            .cb-handgrid.play .cb-card.spent {
-                opacity: 0.38;
-                filter: grayscale(0.55);
+            .cb-flat .cb-card + .cb-card { margin-left: -1.5rem; }
+            .cb-flat-v .cb-card + .cb-card {
+                margin-left: 0;
+                margin-top: -2.2rem;
             }
-            /* the tapped suit spreads out and grows so a card can be picked */
-            .cb-suitcol.expanded { z-index: 6; }
-            .cb-suitcol.expanded .cb-card {
-                margin-top: -1.7rem; /* ~1.9rem of each card shows */
-                transform: scale(1.1);
+            .cb-flat .cb-card:first-child { margin-left: 0; margin-top: 0; }
+            .cb-flat .cb-corner b { font-size: 0.72rem; }
+            .cb-flat .cb-corner i { font-size: 0.62rem; }
+            .cb-flat .cb-midsuit { display: none; }
+            /* in a column only a thin top strip of each card shows, so the
+               corner turns sideways: rank and suit side by side */
+            .cb-flat-v .cb-corner {
+                flex-direction: row;
+                align-items: baseline;
+                gap: 1px;
             }
-            .cb-suitcol.expanded .cb-card:first-child { margin-top: 0; }
-            .cb-handgrid.play .cb-suitcol.expanded .cb-card.playable:hover {
-                transform: scale(1.14) translateY(-2px);
-                box-shadow: 0 0 0 2px #e8e6e3, 0 4px 10px rgba(0, 0, 0, 0.5);
+            .cb-flat-v .cb-corner i { margin-top: 0; }
+            .cb-flat .cb-card.playable { cursor: pointer; }
+            .cb-flat .cb-card.spent {
+                opacity: 0.45;
+                filter: grayscale(0.5);
             }
-            /* small variant: the dummy inside the table */
-            .cb-handgrid.sm { gap: 0.3rem; padding: 0.1rem; }
-            .cb-handgrid.sm .cb-suitcol { min-width: 1.7rem; }
-            .cb-handgrid.sm .cb-card {
-                width: 1.7rem;
-                height: 2.4rem;
-                margin-top: -1.6rem;
-                border-radius: 0.3rem;
-            }
-            .cb-handgrid.sm .cb-card:first-child { margin-top: 0; }
-            .cb-handgrid.sm .cb-corner b { font-size: 0.55rem; }
-            .cb-handgrid.sm .cb-corner i { font-size: 0.5rem; margin-top: 0; }
-            .cb-handgrid.sm .cb-midsuit { display: none; }
-            .cb-handgrid.sm .cb-suitvoid {
-                width: 1.7rem;
-                height: 2.4rem;
-                font-size: 0.9rem;
-            }
-            .cb-handgrid.sm .cb-suitcol.expanded .cb-card {
-                margin-top: -1rem;
-                transform: scale(1.12);
-            }
+            .cb-flat .cb-card.sel { transform: none; }
             @media (max-width: 400px) {
-                .cb-handgrid { gap: 0.35rem; }
-                .cb-handgrid .cb-card {
-                    width: 2.3rem;
-                    height: 3.2rem;
-                    margin-top: -2.25rem;
+                .cb-flat .cb-card {
+                    width: 1.9rem;
+                    height: 2.75rem;
                 }
-                .cb-handgrid .cb-corner b { font-size: 0.72rem; }
-                .cb-handgrid .cb-corner i { font-size: 0.62rem; }
-                .cb-suitcol { min-width: 2.3rem; }
-                .cb-suitcol.expanded .cb-card { margin-top: -1.5rem; }
-                .cb-suitvoid { width: 2.3rem; height: 3.2rem; }
+                .cb-flat .cb-card + .cb-card { margin-left: -1.35rem; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -2rem; }
+                .cb-flat .cb-corner b { font-size: 0.65rem; }
+                .cb-flat .cb-corner i { font-size: 0.56rem; }
             }
 
             .cb-diagram {
@@ -826,6 +820,28 @@
             }
             .cb-pback:first-child { margin-left: 0; }
             .cb-pbacks { display: flex; padding: 0.15rem 0.3rem; }
+            .cb-pbacks-v {
+                flex-direction: column;
+                align-items: center;
+                padding: 0.3rem 0.15rem;
+            }
+            .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.55rem; }
+            .cb-pbacks-v .cb-pback:first-child { margin-top: 0; }
+            .cb-pbadge {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 1.2rem;
+                height: 1.2rem;
+                border-radius: 0.32rem;
+                background: #e8e6e3;
+                color: #1b1f27;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.75rem;
+                flex-shrink: 0;
+            }
+            .cb-pseat.act .cb-pbadge { background: #ffd54a; }
             .cb-pcount {
                 font-family: Inter, sans-serif;
                 font-size: 0.62rem;
@@ -873,16 +889,23 @@
             .cb-ptrick .tkc.red { color: #c0392b; }
             .cb-ptrick .tkc.blk { color: #1b1f27; }
             .cb-ptrick .tkc.win { box-shadow: 0 0 0 2px #e8e6e3, 0 2px 6px rgba(0,0,0,.5); }
-            .cb-ptrick-empty {
-                position: absolute;
-                inset: 0;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: rgba(255, 255, 255, 0.35);
-                font-family: Inter, sans-serif;
-                font-size: 0.68rem;
-                text-align: center;
+            /* empty slot of the seat that still has to play; gold when it is
+               the human's turn to that card (the photo's highlighted S slot) */
+            .cb-ptrick .tk-slot {
+                width: 2rem;
+                height: 2.85rem;
+                border-radius: 0.3rem;
+                border: 2px dashed rgba(255, 255, 255, 0.14);
+                box-sizing: border-box;
+            }
+            .cb-ptrick .tk-slot.now {
+                border-style: solid;
+                border-color: rgba(232, 230, 227, 0.4);
+            }
+            .cb-ptrick .tk-slot.mine {
+                border-color: #ffd54a;
+                background: rgba(255, 213, 74, 0.08);
+                animation: cb-pulse 1.6s ease-in-out infinite;
             }
             .cb-ptally {
                 display: flex;
@@ -1185,7 +1208,7 @@
             let lastRevealTs = 0; // when the last card was revealed
             let paceTimer = null; // reveal/fetch timer
             let stepping = false; // a paced bot-card fetch is in flight
-            let expandedSuit = null; // two-click: suit currently spread open
+            let selectedCard = null; // two-click: card currently lifted, awaiting confirmation
             let showLastTrick = false; // "last trick" review panel open?
 
             function dcolorSuits(text) {
@@ -2397,13 +2420,14 @@
             }
 
             // ---- Card-play rendering ----
-            // Your own hand stays along the bottom (exactly where it sits while
-            // bidding, same big cards and colors) laid out as a grid: one column
-            // per suit, high ranks at the top towards the table center. The
-            // table above shows the dummy face up, the two hidden seats as card
-            // backs and the trick in the middle. The declarer-side bot plays
-            // declarer and dummy, so when the human declares they click their
-            // own cards in the footer and the dummy's on the table.
+            // Table layout (like a real bridge table): your hand is the big
+            // overlapping fan along the bottom, the tabled dummy lies face up
+            // at its seat, hidden seats show one card back per card left, and
+            // the current trick sits in the middle with an empty slot for the
+            // seats yet to play (gold when that slot is yours to fill). The
+            // dummy stays face DOWN until the opening lead is on the table.
+            // When the human declares, they play both hands: their own cards
+            // in the footer, the dummy's on the table.
             //
             // The server advances ONE bot card per request and the client
             // reveals the plays one at a time (revealCount), at least
@@ -2487,8 +2511,7 @@
                     );
             }
 
-            // One card face of the hand grid: same markup/colors as the bidding
-            // fan card (.cb-card), just stacked per suit.
+            // One card face: same markup/colors as the bidding fan card.
             function gridCardHtml(token, cls, dataAttr) {
                 const r = token[0],
                     s = token[1];
@@ -2497,41 +2520,66 @@
                 return `<span class="cb-card ${red ? "red" : "blk"} ${cls || ""}" ${dataAttr || ""}><span class="cb-corner"><b>${rank}</b><i>${SUIT_SYMBOL[s]}</i></span><span class="cb-midsuit">${SUIT_SYMBOL[s]}</span></span>`;
             }
 
-            // A hand as a grid: one column per suit (HAND_SUIT_ORDER), each
-            // column ranked high->low from the top (towards the table center /
-            // declarer). opts:
-            //   play     -- play-phase hand (adds playable/spent classes)
-            //   acting   -- THIS is the hand the human plays right now, so its
-            //               legal cards are clickable (two-click to play)
-            //   playable -- Set of cards legal to play now
-            //   small    -- compact variant (the dummy inside the table)
-            function handGridHtml(cards, opts) {
-                opts = opts || {};
-                const playable = opts.playable || new Set();
-                const cols = HAND_SUIT_ORDER.map((suit) => {
-                    const suitCards = sortByRankDesc(
-                        cards.filter((c) => c[1] === suit),
-                    );
-                    if (!suitCards.length)
-                        return `<div class="cb-suitcol"><div class="cb-suitvoid">${SUIT_SYMBOL[suit]}</div></div>`;
-                    const open = opts.acting && expandedSuit === suit;
-                    const inner = suitCards
-                        .map((c) => {
-                            if (!opts.acting) return gridCardHtml(c);
-                            const ok = playable.has(c);
-                            return gridCardHtml(
-                                c,
-                                ok ? "playable" : "spent",
-                                ok ? `data-play="${c}"` : "",
-                            );
-                        })
-                        .join("");
-                    return `<div class="cb-suitcol${open ? " expanded" : ""}">${inner}</div>`;
-                }).join("");
-                const cls = ["cb-handgrid"];
-                if (opts.play) cls.push("play");
-                if (opts.small) cls.push("sm");
-                return `<div class="${cls.join(" ")}">${cols}</div>`;
+            // One card of an interactive hand (footer fan or tabled dummy):
+            // while the hand acts, legal cards carry data-play and are
+            // clickable (two-click: lift, then tap again to play); the rest
+            // are dimmed. Outside the hand's acting turns cards are plain.
+            function playCardHtml(token, acting, playable) {
+                if (!acting) return gridCardHtml(token);
+                const ok = playable.has(token);
+                const cls = ok
+                    ? selectedCard === token
+                        ? "playable sel"
+                        : "playable"
+                    : "spent";
+                return gridCardHtml(
+                    token,
+                    cls,
+                    ok ? `data-play="${token}"` : "",
+                );
+            }
+
+            // Cards grouped by suit (HAND_SUIT_ORDER), high rank first.
+            function cardsBySuit(cards) {
+                return HAND_SUIT_ORDER.map((suit) =>
+                    sortByRankDesc(cards.filter((c) => c[1] === suit)),
+                ).filter((g) => g.length);
+            }
+
+            // The tabled dummy: every remaining card face up, one overlapping
+            // row (top seat) or column (side seats) grouped by suit. Clickable
+            // only when you declared and it is the dummy's turn to play.
+            function dummyLayoutHtml(seat) {
+                const p = state.play;
+                const acting =
+                    p.declarer === state.humanSeat &&
+                    playReady() &&
+                    p.actSeat === seat;
+                const playable = new Set(acting ? p.legal || [] : []);
+                const groups = cardsBySuit(remainingOf(seat) || [])
+                    .map(
+                        (g) =>
+                            `<div class="cb-flat-suit">${g.map((c) => playCardHtml(c, acting, playable)).join("")}</div>`,
+                    )
+                    .join("");
+                return `<div class="cb-flat ${seat === 0 ? "cb-flat-h" : "cb-flat-v"}">${groups}</div>`;
+            }
+
+            // Your play-phase hand: the same big fan as while bidding, but
+            // only the cards you still hold, grouped by suit; legal cards
+            // lift on tap and play on the second tap.
+            function playFanHtml() {
+                const p = state.play;
+                const seat = state.humanSeat;
+                const acting = playReady() && p.actSeat === seat;
+                const playable = new Set(acting ? p.legal || [] : []);
+                const groups = cardsBySuit(remainingOf(seat) || [])
+                    .map(
+                        (g) =>
+                            `<div class="cb-fan-suit">${g.map((c) => playCardHtml(c, acting, playable)).join("")}</div>`,
+                    )
+                    .join("");
+                return `<div class="cb-fan cb-fan-play">${groups}</div>`;
             }
 
             function playSeatHtml(seat) {
@@ -2539,8 +2587,7 @@
                 const isDummy = seat === p.dummy;
                 const isDecl = seat === p.declarer;
                 const isYou = seat === state.humanSeat;
-                const ready = playReady();
-                const acting = ready && p.actSeat === seat;
+                const acting = playReady() && p.actSeat === seat;
                 const botActing = !p.yourTurn && p.nextSeat === seat;
                 const tags = [];
                 if (isYou) tags.push('<span class="you">you</span>');
@@ -2548,28 +2595,19 @@
                 else if (isDummy) tags.push('<span class="role">dummy</span>');
                 // The dummy is only face up once the opening lead is on the
                 // table; until then it is a face-down hand like any opponent.
-                const dummyUp = isDummy && revealedPlays().length > 0;
+                // (When the human IS the dummy their hand is the footer fan.)
+                const dummyUp = isDummy && !isYou && revealedPlays().length > 0;
                 let body;
                 if (isYou) {
-                    // your cards live in the bottom hand grid, not on the table
+                    // your cards live in the bottom fan, not on the table
                     const cnt = (remainingOf(seat) || []).length;
                     body = `<div class="cb-pcount">${cnt} card${cnt === 1 ? "" : "s"}</div>`;
                 } else if (dummyUp) {
-                    // the tabled dummy: same suit-column grid as your own hand;
-                    // clickable only when you are the declarer and it acts
-                    const youPlay = p.declarer === state.humanSeat;
-                    body = handGridHtml(remainingOf(seat) || [], {
-                        play: true,
-                        small: true,
-                        acting: youPlay && acting,
-                        playable: new Set(
-                            youPlay && acting ? p.legal || [] : [],
-                        ),
-                    });
+                    body = dummyLayoutHtml(seat);
                 } else {
                     // a hidden opponent (or the dummy before the opening lead):
-                    // card backs + a count that shrinks in step with the paced
-                    // reveal, not the server's running total
+                    // one card back per card still held, shrinking in step
+                    // with the paced reveal, not the server's running total
                     const cnt = Math.max(
                         0,
                         13 -
@@ -2577,14 +2615,13 @@
                                 .length,
                     );
                     let backs = "";
-                    const shown = Math.min(cnt, 6);
-                    for (let i = 0; i < shown; i++)
+                    for (let i = 0; i < cnt; i++)
                         backs += `<div class="cb-pback"></div>`;
-                    body = `<div class="cb-pbacks">${backs}</div><div class="cb-pcount">${cnt}</div>`;
+                    body = `<div class="cb-pbacks${seat === 1 || seat === 3 ? " cb-pbacks-v" : ""}">${backs}</div>`;
                 }
                 const actCls = acting || botActing ? " act" : "";
                 return `<div class="cb-pseat${actCls}">
-                    <div class="cb-pseat-name">${SEAT_NAMES[seat]} ${tags.join(" ")}</div>
+                    <div class="cb-pseat-name"><span class="cb-pbadge">${"NESW"[seat]}</span>${SEAT_NAMES[seat]} ${tags.join(" ")}</div>
                     ${body}
                 </div>`;
             }
@@ -2600,8 +2637,9 @@
             }
 
             // Four cards of a trick laid out crosswise (compass), shared by the
-            // live table center and the "last trick" review panel.
-            function trickCrossHtml(cards, win) {
+            // live table center and the "last trick" review panel. `extra`
+            // appends empty-slot markers for seats that have yet to play.
+            function trickCrossHtml(cards, win, extra) {
                 const pos = { 0: "tk-n", 1: "tk-e", 2: "tk-s", 3: "tk-w" };
                 const cells = cards
                     .map((pc) => {
@@ -2618,18 +2656,30 @@
                         return `<div class="tk ${pos[pc.seat]}"><span class="who">${SEAT_NAMES[pc.seat][0]}</span><div class="tkc ${red ? "red" : "blk"}${w}"><span>${rank}</span><span>${SUIT_SYMBOL[s]}</span></div></div>`;
                     })
                     .join("");
-                return `<div class="cb-ptrick">${cells}</div>`;
+                return `<div class="cb-ptrick">${cells}${extra || ""}</div>`;
             }
 
             function trickCenterHtml() {
                 const p = state.play;
                 const td = trickToDisplay();
-                if (!td.cards.length)
-                    return `<div class="cb-ptrick"><div class="cb-ptrick-empty">${SEAT_NAMES[p.opener]} to lead</div></div>`;
                 const win = td.complete
                     ? trickWinnerJS(td.cards, p.trump)
                     : null;
-                return trickCrossHtml(td.cards, win);
+                let slots = "";
+                if (!td.complete) {
+                    const pos = { 0: "tk-n", 1: "tk-e", 2: "tk-s", 3: "tk-w" };
+                    const played = new Set(td.cards.map((c) => c.seat));
+                    const plays = revealedPlays();
+                    const next = plays.length
+                        ? (plays[plays.length - 1].seat + 1) % 4
+                        : p.opener;
+                    for (let s = 0; s < 4; s++) {
+                        if (played.has(s)) continue;
+                        const mine = s === next && playReady();
+                        slots += `<div class="tk ${pos[s]}"><div class="tk-slot${mine ? " mine" : s === next ? " now" : ""}"></div></div>`;
+                    }
+                }
+                return trickCrossHtml(td.cards, win, slots);
             }
 
             function playInfoHtml() {
@@ -2736,23 +2786,24 @@
                     ${lastTrickHtml()}`;
             }
 
-            // Two-click play: the first tap on a legal card opens its suit
-            // (spreads + enlarges it); the next tap on a card plays it.
+            // Two-click play: the first tap on a legal card lifts it (select);
+            // a second tap on the same card plays it. Tapping another card
+            // just moves the lift, so a mis-tap never throws a card away.
             function onCardClick(card) {
                 if (!state || state.phase !== "play" || !playReady()) return;
-                const suit = card[1];
-                if (expandedSuit === suit) makePlay(card);
-                else {
-                    expandedSuit = suit;
-                    render();
+                if (selectedCard === card) {
+                    makePlay(card);
+                    return;
                 }
+                selectedCard = card;
+                render();
             }
 
             async function makePlay(card) {
                 if (!state || busy || stepping || state.done) return;
                 if (state.phase !== "play" || !state.play || !playReady())
                     return;
-                expandedSuit = null;
+                selectedCard = null;
                 await post(`/api/play/${state.id}/card`, { card: card });
             }
 
@@ -2839,16 +2890,16 @@
 
             // Keep the reveal cursor and the two-click picker in sync with the
             // board. On a fresh load (or a new board) everything already played
-            // is shown at once; only subsequent cards are paced. The open suit
-            // is collapsed whenever the acting context changes, but survives
+            // is shown at once; only subsequent cards are paced. The lifted
+            // card is dropped whenever the acting context changes, but survives
             // between the two clicks that pick a card.
-            let expandedCtx = null;
+            let selectedCtx = null;
             function syncPlayUI() {
                 if (!state) {
                     revealBoardId = null;
                     revealCount = 0;
-                    expandedSuit = null;
-                    expandedCtx = null;
+                    selectedCard = null;
+                    selectedCtx = null;
                     return;
                 }
                 if (state.id !== revealBoardId) {
@@ -2858,36 +2909,42 @@
                             ? state.play.plays.length
                             : 0;
                     lastRevealTs = 0;
-                    expandedSuit = null;
+                    selectedCard = null;
                     showLastTrick = false;
                 }
                 const ctx =
                     state.phase === "play" && state.play
                         ? `${state.play.actSeat}|${revealCount}|${state.play.yourTurn}`
                         : "";
-                if (ctx !== expandedCtx) {
-                    expandedCtx = ctx;
-                    expandedSuit = null;
+                if (ctx !== selectedCtx) {
+                    selectedCtx = ctx;
+                    selectedCard = null;
                 }
             }
 
             function handFooterHtml() {
                 if (state.noBoard || !state.hand || state.done) return "";
-                // Your hand stays at the bottom exactly as during bidding —
-                // no rearrangement between phases, same card faces and colours.
                 const p = state.play;
-                let role = "";
-                if (p && p.phase === "play") {
-                    role =
+                if (state.phase === "play" && p) {
+                    // During play the fan shows the cards you still hold
+                    // (played cards leave the fan); legal ones lift on tap.
+                    const role =
                         p.declarer === state.humanSeat
                             ? " · declarer"
                             : p.dummy === state.humanSeat
                               ? " · dummy"
                               : "";
-                }
-                return `
+                    return `
                     <div class="cb-handfoot">
                         <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]}${role} · ${hcpOf(state.hand)} HCP</div>
+                        ${playFanHtml()}
+                    </div>`;
+                }
+                // Bidding: the hand exactly as dealt — same card faces,
+                // colours and position it keeps while playing.
+                return `
+                    <div class="cb-handfoot">
+                        <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]} · ${hcpOf(state.hand)} HCP</div>
                         ${cardFan(state.hand, false)}
                     </div>`;
             }
