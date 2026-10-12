@@ -2,8 +2,9 @@
 
 A website to build Bridge bidding systems and practice.
 
-The menu has three sections: **Collections** (`/`, build/edit your bidding
-systems), **Bid only** (`/play?m=bid`) and **Play bridge** (`/play?m=play`).
+The menu has four sections: **Collections** (`/`, build/edit your bidding
+systems), **Bid only** (`/play?m=bid`), **Play bridge** (`/play?m=play`) and
+**Card problems** (`/drills`, author and practise scripted card-play problems).
 
 ## Bid only (`/play?m=bid`)
 
@@ -35,6 +36,43 @@ the full auction and the play.
 
 Both solo sections send `{"mode":"bid"|"play"}` to `POST /api/play/new`; the
 board keeps that mode for its whole life.
+
+## Card problems (`/drills`)
+
+Author fully-scripted **card-play problems** and practise the community library.
+This section is self-contained: it never calls the bidding-dt sidecar — every
+rule (auction legality, follow-suit, trick winners, the plain duplicate score)
+is checked locally in `drills.go`, and problems persist to
+`data/drills/<id>.json`. Two tabs:
+
+- **Create** — build a problem in a five-step wizard: setup (optional title,
+  difficulty 1–5 ★, dealer, vulnerability, and whether it tests **Declarer** or
+  **Defense**), the four hands from a click-to-assign deck picker, the auction on
+  a bidding box (with a comment about the bidding and a **problem comment** that
+  should record the defenders' carding agreements), the hero defender for a
+  defense problem, then the **card play**. The play is scripted card by card in
+  god-mode; every card played by a *hero* seat (declarer + dummy, or the one
+  chosen defender) asks for the author's reasoning, pre-filled with
+  *"I just decided to play the [card] instead."* End the hand by playing all 52
+  cards or by **claiming** at a trick boundary — a claim stores the declarer's
+  total tricks and a plain final score (N-S positive), auto-suggested from
+  `POST /api/drills/score`. Authors can edit or delete their own problems.
+- **Practice** — filter the library of everyone's problems by role, author and
+  difficulty, then play one. The bidding is shown up front with the problem
+  comment, then the hand runs like a play-a-hand table (hero rotated to the
+  bottom, dummy tabled after the opening lead). Non-hero seats play themselves
+  from the author's script. If the hero picks a card **other** than the authored
+  one, it is **not** played: the server answers `409` with the author's message
+  for the correct card (a wrong pick is counted) and the hero chooses again.
+  Messages stay hidden while you play correctly and are all revealed in the
+  end-of-hand review. The result is the final score only — **no IMPs, no par** —
+  so drills never touch the rankings or `play_stats.json`.
+
+Practice runs are in-memory sessions (`DrillSession`, 6 h TTL, one per user, the
+problem snapshotted at the start so an edit cannot desync a run in flight); the
+session id is kept in `localStorage` and resumed on reload. The library endpoint
+`GET /api/drills` returns metadata only (no hands, script or comments), and a
+full problem is readable only by its author via `GET /api/drills/{id}`.
 
 ## Rankings
 

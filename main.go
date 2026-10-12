@@ -74,6 +74,9 @@ func migrateDataLayout() error {
 	if err := os.MkdirAll(gameDir(), 0o755); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(drillsDir(), 0o755); err != nil {
+		return err
+	}
 	entries, err := os.ReadDir(dataDir)
 	if err != nil {
 		return err
@@ -166,6 +169,7 @@ func main() {
 	loadSessions()
 	initPlay()
 	initTeam()
+	initDrills()
 	initAlerts()
 	initPush()
 
@@ -198,6 +202,16 @@ func main() {
 	http.HandleFunc("GET /api/play/push/key", handlePushKey)
 	http.HandleFunc("POST /api/play/push/subscribe", handlePushSubscribe)
 	http.HandleFunc("POST /api/play/push/unsubscribe", handlePushUnsubscribe)
+	http.HandleFunc("GET /api/drills", handleDrillsList)
+	http.HandleFunc("POST /api/drills", handleDrillCreate)
+	http.HandleFunc("POST /api/drills/score", handleDrillScore)
+	http.HandleFunc("GET /api/drills/{id}", handleDrillGet)
+	http.HandleFunc("PUT /api/drills/{id}", handleDrillPut)
+	http.HandleFunc("DELETE /api/drills/{id}", handleDrillDelete)
+	http.HandleFunc("POST /api/drills/{id}/session", handleDrillSessionNew)
+	http.HandleFunc("GET /api/drill/session/{sid}", handleDrillSessionGet)
+	http.HandleFunc("POST /api/drill/session/{sid}/card", handleDrillSessionCard)
+	http.HandleFunc("DELETE /api/drill/session/{sid}", handleDrillSessionDelete)
 
 	// Static/HTML Pages
 	// The service worker must be served from the origin root so its scope
@@ -215,6 +229,8 @@ func main() {
 	http.HandleFunc("/edit/", serveHTML("static/edit.html"))
 	http.HandleFunc("/view/", serveHTML("static/view.html"))
 	http.HandleFunc("/practice/", serveHTML("static/practice.html"))
+	http.HandleFunc("/drills", serveHTML("static/drills.html"))
+	http.HandleFunc("/drills/", serveHTML("static/drills.html"))
 	http.HandleFunc("/play", serveHTML("static/play.html"))
 	http.HandleFunc("/play/", serveHTML("static/play.html"))
 	http.Handle("/static/", staticFileHandler())

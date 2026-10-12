@@ -1,0 +1,3043 @@
+<!doctype html>
+
+<html class="light" lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>Bridge Trainer | Card Problems</title>
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta name="theme-color" content="#161512" />
+        <link rel="apple-touch-icon" href="/static/icon-192.png" />
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+            rel="stylesheet"
+        />
+        <script src="/static/shared.js"></script>
+        <link rel="stylesheet" href="/static/shared.css" />
+        <style>
+            body.cb-page {
+                background: #161512;
+            }
+            body.cb-page main {
+                background: #161512 !important;
+            }
+            body.cb-page .page-enter > header h1 {
+                color: #e8e6e3;
+            }
+            body.cb-page .page-enter > header p {
+                color: #908f8d;
+            }
+            body.cb-page .unlock-card {
+                background: #302e2c;
+                border-color: rgba(255, 255, 255, 0.1);
+            }
+            body.cb-page .unlock-card .text-on-surface {
+                color: #e8e6e3;
+            }
+            body.cb-page .unlock-card .text-on-surface-variant {
+                color: #908f8d;
+            }
+            body.cb-page .unlock-card .bg-surface-container {
+                background: #4a4642;
+                color: #bababa;
+            }
+            body.cb-page .unlock-input {
+                background: #161512;
+                border-color: #55514b;
+                color: #e8e6e3;
+            }
+            body.cb-page .history-card {
+                background: #302e2c;
+                border-color: rgba(255, 255, 255, 0.08);
+            }
+
+            .cb-topbar {
+                display: flex;
+                align-items: center;
+                gap: 0.45rem;
+                padding: 0.55rem 0.75rem;
+                max-width: 46rem;
+                margin: 0 auto;
+                width: 100%;
+            }
+            .cb-iconbtn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 2.35rem;
+                height: 2.35rem;
+                border-radius: 0.7rem;
+                background: #3d3a36;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                color: #e8e6e3;
+                flex-shrink: 0;
+            }
+            .cb-iconbtn:disabled {
+                opacity: 0.35;
+            }
+            .cb-plainbtn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 2.35rem;
+                height: 2.35rem;
+                color: #bababa;
+                flex-shrink: 0;
+            }
+            .cb-title {
+                flex: 1;
+                min-width: 0;
+                text-align: center;
+            }
+            .cb-title .t {
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.05rem;
+                color: #e8e6e3;
+                line-height: 1.15;
+            }
+            .cb-title .s {
+                font-size: 0.72rem;
+                color: #908f8d;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .cb-nexthand {
+                display: flex;
+                align-items: center;
+                gap: 0.35rem;
+                padding: 0.5rem 0.7rem;
+                border-radius: 0.8rem;
+                background: linear-gradient(180deg, #6f6c68, #4a4642);
+                color: #fff;
+                font-family: Inter, sans-serif;
+                font-weight: 700;
+                font-size: 0.72rem;
+                letter-spacing: 0.02em;
+                box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+                flex-shrink: 0;
+                white-space: nowrap;
+            }
+            .cb-menuwrap {
+                position: relative;
+                flex-shrink: 0;
+            }
+            .cb-menu {
+                position: absolute;
+                right: 0;
+                top: calc(100% + 6px);
+                z-index: 60;
+                min-width: 190px;
+                background: #302e2c;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 0.9rem;
+                padding: 0.35rem;
+                box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+            }
+            .cb-menu button {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                width: 100%;
+                padding: 0.5rem 0.6rem;
+                border-radius: 0.6rem;
+                color: #bababa;
+                font-size: 0.8rem;
+                font-family: Inter, sans-serif;
+            }
+            .cb-menu button:hover {
+                background: rgba(255, 255, 255, 0.07);
+            }
+
+            .cb-mid {
+                flex: 1;
+                min-height: 0;
+                overflow-y: auto;
+                padding: 0 0.75rem 0.5rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.6rem;
+                max-width: 42rem;
+                margin: 0 auto;
+                width: 100%;
+            }
+            .cb-mid.cb-mid-bid > .cb-auction {
+                flex: 1 1 auto;
+                display: flex;
+                flex-direction: column;
+            }
+            .cb-mid.cb-mid-bid > .cb-auction .cb-auc-body {
+                flex: 1;
+                min-height: 3.75rem;
+                overflow-y: auto;
+                overscroll-behavior: contain;
+            }
+
+            .cb-auction {
+                background: #302e2c;
+                border-radius: 1rem;
+                overflow: hidden;
+                border: 1px solid rgba(255, 255, 255, 0.06);
+            }
+            .cb-auc-meta {
+                display: flex;
+                justify-content: space-between;
+                gap: 0.5rem;
+                padding: 0.35rem 0.7rem;
+                font-size: 0.62rem;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: #787572;
+                font-family: Inter, sans-serif;
+            }
+            .cb-auc-head {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                background: #262421;
+            }
+            .cb-auc-head > div {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 2.2rem;
+                color: #bababa;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.85rem;
+            }
+            .cb-seatv {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 1.7rem;
+                height: 1.7rem;
+                border-radius: 0.55rem;
+                box-sizing: border-box;
+            }
+            .cb-seatv.v {
+                background: #a93226;
+                color: #ffe3de;
+            }
+            .cb-seatv.nv {
+                background: #2e5d43;
+                color: #d7ecdc;
+            }
+            .cb-seatv.dlr {
+                box-shadow: 0 0 0 2px #e8e6e3;
+            }
+            .cb-seatv.you {
+                border: 2px solid #e8e6e3;
+                border-radius: 50%;
+            }
+            .cb-vuln-v { color: #f08a8a; }
+            .cb-vuln-nv { color: #8fd694; }
+            .cb-auc-body {
+                min-height: 8rem;
+                padding: 0.5rem 0.4rem 0.6rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.3rem;
+            }
+            .cb-auc-row {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 0.3rem;
+            }
+            .cb-auc-cell {
+                display: flex;
+                justify-content: center;
+            }
+            .cb-auc-empty {
+                padding: 2.5rem 0;
+                text-align: center;
+                color: #787572;
+                font-size: 0.75rem;
+                font-family: Inter, sans-serif;
+            }
+            .cb-call {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 1px;
+                min-width: 2.6rem;
+                height: 1.7rem;
+                padding: 0 0.45rem;
+                border-radius: 0.45rem;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.85rem;
+            }
+            .cb-call-c { background: #b5e48c; color: #2b7a4b; }
+            .cb-call-d { background: #f8c471; color: #c05621; }
+            .cb-call-h { background: #f1948a; color: #b03a2e; }
+            .cb-call-s { background: #a5b4f4; color: #2a3f93; }
+            .cb-call-n { background: #e8eaed; color: #1b1f27; }
+            .cb-call-p {
+                background: #2e5d43;
+                color: #cfe8d4;
+                font-size: 0.68rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+            .cb-call-x { background: #c0392b; color: #fff; }
+            .cb-call-xx { background: #2a51b0; color: #fff; }
+            .cb-chipwrap {
+                position: relative;
+                display: inline-flex;
+                cursor: pointer;
+            }
+            .cb-alertdot {
+                position: absolute;
+                top: -5px;
+                right: -7px;
+                width: 13px;
+                height: 13px;
+                border-radius: 50%;
+                background: #e8e6e3;
+                color: #1b1f27;
+                font: 800 9px/13px Inter, sans-serif;
+                font-style: normal;
+                text-align: center;
+            }
+            .cb-alertbox {
+                background: #262421;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 0.8rem;
+                padding: 0.45rem 0.7rem;
+                color: #bababa;
+                font-family: Inter, sans-serif;
+                font-size: 0.72rem;
+                line-height: 1.45;
+                display: flex;
+                align-items: baseline;
+                gap: 0.45rem;
+            }
+            .cb-alertbox .material-symbols-outlined {
+                font-size: 15px;
+                color: #e8e6e3;
+                flex-shrink: 0;
+                align-self: center;
+            }
+            .cb-alertbox b { color: #fff; }
+            .cb-alertbox .dim { color: #908f8d; }
+            .cb-q {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 1.7rem;
+                height: 1.7rem;
+                border-radius: 0.5rem;
+                background: #e8eaed;
+                color: #55514b;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                animation: cb-pulse 1.6s ease-in-out infinite;
+            }
+            @keyframes cb-pulse {
+                0%, 100% { opacity: 0.45; }
+                50% { opacity: 1; }
+            }
+
+            .cb-levels {
+                display: flex;
+                gap: 3px;
+                padding: 0 0.5rem;
+                margin-bottom: -10px;
+                position: relative;
+                z-index: 2;
+            }
+            .cb-level {
+                flex: 1;
+                height: 2.2rem;
+                border-radius: 0.6rem 0.6rem 0 0;
+                background: #262421;
+                color: #908f8d;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.95rem;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-bottom: none;
+            }
+            .cb-level:disabled {
+                opacity: 0.35;
+            }
+            .cb-level.sel {
+                background: #302e2c;
+                color: #fff;
+                height: 2.4rem;
+                border-color: transparent;
+            }
+            .cb-bidpanel {
+                position: relative;
+                z-index: 1;
+                background: #302e2c;
+                border-radius: 1rem;
+                padding: 0.75rem 0.6rem 0.65rem;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 0.4rem;
+            }
+            .cb-tile {
+                position: relative;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 1px;
+                height: 2.9rem;
+                min-width: 3.1rem;
+                padding: 0 0.5rem;
+                border-radius: 0.7rem;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.25rem;
+                box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+            }
+            .cb-tile b {
+                font-size: 1.05rem;
+            }
+            .cb-tile-c { background: #b5e48c; color: #2b7a4b; }
+            .cb-tile-d { background: #f8c471; color: #c05621; }
+            .cb-tile-h { background: #f1948a; color: #b03a2e; }
+            .cb-tile-s { background: #a5b4f4; color: #2a3f93; }
+            .cb-tile-n { background: #e8eaed; color: #1b1f27; }
+            .cb-tile-x { background: #c0392b; color: #fff; }
+            .cb-tile-xx { background: #2a51b0; color: #fff; }
+            .cb-tile:disabled {
+                opacity: 0.3;
+                filter: saturate(0.3);
+                box-shadow: none;
+            }
+            .cb-pass {
+                position: relative;
+                margin-left: auto;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                height: 2.9rem;
+                padding: 0 1.4rem;
+                border-radius: 0.9rem;
+                background: #5d8b57;
+                color: #fff;
+                font-family: Inter, sans-serif;
+                font-weight: 800;
+                font-size: 1.05rem;
+                letter-spacing: 0.03em;
+                box-shadow: 0 3px 0 #3c6b39;
+            }
+            .cb-pct {
+                position: absolute;
+                top: 0;
+                right: 1px;
+                padding: 2px;
+                font: 700 8px/1.4 Inter, sans-serif;
+                font-style: normal;
+                color: rgba(0, 0, 0, 0.5);
+                cursor: help;
+            }
+            .cb-tile-x .cb-pct,
+            .cb-tile-xx .cb-pct,
+            .cb-pass .cb-pct { color: rgba(255, 255, 255, 0.75); }
+            .cb-pass:disabled {
+                opacity: 0.4;
+            }
+
+            .cb-wait {
+                background: #302e2c;
+                border-radius: 1rem;
+                padding: 1rem;
+                display: flex;
+                align-items: center;
+                gap: 0.6rem;
+                flex-wrap: wrap;
+                color: #908f8d;
+                font-size: 0.85rem;
+                font-family: Inter, sans-serif;
+            }
+            .cb-ready {
+                background: #302e2c;
+                border-radius: 1rem;
+                padding: 2.2rem 1.5rem;
+                text-align: center;
+                color: #bababa;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .cb-result {
+                background: #302e2c;
+                border-radius: 1rem;
+                padding: 0.9rem 1rem;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.8rem;
+                align-items: center;
+            }
+            .cb-btn-green {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
+                padding: 0.55rem 0.9rem;
+                border-radius: 0.8rem;
+                background: linear-gradient(180deg, #6f6c68, #4a4642);
+                color: #fff;
+                font-family: Inter, sans-serif;
+                font-weight: 700;
+                font-size: 0.8rem;
+                box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+            }
+            .cb-btn-ghost {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
+                padding: 0.55rem 0.8rem;
+                border-radius: 0.8rem;
+                background: #3d3a36;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #bababa;
+                font-size: 0.78rem;
+                font-family: Inter, sans-serif;
+                font-weight: 600;
+            }
+
+            .cb-handfoot {
+                padding: 0.3rem 0.75rem calc(0.55rem + env(safe-area-inset-bottom));
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.3rem;
+                max-width: 42rem;
+                margin: 0 auto;
+                width: 100%;
+            }
+            .cb-handlabel {
+                color: #e8e6e3;
+                font-family: Inter, sans-serif;
+                font-size: 0.85rem;
+            }
+            .cb-fan {
+                display: flex;
+                padding: 0.2rem 0.4rem;
+            }
+            .cb-card {
+                position: relative;
+                width: 3rem;
+                height: 4.3rem;
+                border-radius: 0.45rem;
+                background: linear-gradient(180deg, #ffffff, #f2f2ee);
+                border: 1px solid rgba(0, 0, 0, 0.35);
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+                margin-left: -1.55rem;
+                flex-shrink: 0;
+            }
+            .cb-card:first-child {
+                margin-left: 0;
+            }
+            .cb-card.red { color: #c0392b; }
+            .cb-card.blk { color: #1b1f27; }
+            .cb-corner {
+                position: absolute;
+                top: 0.2rem;
+                left: 0.25rem;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                line-height: 1;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+            }
+            .cb-corner b { font-size: 0.8rem; }
+            .cb-corner i {
+                font-size: 0.7rem;
+                font-style: normal;
+                margin-top: 1px;
+            }
+            .cb-midsuit {
+                position: absolute;
+                right: 0.3rem;
+                bottom: 0.35rem;
+                font-size: 1.1rem;
+                line-height: 1;
+            }
+            .cb-fan-sm .cb-card {
+                width: 1.7rem;
+                height: 2.5rem;
+                margin-left: -0.85rem;
+                border-radius: 0.3rem;
+            }
+            .cb-fan-sm .cb-corner b { font-size: 0.55rem; }
+            .cb-fan-sm .cb-corner i { font-size: 0.5rem; margin-top: 0; }
+            .cb-fan-sm .cb-midsuit { display: none; }
+            @media (max-width: 400px) {
+                .cb-card {
+                    width: 2.6rem;
+                    height: 3.8rem;
+                    margin-left: -1.35rem;
+                }
+                .cb-corner b { font-size: 0.7rem; }
+                .cb-corner i { font-size: 0.6rem; }
+                .cb-midsuit { font-size: 0.95rem; }
+            }
+
+            /* ---- Card-play hands on the table ----
+               Your hand stays along the bottom in the same big .cb-card faces
+               as while bidding, but only the cards you still hold: all 13 (or
+               fewer) in one continuous overlapping line, suits in order with
+               no gaps (like the reference photo). The tabled dummy is laid out
+               face up at its seat the same way: one row (top seat) or column
+               (side seats). Hidden seats show one card back per card still
+               held. Tapping a legal card selects it (lifts / gold ring);
+               tapping it again plays it. Cards you may not play look like any
+               other card -- they are simply not clickable. */
+            .cb-fan-play {
+                flex-wrap: nowrap;
+                justify-content: safe center;
+                max-width: 100%;
+                overflow-x: auto;
+                overscroll-behavior-x: contain;
+                padding-top: 0.8rem; /* room for the lifted card */
+            }
+            .cb-fan-play .cb-card {
+                width: 3.05rem;
+                height: 4.5rem;
+                margin-left: -1.4rem;
+                transition:
+                    transform 0.14s ease,
+                    box-shadow 0.14s ease;
+            }
+            .cb-fan-play .cb-card:first-child { margin-left: 0; }
+            /* big, uncut indices: the overlap step (1.65rem) is wider than the
+               widest rank ("10") plus its inset */
+            .cb-fan-play .cb-corner { left: 0.18rem; top: 0.18rem; }
+            .cb-fan-play .cb-corner b { font-size: 1.05rem; }
+            .cb-fan-play .cb-corner i { font-size: 0.95rem; margin-top: 0; }
+            .cb-fan-play .cb-midsuit {
+                font-size: 1.6rem;
+                right: 0.25rem;
+                bottom: 0.3rem;
+            }
+            .cb-fan-play .cb-card.playable {
+                cursor: pointer;
+                box-shadow:
+                    0 0 0 1.5px rgba(232, 230, 227, 0.5),
+                    0 2px 6px rgba(0, 0, 0, 0.45);
+            }
+            .cb-fan-play .cb-card.playable:hover {
+                transform: translateY(-4px);
+            }
+            .cb-fan-play .cb-card.sel,
+            .cb-flat .cb-card.sel {
+                transform: translateY(-0.55rem);
+                box-shadow:
+                    0 0 0 2px #ffd54a,
+                    0 6px 12px rgba(0, 0, 0, 0.55);
+                z-index: 5;
+            }
+            /* the tabled dummy: every remaining card, face up, one line */
+            .cb-flat {
+                display: flex;
+                padding: 0.15rem 0.1rem;
+            }
+            .cb-flat-h { flex-direction: row; }
+            .cb-flat-v { flex-direction: column; }
+            .cb-flat .cb-card {
+                width: 2.6rem;
+                height: 3.7rem;
+                margin: 0;
+                border-radius: 0.35rem;
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+                flex-shrink: 0;
+                transition: box-shadow 0.14s ease;
+            }
+            .cb-flat-h .cb-card + .cb-card { margin-left: -1.35rem; }
+            .cb-flat-v .cb-card + .cb-card { margin-top: -2.35rem; }
+            .cb-flat .cb-card:first-child { margin-left: 0; margin-top: 0; }
+            /* indices as big as the visible strip allows: 1.25rem of each card
+               shows in a row, 1.35rem in a column (sideways corner) */
+            .cb-flat .cb-corner { left: 0.15rem; top: 0.15rem; }
+            .cb-flat .cb-corner b { font-size: 0.9rem; }
+            .cb-flat .cb-corner i { font-size: 0.8rem; }
+            .cb-flat .cb-midsuit { display: none; }
+            /* in a column only a thin top strip of each card shows, so the
+               corner turns sideways: rank and suit side by side */
+            .cb-flat-v .cb-corner {
+                flex-direction: row;
+                align-items: baseline;
+                gap: 1px;
+            }
+            .cb-flat-v .cb-corner i { margin-top: 0; }
+            .cb-flat .cb-card.playable {
+                cursor: pointer;
+                box-shadow:
+                    0 0 0 1.5px rgba(232, 230, 227, 0.5),
+                    0 1px 4px rgba(0, 0, 0, 0.45);
+            }
+            .cb-flat .cb-card.sel { transform: none; }
+            @media (max-width: 400px) {
+                .cb-flat .cb-card {
+                    width: 2.2rem;
+                    height: 3.2rem;
+                }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.1rem; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -2rem; }
+                .cb-flat .cb-corner b { font-size: 0.8rem; }
+                .cb-flat .cb-corner i { font-size: 0.7rem; }
+                .cb-fan-play .cb-card {
+                    width: 2.75rem;
+                    height: 4.1rem;
+                    margin-left: -1.3rem;
+                }
+                .cb-fan-play .cb-corner b { font-size: 0.95rem; }
+                .cb-fan-play .cb-corner i { font-size: 0.85rem; }
+            }
+
+            .cb-diagram {
+                display: grid;
+                grid-template-columns: 1fr 1.15fr 1fr;
+                grid-template-areas:
+                    ". n ."
+                    "w . e"
+                    ". s .";
+                gap: 0.55rem 0.5rem;
+                background: #262421;
+                border-radius: 0.8rem;
+                padding: 0.7rem 0.6rem;
+            }
+            .cb-dg-n { grid-area: n; }
+            .cb-dg-e { grid-area: e; }
+            .cb-dg-s { grid-area: s; }
+            .cb-dg-w { grid-area: w; }
+            .cb-dg-seat {
+                display: flex;
+                flex-direction: column;
+                gap: 1px;
+                min-width: 0;
+            }
+            .cb-dg-name {
+                font-family: Inter, sans-serif;
+                font-size: 0.66rem;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: #908f8d;
+                margin-bottom: 2px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .cb-dg-line {
+                display: flex;
+                gap: 0.35rem;
+                font-family: Manrope, sans-serif;
+                font-weight: 700;
+                font-size: 0.78rem;
+                line-height: 1.35;
+                color: #bababa;
+                white-space: nowrap;
+            }
+            .cb-dg-su {
+                width: 0.9rem;
+                flex-shrink: 0;
+                text-align: center;
+            }
+            .cb-dg-su.s, .cb-dg-su.c { color: #8fd694; }
+            .cb-dg-su.h, .cb-dg-su.d { color: #f08a8a; }
+            .cb-dg-cards {
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            /* ---- Card-play table ----
+               No separate info bar and no panel of its own: the table sits on
+               the same single background as the rest of the screen. The
+               contract (with X/XX and the declarer's letter, e.g. 4♠XN) sits
+               top-left on North's row, the You/Them trick stack top-right. */
+            .cb-ptable {
+                display: grid;
+                grid-template-columns: auto 1fr auto;
+                grid-template-areas:
+                    "tl n tr"
+                    "w c e"
+                    ". s .";
+                gap: 0.5rem 0.6rem;
+                align-items: center;
+                justify-items: center;
+                padding: 0.5rem 0.3rem;
+            }
+            .cb-pt-n { grid-area: n; }
+            .cb-pt-e { grid-area: e; }
+            .cb-pt-s { grid-area: s; }
+            .cb-pt-w { grid-area: w; }
+            .cb-pt-c { grid-area: c; }
+            .cb-pt-tl {
+                grid-area: tl;
+                justify-self: start;
+                align-self: start;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.95rem;
+                color: #e8e6e3;
+                white-space: nowrap;
+            }
+            .cb-pt-tr {
+                grid-area: tr;
+                justify-self: end;
+                align-self: start;
+            }
+            .cb-pseat {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.25rem;
+                min-width: 0;
+            }
+            .cb-pseat-h {
+                flex-direction: row;
+                gap: 0.4rem;
+            }
+            .cb-pseat-name {
+                font-family: Inter, sans-serif;
+                font-size: 0.62rem;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: #908f8d;
+                display: flex;
+                align-items: center;
+                gap: 0.3rem;
+                white-space: nowrap;
+            }
+            .cb-pseat-name .you { color: #e8e6e3; font-weight: 700; }
+            .cb-pseat.act .cb-pseat-name { color: #e8e6e3; }
+            .cb-pseat.act {
+                filter: drop-shadow(0 0 6px rgba(232, 230, 227, 0.25));
+            }
+            .cb-pback {
+                width: 1.7rem;
+                height: 2.45rem;
+                border-radius: 0.28rem;
+                background: repeating-linear-gradient(45deg, #4a4642, #4a4642 3px, #3d3a36 3px, #3d3a36 6px);
+                border: 1px solid rgba(0, 0, 0, 0.45);
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+                margin-left: -1rem;
+            }
+            .cb-pback:first-child { margin-left: 0; }
+            .cb-pbacks { display: flex; padding: 0.15rem 0.3rem; }
+            .cb-pbacks-v {
+                flex-direction: column;
+                align-items: center;
+                padding: 0.3rem 0.15rem;
+            }
+            .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.75rem; }
+            .cb-pbacks-v .cb-pback:first-child { margin-top: 0; }
+            .cb-pbadge {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 1.2rem;
+                height: 1.2rem;
+                border-radius: 0.32rem;
+                background: #e8e6e3;
+                color: #1b1f27;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.75rem;
+                flex-shrink: 0;
+            }
+            .cb-pseat.act .cb-pbadge { background: #ffd54a; }
+            .cb-ptrick {
+                position: relative;
+                width: 9.5rem;
+                height: 7.8rem;
+            }
+            .cb-ptrick .tk {
+                position: absolute;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 1px;
+            }
+            .cb-ptrick .tk-n { top: 0; left: 50%; transform: translateX(-50%); }
+            .cb-ptrick .tk-s { bottom: 0; left: 50%; transform: translateX(-50%); }
+            .cb-ptrick .tk-w { left: 0; top: 50%; transform: translateY(-50%); }
+            .cb-ptrick .tk-e { right: 0; top: 50%; transform: translateY(-50%); }
+            .cb-ptrick .tk .who {
+                font-family: Inter, sans-serif;
+                font-size: 0.54rem;
+                color: #908f8d;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+            .cb-ptrick .tkc {
+                width: 2.3rem;
+                height: 3.3rem;
+                border-radius: 0.3rem;
+                background: linear-gradient(180deg, #fff, #eeece6);
+                border: 1px solid rgba(0, 0, 0, 0.45);
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.25rem;
+                line-height: 1;
+            }
+            .cb-ptrick .tkc.red { color: #c0392b; }
+            .cb-ptrick .tkc.blk { color: #1b1f27; }
+            .cb-ptrick .tkc.win { box-shadow: 0 0 0 2px #e8e6e3, 0 2px 6px rgba(0,0,0,.5); }
+            /* empty slot of the seat that still has to play; gold when it is
+               the human's turn to that card (the photo's highlighted S slot) */
+            .cb-ptrick .tk-slot {
+                width: 2.3rem;
+                height: 3.3rem;
+                border-radius: 0.3rem;
+                border: 2px dashed rgba(255, 255, 255, 0.14);
+                box-sizing: border-box;
+            }
+            .cb-ptrick .tk-slot.now {
+                border-style: solid;
+                border-color: rgba(232, 230, 227, 0.4);
+            }
+            .cb-ptrick .tk-slot.mine {
+                border-color: #ffd54a;
+                background: rgba(255, 213, 74, 0.08);
+                animation: cb-pulse 1.6s ease-in-out infinite;
+            }
+            .cb-ptally {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 1px;
+                font-family: Inter, sans-serif;
+                font-size: 0.68rem;
+                line-height: 1.3;
+                color: #bababa;
+                white-space: nowrap;
+            }
+            .cb-ptally b { font-size: 0.85rem; color: #fff; }
+            .cb-pprompt {
+                text-align: center;
+                font-family: Inter, sans-serif;
+                font-size: 0.78rem;
+                color: #e8e6e3;
+                min-height: 1.2rem;
+            }
+            /* ---- The single play screen ----
+               Table and your hand are ONE view that always fits the screen:
+               nothing scrolls. The table floats in the middle, the prompt row
+               and your fan pin to the bottom. */
+            .cb-playview {
+                position: relative;
+                flex: 1;
+                min-height: 0;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                gap: 0.25rem;
+                max-width: 42rem;
+                width: 100%;
+                margin: 0 auto;
+                padding: 0.3rem 0.6rem
+                    calc(0.4rem + env(safe-area-inset-bottom));
+            }
+            .cb-playview .cb-ptable {
+                flex: 0 1 auto;
+                min-height: 0;
+                margin: auto 0;
+                overflow: hidden; /* never spill onto the hand below */
+            }
+            .cb-playview .cb-fan-play { flex-shrink: 0; }
+            .cb-playrow {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.6rem;
+                flex-shrink: 0;
+            }
+            .cb-playrow .cb-pprompt { flex: 1; min-width: 0; }
+            /* anchor for the last-trick popup: it opens just above the row */
+            .cb-playbottom {
+                position: relative;
+                flex-shrink: 0;
+            }
+            /* short screens: compress the table so everything still fits */
+            @media (max-height: 640px) {
+                .cb-ptable { padding: 0.35rem 0.3rem; gap: 0.35rem 0.5rem; }
+                .cb-ptrick { width: 8.2rem; height: 6.8rem; }
+                .cb-ptrick .tkc,
+                .cb-ptrick .tk-slot { width: 2rem; height: 2.9rem; }
+                .cb-flat .cb-card { width: 2.3rem; height: 3.3rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.25rem; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -2.25rem; }
+                .cb-flat .cb-corner b { font-size: 0.8rem; }
+                .cb-flat .cb-corner i { font-size: 0.68rem; }
+                .cb-pback { width: 1.5rem; height: 2.15rem; margin-left: -0.9rem; }
+                .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.5rem; }
+                .cb-fan-play .cb-card { width: 2.9rem; height: 4.2rem; margin-left: -1.4rem; }
+            }
+            @media (max-height: 540px) {
+                .cb-ptable { padding: 0.3rem 0.2rem; gap: 0.3rem 0.4rem; }
+                .cb-ptrick { width: 7rem; height: 5.8rem; }
+                .cb-ptrick .tkc,
+                .cb-ptrick .tk-slot { width: 1.7rem; height: 2.45rem; }
+                .cb-flat .cb-card { width: 2rem; height: 2.9rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.1rem; }
+                .cb-flat-v .cb-corner i { display: none; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -2.05rem; }
+                .cb-flat .cb-corner b { font-size: 0.68rem; }
+                .cb-pback { width: 1.3rem; height: 1.85rem; margin-left: -0.75rem; }
+                .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.3rem; }
+                .cb-fan-play .cb-card { width: 2.6rem; height: 3.8rem; margin-left: -1.35rem; }
+                .cb-fan-play .cb-corner b { font-size: 0.85rem; }
+                .cb-fan-play .cb-corner i { font-size: 0.75rem; }
+                .cb-pprompt { font-size: 0.7rem; }
+            }
+            /* Laptops and desktops: the play view used to sit in a small
+               fixed-size bubble; scale the whole thing up so a big screen is
+               actually used (cards, table, fan and text together). */
+            @media (min-width: 820px) and (min-height: 700px) {
+                .cb-playview { zoom: 1.25; max-width: 52rem; }
+            }
+            @media (min-width: 1100px) and (min-height: 880px) {
+                .cb-playview { zoom: 1.5; max-width: 60rem; }
+            }
+            .cb-trickbtn {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.3rem;
+                background: #3d3a36;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #bababa;
+                border-radius: 999px;
+                padding: 0.28rem 0.75rem;
+                font-family: Inter, sans-serif;
+                font-size: 0.7rem;
+                font-weight: 600;
+            }
+            .cb-trickbtn .material-symbols-outlined { font-size: 15px; }
+            .cb-trickbtn.on {
+                color: #e8e6e3;
+                border-color: rgba(255, 255, 255, 0.25);
+            }
+            /* the reviewed trick pops up right above the last-trick button
+               (bottom of the screen), never in the middle of the table, so
+               the single screen keeps its height */
+            .cb-lasttrick {
+                position: absolute;
+                bottom: calc(100% + 0.3rem);
+                right: 0;
+                z-index: 30;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.15rem;
+                background: rgba(38, 36, 33, 0.97);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 0.8rem;
+                padding: 0.5rem 0.7rem;
+                box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+            }
+            .cb-lasttrick .cap {
+                font-family: Inter, sans-serif;
+                font-size: 0.6rem;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: #787572;
+            }
+            /* the auction that led here, on demand: same toggle behaviour as
+               the last-trick button, panel pops up above the button row */
+            .cb-auctionpop {
+                position: absolute;
+                bottom: calc(100% + 0.3rem);
+                left: 0;
+                right: 0;
+                z-index: 30;
+                max-height: min(26rem, 52vh);
+                overflow-y: auto;
+                overscroll-behavior: contain;
+                background: rgba(38, 36, 33, 0.97);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 0.8rem;
+                padding: 0.35rem;
+                box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+            }
+            .cb-auctionpop .cb-auction {
+                background: transparent;
+                border: none;
+            }
+            .cb-auctionpop .cb-auc-body {
+                min-height: 0;
+                overflow: visible;
+            }
+
+            @media (max-width: 400px) {
+            .cb-diagram {
+                    grid-template-columns: 1fr 1fr;
+                    grid-template-areas:
+                        "n n"
+                        "w e"
+                        "s s";
+                }
+                .cb-dg-n,
+                .cb-dg-s {
+                    justify-self: center;
+                }
+                .cb-dg-line { font-size: 0.72rem; }
+            }
+
+            .cb-done {
+                background: #302e2c;
+                border-radius: 1rem;
+                padding: 0.7rem 0.75rem 0.75rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.55rem;
+            }
+            .cb-done-head {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+            .cb-done-score { min-width: 0; }
+            .cb-done-contract {
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.95rem;
+                color: #fff;
+            }
+            .cb-done-tricks {
+                font-size: 0.68rem;
+                color: #908f8d;
+                margin-top: 2px;
+            }
+            .cb-done-imps {
+                display: flex;
+                align-items: baseline;
+                gap: 0.45rem;
+                margin-top: 0.3rem;
+            }
+            .cb-done-imps .lbl,
+            .cb-done-par .lbl {
+                font-family: Inter, sans-serif;
+                font-weight: 700;
+                font-size: 0.56rem;
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+                color: #787572;
+            }
+            .cb-done-imps .victory-imps {
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.65rem;
+                line-height: 1;
+            }
+            .cb-done-par {
+                text-align: right;
+                flex-shrink: 0;
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 0.7rem;
+                padding: 0.3rem 0.6rem;
+            }
+            .cb-done-par .val {
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.15rem;
+                color: #e8e6e3;
+            }
+            .cb-done-foot { display: flex; }
+
+            .cb-diagram.cb-diagram-done {
+                grid-template-areas:
+                    ". n ."
+                    "w a e"
+                    ". s .";
+            }
+            .cb-dg-a {
+                grid-area: a;
+                min-width: 0;
+                width: 100%;
+                align-self: center;
+                max-height: 10.5rem;
+                overflow-y: auto;
+                overscroll-behavior: contain;
+            }
+            .cb-auc-mini-head,
+            .cb-auc-mini-row {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 2px;
+                margin-bottom: 2px;
+            }
+            .cb-auc-mini-head span {
+                text-align: center;
+                font-family: Inter, sans-serif;
+                font-weight: 700;
+                font-size: 0.55rem;
+                letter-spacing: 0.05em;
+                color: #908f8d;
+            }
+            .cb-auc-mini-head span.dlr { color: #e8e6e3; }
+            .cb-mini {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 1.05rem;
+                min-width: 0;
+                border-radius: 0.3rem;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.6rem;
+                padding: 0 1px;
+            }
+            .cb-mini-c { background: #b5e48c; color: #2b7a4b; }
+            .cb-mini-d { background: #f8c471; color: #c05621; }
+            .cb-mini-h { background: #f1948a; color: #b03a2e; }
+            .cb-mini-s { background: #a5b4f4; color: #2a3f93; }
+            .cb-mini-n { background: #e8eaed; color: #1b1f27; }
+            .cb-mini-p { background: #2e5d43; color: #cfe8d4; }
+            .cb-mini-x { background: #c0392b; color: #fff; }
+            .cb-mini-xx { background: #2a51b0; color: #fff; }
+            @media (max-width: 400px) {
+                .cb-diagram.cb-diagram-done {
+                    grid-template-columns: 1fr 1fr;
+                    grid-template-areas:
+                        "n n"
+                        "w e"
+                        "s s"
+                        "a a";
+                }
+                .cb-dg-a {
+                    width: auto;
+                    min-width: 65%;
+                    max-width: 100%;
+                    justify-self: center;
+                    max-height: 7.5rem;
+                }
+            }
+
+            .cb-cardpanel {
+                background: #262421;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 1rem;
+            }
+            .cb-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 14px;
+                border-radius: 9999px;
+                background: #262421;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                font-size: 12px;
+                color: #bababa;
+            }
+            .cb-input {
+                width: 100%;
+                border: 1.5px solid #55514b;
+                border-radius: 10px;
+                padding: 10px 14px;
+                font-size: 14px;
+                background: #161512;
+                color: #e8e6e3;
+                outline: none;
+            }
+            .cb-input:focus {
+                border-color: #6f6c68;
+            }
+
+            /* ===================== Drill-specific UI ===================== */
+            .dr-wrap {
+                max-width: 46rem;
+                margin: 0 auto;
+                width: 100%;
+                padding: 0 0.75rem calc(1.5rem + env(safe-area-inset-bottom));
+            }
+            .dr-tabs {
+                display: flex;
+                gap: 0.4rem;
+                margin: 0.2rem 0 0.9rem;
+            }
+            .dr-tab {
+                flex: 1;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.4rem;
+                padding: 0.6rem 0.5rem;
+                border-radius: 0.8rem;
+                background: #262421;
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                color: #908f8d;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.85rem;
+            }
+            .dr-tab.on {
+                background: linear-gradient(180deg, #6f6c68, #4a4642);
+                color: #fff;
+                box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+            }
+            .dr-panel {
+                background: #262421;
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 1rem;
+                padding: 0.9rem;
+                margin-bottom: 0.8rem;
+            }
+            .dr-panel > h3 {
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.95rem;
+                color: #e8e6e3;
+                margin-bottom: 0.5rem;
+                display: flex;
+                align-items: center;
+                gap: 0.4rem;
+            }
+            .dr-hint {
+                color: #908f8d;
+                font-size: 0.75rem;
+                font-family: Inter, sans-serif;
+                line-height: 1.45;
+            }
+            .dr-row {
+                display: flex;
+                align-items: center;
+                gap: 0.6rem;
+                padding: 0.6rem 0.2rem;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            }
+            .dr-row:last-child { border-bottom: none; }
+            .dr-row .grow { flex: 1; min-width: 0; }
+            .dr-title {
+                font-family: Manrope, sans-serif;
+                font-weight: 700;
+                font-size: 0.9rem;
+                color: #e8e6e3;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .dr-sub {
+                font-size: 0.7rem;
+                color: #908f8d;
+                font-family: Inter, sans-serif;
+                margin-top: 1px;
+            }
+            .dr-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 3px;
+                padding: 2px 8px;
+                border-radius: 999px;
+                font-size: 0.6rem;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                font-family: Inter, sans-serif;
+            }
+            .dr-badge.decl { background: #6b4f1d; color: #ffd98a; }
+            .dr-badge.def { background: #2a4a6b; color: #9fd0ff; }
+            .dr-stars { color: #ffd54a; font-size: 0.78rem; letter-spacing: 1px; }
+            .dr-stars .off { color: #4a4642; }
+            .dr-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.35rem;
+                padding: 0.5rem 0.85rem;
+                border-radius: 0.7rem;
+                background: linear-gradient(180deg, #6f6c68, #4a4642);
+                color: #fff;
+                font-family: Inter, sans-serif;
+                font-weight: 700;
+                font-size: 0.78rem;
+                box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+                white-space: nowrap;
+            }
+            .dr-btn.ghost {
+                background: #3d3a36;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                color: #bababa;
+                box-shadow: none;
+            }
+            .dr-btn.gold {
+                background: linear-gradient(180deg, #f0d67a, #d9b84a);
+                color: #2a2410;
+            }
+            .dr-btn.danger { background: #7a2f28; color: #ffd9d3; }
+            .dr-btn:disabled { opacity: 0.4; box-shadow: none; cursor: not-allowed; }
+            .dr-btn .material-symbols-outlined { font-size: 17px; }
+            .dr-filters {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.4rem;
+                align-items: center;
+                margin-bottom: 0.7rem;
+            }
+            .dr-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 3px;
+                padding: 0.3rem 0.7rem;
+                border-radius: 999px;
+                background: #302e2c;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                color: #908f8d;
+                font-size: 0.72rem;
+                font-family: Inter, sans-serif;
+                font-weight: 600;
+            }
+            .dr-chip.on {
+                background: #4a4642;
+                color: #fff;
+                border-color: rgba(255, 213, 74, 0.5);
+            }
+            .dr-label {
+                font-family: Inter, sans-serif;
+                font-size: 0.62rem;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                color: #787572;
+                margin-bottom: 0.3rem;
+                display: block;
+            }
+            .dr-seg {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.35rem;
+            }
+            .dr-seg button {
+                padding: 0.45rem 0.7rem;
+                border-radius: 0.6rem;
+                background: #302e2c;
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                color: #bababa;
+                font-family: Inter, sans-serif;
+                font-weight: 600;
+                font-size: 0.78rem;
+            }
+            .dr-seg button.on {
+                background: #4a4642;
+                color: #fff;
+                border-color: rgba(255, 213, 74, 0.55);
+            }
+            .dr-seg button:disabled { opacity: 0.35; }
+            .dr-field { margin-bottom: 0.7rem; }
+            .dr-input {
+                width: 100%;
+                border: 1.5px solid #55514b;
+                border-radius: 0.6rem;
+                padding: 0.55rem 0.7rem;
+                font-size: 0.85rem;
+                background: #161512;
+                color: #e8e6e3;
+                outline: none;
+                font-family: Inter, sans-serif;
+            }
+            .dr-input:focus { border-color: #6f6c68; }
+            textarea.dr-input { resize: vertical; min-height: 3.4rem; line-height: 1.45; }
+            .dr-steps {
+                display: flex;
+                gap: 0.3rem;
+                margin-bottom: 0.9rem;
+            }
+            .dr-step {
+                flex: 1;
+                text-align: center;
+                padding: 0.4rem 0.1rem;
+                border-radius: 0.5rem;
+                font-size: 0.62rem;
+                font-family: Inter, sans-serif;
+                font-weight: 700;
+                letter-spacing: 0.03em;
+                background: #262421;
+                color: #787572;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+            }
+            .dr-step.on { background: #4a4642; color: #fff; border-color: rgba(255, 213, 74, 0.4); }
+            .dr-step.done { color: #8fd694; }
+            .dr-nav {
+                display: flex;
+                gap: 0.5rem;
+                justify-content: space-between;
+                margin-top: 0.9rem;
+            }
+            /* deck picker */
+            .dr-deck {
+                display: grid;
+                grid-template-columns: repeat(13, 1fr);
+                gap: 3px;
+                margin-top: 0.4rem;
+            }
+            .dr-dcard {
+                position: relative;
+                aspect-ratio: 3 / 4;
+                border-radius: 4px;
+                background: #1b1a18;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.72rem;
+                line-height: 1;
+                cursor: pointer;
+            }
+            .dr-dcard .sym { font-size: 0.72rem; margin-top: 1px; }
+            .dr-dcard.red { color: #f08a8a; }
+            .dr-dcard.blk { color: #cfcac2; }
+            .dr-dcard.free { opacity: 0.34; }
+            .dr-dcard .own {
+                position: absolute;
+                top: 1px;
+                right: 2px;
+                font: 800 8px/1 Inter, sans-serif;
+                color: #161512;
+                background: #ffd54a;
+                border-radius: 3px;
+                padding: 1px 2px;
+            }
+            .dr-dcard.s0 .own { background: #8fd694; }
+            .dr-dcard.s1 .own { background: #f0b48a; }
+            .dr-dcard.s2 .own { background: #ffd54a; }
+            .dr-dcard.s3 .own { background: #a5b4f4; }
+            .dr-hands4 {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 0.5rem;
+                margin-top: 0.6rem;
+            }
+            .dr-handbox {
+                background: #1b1a18;
+                border: 1px solid rgba(255, 255, 255, 0.07);
+                border-radius: 0.6rem;
+                padding: 0.4rem 0.5rem;
+                cursor: pointer;
+            }
+            .dr-handbox.sel { border-color: #ffd54a; box-shadow: 0 0 0 1px rgba(255,213,74,.4); }
+            .dr-handbox .hd {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+                font-family: Inter, sans-serif;
+                font-size: 0.7rem;
+                color: #bababa;
+                margin-bottom: 2px;
+            }
+            .dr-handbox .cnt { font-size: 0.62rem; color: #787572; }
+            .dr-handbox .cnt.ok { color: #8fd694; }
+            .dr-handbox .body {
+                font-family: Manrope, sans-serif;
+                font-weight: 700;
+                font-size: 0.72rem;
+                color: #e8e6e3;
+                line-height: 1.5;
+                min-height: 2.2rem;
+            }
+            /* recorder hands */
+            .dr-rec {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 0.4rem;
+            }
+            .dr-rechand {
+                background: #1b1a18;
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 0.6rem;
+                padding: 0.35rem 0.5rem;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+            }
+            .dr-rechand.act { border-color: #ffd54a; box-shadow: 0 0 0 1px rgba(255,213,74,.35); }
+            .dr-rechand .who {
+                font-family: Inter, sans-serif;
+                font-size: 0.62rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: #908f8d;
+                width: 3.4rem;
+                flex-shrink: 0;
+            }
+            .dr-rechand.act .who { color: #ffd54a; }
+            .dr-reccards { display: flex; flex-wrap: wrap; gap: 3px; }
+            .dr-rc {
+                width: 1.85rem;
+                height: 2.6rem;
+                border-radius: 4px;
+                background: linear-gradient(180deg, #fff, #eeece6);
+                border: 1px solid rgba(0, 0, 0, 0.4);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.8rem;
+                line-height: 1;
+            }
+            .dr-rc.red { color: #c0392b; }
+            .dr-rc.blk { color: #1b1f27; }
+            .dr-rc.played { opacity: 0.22; }
+            .dr-rc.legal { cursor: pointer; box-shadow: 0 0 0 1.5px rgba(255,213,74,.75); }
+            .dr-rc.legal:hover { transform: translateY(-2px); }
+            .dr-rc .sym { font-size: 0.8rem; }
+            /* wrong-pick hint bubble */
+            .dr-msg {
+                background: rgba(255, 213, 74, 0.12);
+                border: 1px solid rgba(255, 213, 74, 0.5);
+                border-radius: 0.7rem;
+                padding: 0.5rem 0.7rem;
+                color: #ffe6a3;
+                font-family: Inter, sans-serif;
+                font-size: 0.8rem;
+                line-height: 1.4;
+                display: flex;
+                gap: 0.4rem;
+                align-items: flex-start;
+            }
+            .dr-msg .material-symbols-outlined { font-size: 17px; flex-shrink: 0; margin-top: 1px; }
+            .dr-msg-float {
+                position: absolute;
+                bottom: calc(100% + 0.35rem);
+                left: 0;
+                right: 0;
+                z-index: 30;
+                margin-bottom: 0;
+                background: rgba(60, 48, 16, 0.97);
+                box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+                animation: dr-pop 0.18s ease;
+            }
+            @keyframes dr-pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+            .dr-hintclose {
+                display: inline-flex; align-items: center; justify-content: center;
+                width: 1.3rem; height: 1.3rem; border-radius: 50%;
+                color: #ffe6a3; flex-shrink: 0;
+            }
+            .dr-hintclose:hover { background: rgba(255, 255, 255, 0.12); }
+            .dr-hintclose .material-symbols-outlined { font-size: 15px; margin: 0; }
+            /* modal */
+            .dr-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 90;
+                background: rgba(0, 0, 0, 0.6);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 1rem;
+            }
+            .dr-modal {
+                background: #302e2c;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 1rem;
+                padding: 1rem;
+                max-width: 26rem;
+                width: 100%;
+                max-height: 88vh;
+                overflow-y: auto;
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            }
+            .dr-modal h3 {
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                color: #e8e6e3;
+                margin-bottom: 0.5rem;
+            }
+            .dr-modalfoot { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.9rem; }
+            .dr-spin {
+                width: 1.1rem; height: 1.1rem;
+                border: 2px solid rgba(255,255,255,.2);
+                border-top-color: #e8e6e3;
+                border-radius: 50%;
+                display: inline-block;
+                animation: dr-spin .7s linear infinite;
+            }
+            @keyframes dr-spin { to { transform: rotate(360deg); } }
+            .dr-empty { text-align: center; color: #787572; padding: 2rem 1rem; font-family: Inter, sans-serif; font-size: 0.82rem; }
+            /* claim/result line review */
+            .dr-line { display: flex; flex-direction: column; gap: 0.15rem; }
+            .dr-line-trick { display: flex; gap: 0.3rem; align-items: center; padding: 0.2rem 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+            .dr-line-no { font-size: 0.6rem; color: #787572; width: 1.3rem; font-family: Inter, sans-serif; }
+            .dr-line-msg { font-size: 0.72rem; color: #ffe6a3; font-family: Inter, sans-serif; margin: 1px 0 3px 1.6rem; line-height: 1.35; }
+            .dr-tk-mini {
+                display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+                width: 1.9rem; height: 2.5rem; border-radius: 4px;
+                background: linear-gradient(180deg,#fff,#eeece6); border: 1px solid rgba(0,0,0,.4);
+                font-family: Manrope, sans-serif; font-weight: 800; font-size: 0.85rem; line-height: 1;
+            }
+            .dr-tk-mini.red { color: #c0392b; } .dr-tk-mini.blk { color: #1b1f27; }
+            .dr-tk-mini.win { box-shadow: 0 0 0 2px #8fd694; }
+            .dr-tk-seat { font-size: 0.5rem; color: #787572; font-family: Inter, sans-serif; }
+            .dr-result-big {
+                font-family: Manrope, sans-serif; font-weight: 800; font-size: 1.7rem; line-height: 1;
+            }
+            .dr-comment {
+                background: #1b1a18; border: 1px solid rgba(255,255,255,.06);
+                border-radius: 0.6rem; padding: 0.5rem 0.7rem; color: #bababa;
+                font-family: Inter, sans-serif; font-size: 0.78rem; line-height: 1.45;
+                white-space: pre-wrap;
+            }
+            body.dr-noscroll { overflow: hidden; }
+        </style>
+    </head>
+    <body
+        class="cb-page text-white font-body selection:bg-tertiary-container/30 overflow-hidden"
+    >
+        <div id="app"></div>
+        <script>
+            // ===================== Card Problems (drills) =====================
+            // A self-contained section: author fully-scripted card-play
+            // problems (deal, auction, comments, every card with the hero's
+            // "why") and practice anyone's problems against that script. No
+            // bots, no sidecar -- the author's line is the truth.
+
+            document.getElementById("app").innerHTML = renderLayout({
+                mode: "drill",
+                badge: "Card problems",
+                title: "Card problems",
+                subtitle:
+                    "Author fully-scripted card-play problems -- the deal, the auction, your defensive agreements and every card of the play, each hero card annotated with why it was chosen -- then practise the library. Pick a wrong card and the author's reasoning for the right one is revealed; the hand is never scored in IMPs, only the final result.",
+            });
+
+            const SEAT_NAMES = ["North", "East", "South", "West"];
+            const VULN_NAMES = ["None", "N-S", "E-W", "Both"];
+            const SUIT_SYMBOL = { S: "\u2660", H: "\u2665", D: "\u2666", C: "\u2663", N: "NT" };
+            const SUIT_ORDER = ["C", "D", "H", "S", "N"];
+            const TILE_CLS = { C: "c", D: "d", H: "h", S: "s", N: "n" };
+            const PLAY_RANK_ORDER = "AKQJT98765432";
+            const HAND_SUIT_ORDER = ["S", "H", "C", "D"]; // display order
+            const STORE_SUIT_ORDER = ["S", "H", "D", "C"]; // 'S.H.D.C' storage
+            const PLAY_PACE_MS = 1000;
+            const SESSION_KEY = "atheneum_drill_session";
+
+            // ---- app state ----
+            let view = "lobby"; // "lobby" | "session"
+            let lobbyTab = "practice"; // "practice" | "create"
+            let library = null; // [{id,owner,title,role,...}]
+            let filters = { role: "all", author: "all", difficulty: 0 }; // 0 = any
+            let busy = false;
+
+            // live practice session
+            let state = null;
+            let revealCount = 0;
+            let revealBoardId = null;
+            let lastRevealTs = 0;
+            let paceTimer = null;
+            let selectedCard = null;
+            let selectedCtx = null;
+            let showLastTrick = false;
+            let showAuction = false;
+            let showNotes = false;
+            let hintMsg = null; // wrong-pick feedback from the author
+            let showIntro = false; // pre-play briefing overlay
+
+            // authoring wizard
+            let wiz = null; // draft problem (see blankWiz)
+            let wizModal = null; // {kind:'msg'|'claim'|'delete', ...}
+
+            // ---- shared formatting helpers (ported from play.html) ----
+            function dcolorSuits(text) {
+                return escapeHtml(text)
+                    .replace(/\u2663/g, '<span style="color:#8fd694;">\u2663</span>')
+                    .replace(/\u2660/g, '<span style="color:#8fd694;">\u2660</span>')
+                    .replace(/\u2666/g, '<span style="color:#f08a8a;">\u2666</span>')
+                    .replace(/\u2665/g, '<span style="color:#f08a8a;">\u2665</span>');
+            }
+            function scoreText(n) { return n > 0 ? "+" + n : String(n); }
+            function hcpOf(handStr) {
+                let t = 0;
+                for (const c of String(handStr || "").replace(/\./g, "")) {
+                    if (c === "A") t += 4; else if (c === "K") t += 3;
+                    else if (c === "Q") t += 2; else if (c === "J") t += 1;
+                }
+                return t;
+            }
+            function stars(n) {
+                let s = "";
+                for (let i = 1; i <= 5; i++)
+                    s += `<span class="${i <= n ? "" : "off"}">\u2605</span>`;
+                return `<span class="dr-stars">${s}</span>`;
+            }
+            function spinner(msg) {
+                return `<span class="dr-spin"></span> <span>${escapeHtml(msg || "")}</span>`;
+            }
+            function timeAgo(ts) {
+                const d = new Date(ts);
+                if (isNaN(d)) return "";
+                const s = (Date.now() - d.getTime()) / 1000;
+                if (s < 60) return "just now";
+                if (s < 3600) return Math.floor(s / 60) + "m ago";
+                if (s < 86400) return Math.floor(s / 3600) + "h ago";
+                return Math.floor(s / 86400) + "d ago";
+            }
+
+            function diagramSeatHtml(seat, handStr, youSeat) {
+                const suits = [["\u2660", 0, "s"], ["\u2665", 1, "h"], ["\u2666", 2, "d"], ["\u2663", 3, "c"]];
+                const parts = String(handStr || "").split(".");
+                const lines = suits.map(([sym, pi, cls]) => {
+                    const cards = (parts[pi] || "").split("").filter(Boolean)
+                        .map((r) => (r === "T" ? "10" : r)).join(" ");
+                    return `<div class="cb-dg-line"><span class="cb-dg-su ${cls}">${sym}</span><span class="cb-dg-cards">${cards || "\u2014"}</span></div>`;
+                }).join("");
+                return `<div class="cb-dg-name">${SEAT_NAMES[seat]}${youSeat === seat ? " \u00b7 you" : ""} \u00b7 ${hcpOf(handStr)} HCP</div>${lines}`;
+            }
+            function handsDiagramHtml(hands, youSeat) {
+                const cls = ["cb-dg-n", "cb-dg-e", "cb-dg-s", "cb-dg-w"];
+                return `<div class="cb-diagram">` +
+                    [0, 1, 2, 3].map((s) => `<div class="cb-dg-seat ${cls[s]}">${diagramSeatHtml(s, hands[s], youSeat)}</div>`).join("") +
+                    `</div>`;
+            }
+
+            function cbChip(c) {
+                if (c === "P") return `<span class="cb-call cb-call-p">pass</span>`;
+                if (c === "X") return `<span class="cb-call cb-call-x">X</span>`;
+                if (c === "XX") return `<span class="cb-call cb-call-xx">XX</span>`;
+                const sym = c[1] === "N" ? "NT" : SUIT_SYMBOL[c[1]];
+                return `<span class="cb-call cb-call-${TILE_CLS[c[1]]}">${c[0]}<b style="font-size:.75rem;">${sym}</b></span>`;
+            }
+            function auctionHtml(dealer, vuln, calls, pending, youSeat) {
+                const cols = [0, 1, 2, 3].map((k) => (dealer + k) % 4);
+                const list = calls || [];
+                const rows = [];
+                for (let i = 0; i < list.length; i += 4)
+                    rows.push(list.slice(i, i + 4).map((c, j) => ({ c, i: i + j })));
+                if (pending !== null && pending !== undefined) {
+                    const pos = (pending - dealer + 4) % 4;
+                    let r = Math.floor(list.length / 4);
+                    if (!rows[r]) rows[r] = [];
+                    if (pos < rows[r].length) { r++; rows[r] = []; }
+                    while (rows[r].length < pos) rows[r].push({ c: null });
+                    rows[r].push({ q: true });
+                }
+                const vulnSeat = (s) => vuln === 3 || (vuln === 1 && s % 2 === 0) || (vuln === 2 && s % 2 === 1);
+                const head = cols.map((s) => {
+                    const v = vulnSeat(s);
+                    const cls = `cb-seatv ${v ? "v" : "nv"}${s === dealer ? " dlr" : ""}${s === youSeat ? " you" : ""}`;
+                    return `<div><span class="${cls}">${SEAT_NAMES[s][0]}</span></div>`;
+                }).join("");
+                const body = rows.length
+                    ? rows.map((row) => `<div class="cb-auc-row">` +
+                        row.map((cell) => `<div class="cb-auc-cell">${cell.q ? `<span class="cb-q">?</span>` : cell.c ? cbChip(cell.c) : ""}</div>`).join("") +
+                        `</div>`).join("")
+                    : `<div class="cb-auc-empty">no calls yet</div>`;
+                return `<div class="cb-auction">
+                    <div class="cb-auc-meta">
+                        <span>Dealer ${SEAT_NAMES[dealer][0]} \u00b7 <span class="${vuln === 0 ? "cb-vuln-nv" : "cb-vuln-v"}">Vuln ${VULN_NAMES[vuln]}</span></span>
+                        <span>${list.length} call${list.length === 1 ? "" : "s"}</span>
+                    </div>
+                    <div class="cb-auc-head">${head}</div>
+                    <div class="cb-auc-body">${body}</div>
+                </div>`;
+            }
+            function miniChip(c) {
+                if (c === "P") return `<span class="cb-mini cb-mini-p">P</span>`;
+                if (c === "X") return `<span class="cb-mini cb-mini-x">X</span>`;
+                if (c === "XX") return `<span class="cb-mini cb-mini-xx">XX</span>`;
+                const sym = c[1] === "N" ? "NT" : SUIT_SYMBOL[c[1]];
+                return `<span class="cb-mini cb-mini-${TILE_CLS[c[1]]}">${c[0]}${sym}</span>`;
+            }
+            function miniAuctionHtml(dealer, calls) {
+                const cols = [0, 1, 2, 3].map((k) => (dealer + k) % 4);
+                const head = cols.map((s) => `<span class="${s === dealer ? "dlr" : ""}">${SEAT_NAMES[s][0]}</span>`).join("");
+                const list = calls || [];
+                let body = "";
+                for (let i = 0; i < list.length; i += 4) {
+                    const row = list.slice(i, i + 4);
+                    let cells = "";
+                    for (let k = 0; k < 4; k++) cells += row[k] ? miniChip(row[k]) : `<span></span>`;
+                    body += `<div class="cb-auc-mini-row">${cells}</div>`;
+                }
+                return `<div class="cb-auc-mini-head">${head}</div>${body}`;
+            }
+            function doneDiagramHtml(hands, youSeat, dealer, calls) {
+                const cls = ["cb-dg-n", "cb-dg-e", "cb-dg-s", "cb-dg-w"];
+                return `<div class="cb-diagram cb-diagram-done">` +
+                    [0, 1, 2, 3].map((s) => `<div class="cb-dg-seat ${cls[s]}">${diagramSeatHtml(s, hands[s], youSeat)}</div>`).join("") +
+                    `<div class="cb-dg-a">${miniAuctionHtml(dealer, calls)}</div></div>`;
+            }
+
+            // ---- API plumbing ----
+            async function api(method, path, body) {
+                const res = await fetch(path, {
+                    method,
+                    headers: body ? { "Content-Type": "application/json" } : undefined,
+                    body: body ? JSON.stringify(body) : undefined,
+                });
+                if (res.status === 401) {
+                    showAuthDialog("login");
+                    throw { auth: true };
+                }
+                const data = await res.json().catch(() => null);
+                return { ok: res.ok, status: res.status, data };
+            }
+
+            // ---- auction / contract helpers (mirror play.go) ----
+            function isBid(c) { return /^[1-7][CDHSN]$/.test(c); }
+            function bidRank(c) { return isBid(c) ? parseInt(c[0]) * 10 + "CDHSN".indexOf(c[1]) : -1; }
+            function auctionOver(calls) {
+                const n = calls.length;
+                return n >= 3 && calls[n - 1] === "P" && calls[n - 2] === "P" && calls[n - 3] === "P";
+            }
+            // legal continuations of an auction, for the authoring bidding box
+            function legalCalls(dealer, calls) {
+                if (auctionOver(calls)) return [];
+                const n = calls.length, seat = (dealer + n) % 4;
+                let lastBidSeat = -1, lastBidRank = -1;
+                for (let i = 0; i < n; i++)
+                    if (isBid(calls[i])) { lastBidRank = bidRank(calls[i]); lastBidSeat = (dealer + i) % 4; }
+                const prev = n > 0 ? calls[n - 1] : "";
+                const out = [];
+                for (let lv = 1; lv <= 7; lv++)
+                    for (const d of "CDHSN") { const tok = lv + d; if (bidRank(tok) > lastBidRank) out.push(tok); }
+                if (isBid(prev) && lastBidSeat >= 0 && lastBidSeat % 2 !== seat % 2) out.push("X");
+                if (prev === "X" && lastBidSeat >= 0 && lastBidSeat % 2 === seat % 2) out.push("XX");
+                out.push("P");
+                return out;
+            }
+            // recover the final contract (declarer/denom/penalty), or null if passed out
+            function contractFromCalls(dealer, calls) {
+                let lastBid = -1, doubled = false, redoubled = false;
+                const firstDenom = {};
+                for (let i = 0; i < calls.length; i++) {
+                    const c = calls[i];
+                    if (c === "X") { doubled = true; redoubled = false; }
+                    else if (c === "XX") { redoubled = true; }
+                    else if (isBid(c)) {
+                        lastBid = i; doubled = redoubled = false;
+                        const seat = (dealer + i) % 4;
+                        const key = "CDHSN".indexOf(c[1]) + "_" + (seat % 2);
+                        if (firstDenom[key] === undefined) firstDenom[key] = seat;
+                    }
+                }
+                if (lastBid < 0) return null;
+                const c = calls[lastBid];
+                const denomIdx = "CDHSN".indexOf(c[1]);
+                const bidder = (dealer + lastBid) % 4;
+                const declarer = firstDenom[denomIdx + "_" + (bidder % 2)];
+                return {
+                    level: parseInt(c[0]), denom: c[1], declarer,
+                    penalty: redoubled ? 2 : doubled ? 1 : 0,
+                };
+            }
+            function contractText(c) {
+                if (!c) return "passed out";
+                const pen = ["", "X", "XX"][c.penalty] || "";
+                const sym = c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom];
+                return `${c.level}${sym}${pen} by ${SEAT_NAMES[c.declarer]}`;
+            }
+
+            // ===================== Practice table (hero rotated to bottom) =====================
+            function handToCards(handStr) {
+                const parts = String(handStr || "").split(".");
+                const out = [];
+                for (let s = 0; s < 4; s++)
+                    for (const r of parts[s] || "") out.push(r + "SHDC"[s]);
+                return out;
+            }
+            function seatForArea(r) { return (r + state.heroSeat - 2 + 8) % 4; } // r: 0 top,1 right,2 bottom,3 left
+            function rotOf(seat) { return (seat - state.heroSeat + 2 + 4) % 4; }
+            function revealedPlays() { return (state.plays || []).slice(0, revealCount); }
+            function playReady() {
+                return !!state && state.phase === "play" && state.yourTurn &&
+                    revealCount >= (state.plays || []).length && !busy;
+            }
+            function origHandOf(seat) {
+                if (!state) return null;
+                if (seat === state.heroSeat) return state.hand;
+                if (seat === state.dummy) return state.dummyHand || null;
+                return null;
+            }
+            function remainingOf(seat) {
+                const orig = origHandOf(seat);
+                if (orig == null) return null;
+                const played = new Set(revealedPlays().filter((p) => p.seat === seat).map((p) => p.card));
+                return handToCards(orig).filter((c) => !played.has(c));
+            }
+            function trickWinnerJS(trick, trump) {
+                let win = trick[0];
+                for (let i = 1; i < trick.length; i++) {
+                    const c = trick[i];
+                    if (c.card[1] === win.card[1]) {
+                        if (PLAY_RANK_ORDER.indexOf(c.card[0]) < PLAY_RANK_ORDER.indexOf(win.card[0])) win = c;
+                    } else if (c.card[1] === trump) win = c;
+                }
+                return win.seat;
+            }
+            function sortHand(cards) {
+                return cards.slice().sort((a, b) => {
+                    const d = HAND_SUIT_ORDER.indexOf(a[1]) - HAND_SUIT_ORDER.indexOf(b[1]);
+                    return d || PLAY_RANK_ORDER.indexOf(a[0]) - PLAY_RANK_ORDER.indexOf(b[0]);
+                });
+            }
+            function gridCardHtml(token, cls, dataAttr) {
+                const r = token[0], s = token[1];
+                const red = s === "H" || s === "D";
+                const rank = r === "T" ? "10" : r;
+                return `<span class="cb-card ${red ? "red" : "blk"} ${cls || ""}" ${dataAttr || ""}><span class="cb-corner"><b>${rank}</b><i>${SUIT_SYMBOL[s]}</i></span><span class="cb-midsuit">${SUIT_SYMBOL[s]}</span></span>`;
+            }
+            function playCardHtml(token, acting, playable) {
+                if (!acting || !playable.has(token)) return gridCardHtml(token);
+                const cls = selectedCard === token ? "playable sel" : "playable";
+                return gridCardHtml(token, cls, `data-play="${token}"`);
+            }
+            function dummyLayoutHtml(seat) {
+                const acting = (state.heroSeats || []).indexOf(seat) >= 0 &&
+                    playReady() && state.actSeat === seat;
+                const playable = new Set(acting ? state.legal || [] : []);
+                const cards = sortHand(remainingOf(seat) || [])
+                    .map((c) => playCardHtml(c, acting, playable)).join("");
+                return `<div class="cb-flat ${rotOf(seat) === 0 ? "cb-flat-h" : "cb-flat-v"}">${cards}</div>`;
+            }
+            function playFanHtml() {
+                const seat = state.heroSeat;
+                const acting = playReady() && state.actSeat === seat;
+                const playable = new Set(acting ? state.legal || [] : []);
+                const cards = sortHand(remainingOf(seat) || [])
+                    .map((c) => playCardHtml(c, acting, playable)).join("");
+                return `<div class="cb-fan cb-fan-play">${cards}</div>`;
+            }
+            function playSeatHtml(seat) {
+                const isDummy = seat === state.dummy;
+                const isHero = seat === state.heroSeat;
+                const acting = playReady() && state.actSeat === seat;
+                const botActing = !state.yourTurn && state.nextSeat === seat;
+                const dummyUp = isDummy && !isHero && revealedPlays().length > 0;
+                let body;
+                if (isHero) body = "";
+                else if (dummyUp) body = dummyLayoutHtml(seat);
+                else {
+                    const cnt = Math.max(0, 13 - revealedPlays().filter((pl) => pl.seat === seat).length);
+                    let backs = "";
+                    for (let i = 0; i < cnt; i++) backs += `<div class="cb-pback"></div>`;
+                    const vert = rotOf(seat) === 1 || rotOf(seat) === 3;
+                    body = `<div class="cb-pbacks${vert ? " cb-pbacks-v" : ""}">${backs}</div>`;
+                }
+                const actCls = acting || botActing ? " act" : "";
+                return `<div class="cb-pseat${actCls}">
+                    <div class="cb-pseat-name"><span class="cb-pbadge">${"NESW"[seat]}</span>${SEAT_NAMES[seat]}${isHero ? ' <span class="you">you</span>' : ""}</div>
+                    ${body}
+                </div>`;
+            }
+            function trickToDisplay() {
+                const plays = revealedPlays();
+                const n = plays.length;
+                const cur = plays.slice(Math.floor(n / 4) * 4);
+                if (cur.length) return { cards: cur, complete: cur.length === 4 };
+                if (n >= 4) return { cards: plays.slice(n - 4, n), complete: true };
+                return { cards: [], complete: false };
+            }
+            function trickCrossHtml(cards, win, extra) {
+                const areaOf = ["tk-n", "tk-e", "tk-s", "tk-w"]; // by rot
+                const cells = cards.map((pc) => {
+                    const r = pc.card[0], s = pc.card[1];
+                    const red = s === "H" || s === "D";
+                    const rank = r === "T" ? "10" : r;
+                    const w = win !== null && win !== undefined && pc.seat === win ? " win" : "";
+                    const pos = areaOf[rotOf(pc.seat)];
+                    return `<div class="tk ${pos}"><span class="who">${SEAT_NAMES[pc.seat][0]}</span><div class="tkc ${red ? "red" : "blk"}${w}"><span>${rank}</span><span>${SUIT_SYMBOL[s]}</span></div></div>`;
+                }).join("");
+                return `<div class="cb-ptrick">${cells}${extra || ""}</div>`;
+            }
+            function trickCenterHtml() {
+                const td = trickToDisplay();
+                const win = td.complete ? trickWinnerJS(td.cards, state.trump) : null;
+                let slots = "";
+                if (!td.complete) {
+                    const areaOf = ["tk-n", "tk-e", "tk-s", "tk-w"];
+                    const played = new Set(td.cards.map((c) => c.seat));
+                    const plays = revealedPlays();
+                    const next = plays.length ? (plays[plays.length - 1].seat + 1) % 4 : state.opener;
+                    for (let s = 0; s < 4; s++) {
+                        if (played.has(s)) continue;
+                        const mine = s === next && playReady();
+                        slots += `<div class="tk ${areaOf[rotOf(s)]}"><div class="tk-slot${mine ? " mine" : s === next ? " now" : ""}"></div></div>`;
+                    }
+                }
+                return trickCrossHtml(td.cards, win, slots);
+            }
+            function contractTagHtml() {
+                const c = state.contract;
+                if (!c) return "";
+                const pen = ["", "X", "XX"][c.penalty] || "";
+                const suit = c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom];
+                return dcolorSuits(`${c.level}${suit}${pen}${"NESW"[c.declarer]}`);
+            }
+            function playTallyHtml() {
+                const plays = revealedPlays();
+                let decl = 0;
+                for (let t = 0; t * 4 + 4 <= plays.length; t++) {
+                    const w = trickWinnerJS(plays.slice(t * 4, t * 4 + 4), state.trump);
+                    if (w === state.declarer || w === state.dummy) decl++;
+                }
+                const done = Math.floor(plays.length / 4);
+                const def = done - decl;
+                const heroDecl = state.role === "declarer";
+                const yours = heroDecl ? decl : def, theirs = heroDecl ? def : decl;
+                return `<div class="cb-ptally"><span>You <b>${yours}</b></span><span>Them <b>${theirs}</b></span></div>`;
+            }
+            function playPromptHtml() {
+                if (busy) return spinner("Playing\u2026");
+                if (playReady()) return "Your turn";
+                const plays = state.plays || [];
+                const nextSeat = revealCount < plays.length ? plays[revealCount].seat : state.nextSeat;
+                return spinner(SEAT_NAMES[nextSeat] + " plays\u2026");
+            }
+            function lastTrickPlays() {
+                const plays = revealedPlays();
+                const full = Math.floor(plays.length / 4) * 4;
+                if (full === 0) return null;
+                return plays.slice(full - 4, full);
+            }
+            function lastTrickBtnHtml() {
+                const trick = lastTrickPlays();
+                const open = showLastTrick && trick;
+                return `<button id="drLastTrickBtn" class="cb-trickbtn${open ? " on" : ""}"${trick ? "" : " disabled"}>
+                    <span class="material-symbols-outlined">${open ? "expand_less" : "style"}</span>Last trick</button>`;
+            }
+            function lastTrickPanelHtml() {
+                const trick = lastTrickPlays();
+                if (!showLastTrick || !trick) return "";
+                const win = trickWinnerJS(trick, state.trump);
+                const no = Math.floor(revealedPlays().length / 4);
+                return `<div class="cb-lasttrick"><div class="cap">${SEAT_NAMES[win]} won trick ${no}</div>${trickCrossHtml(trick, win)}</div>`;
+            }
+            function auctionBtnHtml() {
+                return `<button id="drAuctionBtn" class="cb-trickbtn${showAuction ? " on" : ""}">
+                    <span class="material-symbols-outlined">${showAuction ? "expand_less" : "gavel"}</span>Bidding</button>`;
+            }
+            function auctionPanelHtml() {
+                if (!showAuction) return "";
+                return `<div class="cb-auctionpop">${auctionHtml(state.dealer, state.vuln, state.calls, null, state.heroSeat)}</div>`;
+            }
+            function notesBtnHtml() {
+                const has = (state.problemComment || state.bidComment);
+                if (!has) return "";
+                return `<button id="drNotesBtn" class="cb-trickbtn${showNotes ? " on" : ""}">
+                    <span class="material-symbols-outlined">${showNotes ? "expand_less" : "notes"}</span>Notes</button>`;
+            }
+            function notesPanelHtml() {
+                if (!showNotes) return "";
+                const parts = [];
+                if (state.problemComment) parts.push(`<div style="margin-bottom:.4rem"><div class="dr-label">Problem / defence</div><div class="dr-comment">${escapeHtml(state.problemComment)}</div></div>`);
+                if (state.bidComment) parts.push(`<div><div class="dr-label">Bidding</div><div class="dr-comment">${escapeHtml(state.bidComment)}</div></div>`);
+                return `<div class="cb-auctionpop" style="left:0;right:0"><div style="padding:.4rem .5rem">${parts.join("")}</div></div>`;
+            }
+            function hintBubbleHtml() {
+                if (!hintMsg) return "";
+                return `<div class="dr-msg dr-msg-float"><span class="material-symbols-outlined">tips_and_updates</span><span style="flex:1">${escapeHtml(hintMsg)}</span><button id="drHintClose" class="dr-hintclose" title="Dismiss"><span class="material-symbols-outlined">close</span></button></div>`;
+            }
+            function playTableView() {
+                return `<div class="cb-ptable">
+                    <div class="cb-pt-tl">${contractTagHtml()}</div>
+                    <div class="cb-pt-n">${playSeatHtml(seatForArea(0))}</div>
+                    <div class="cb-pt-tr">${playTallyHtml()}</div>
+                    <div class="cb-pt-w">${playSeatHtml(seatForArea(3))}</div>
+                    <div class="cb-pt-c">${trickCenterHtml()}</div>
+                    <div class="cb-pt-e">${playSeatHtml(seatForArea(1))}</div>
+                    <div class="cb-pt-s">${playSeatHtml(seatForArea(2))}</div>
+                </div>
+                <div class="cb-playbottom">
+                    ${auctionPanelHtml()}${notesPanelHtml()}${lastTrickPanelHtml()}${hintBubbleHtml()}
+                    <div class="cb-playrow">
+                        <div class="cb-pprompt">${playPromptHtml()}</div>
+                        ${auctionBtnHtml()}${notesBtnHtml()}${lastTrickBtnHtml()}
+                    </div>
+                </div>`;
+            }
+
+            // two-click: lift, then tap again to play
+            function onCardClick(card) {
+                if (!state || state.phase !== "play" || !playReady()) return;
+                if (selectedCard === card) { makePlay(card); return; }
+                selectedCard = card;
+                render();
+            }
+            async function makePlay(card) {
+                if (busy || !state) return;
+                selectedCard = null;
+                busy = true;
+                render();
+                try {
+                    const r = await api("POST", `/api/drill/session/${state.id}/card`, { card });
+                    busy = false;
+                    if (r.status === 409 && r.data && r.data.hint !== undefined) {
+                        hintMsg = r.data.hint;
+                        if (typeof r.data.wrong === "number") state.wrong = r.data.wrong;
+                        render();
+                        return;
+                    }
+                    if (!r.ok) { showToast((r.data && r.data.error) || "Play failed", true); render(); return; }
+                    onSessionState(r.data, false);
+                } catch (e) {
+                    busy = false;
+                    if (!e || !e.auth) showToast("Network error", true);
+                    render();
+                }
+            }
+            function drivePlay() {
+                clearTimeout(paceTimer); paceTimer = null;
+                if (!state || view !== "session") return;
+                const plays = state.plays || [];
+                if (revealCount < plays.length) {
+                    const next = plays[revealCount];
+                    const hero = (state.heroSeats || []).indexOf(next.seat) >= 0;
+                    const wait = hero ? 0 : Math.max(0, PLAY_PACE_MS - (Date.now() - lastRevealTs));
+                    paceTimer = setTimeout(() => { revealCount++; lastRevealTs = Date.now(); render(); }, wait);
+                    return;
+                }
+                // caught up
+            }
+            function syncReveal() {
+                if (!state) { revealBoardId = null; revealCount = 0; selectedCard = null; selectedCtx = null; return; }
+                if (state.id !== revealBoardId) {
+                    revealBoardId = state.id;
+                    revealCount = (state.plays || []).length;
+                    lastRevealTs = 0; selectedCard = null; showLastTrick = false; showAuction = false; showNotes = false;
+                }
+                const ctx = state.phase === "play" ? `${state.actSeat}|${revealCount}|${state.yourTurn}` : "";
+                if (ctx !== selectedCtx) { selectedCtx = ctx; selectedCard = null; }
+            }
+            function onSessionState(data, snap) {
+                const fresh = !state || state.id !== data.id;
+                state = data;
+                if (fresh || snap) {
+                    revealBoardId = data.id;
+                    revealCount = (data.plays || []).length;
+                    lastRevealTs = 0;
+                }
+                if (data.id) localStorage.setItem(SESSION_KEY, data.id);
+                hintMsg = null;
+                render();
+                drivePlay();
+            }
+
+            // ===================== Session chrome, intro, done =====================
+            function cardNameJS(token) {
+                const ranks = { A: "A", K: "K", Q: "Q", J: "J", T: "10" };
+                const r = ranks[token[0]] || token[0];
+                return r + SUIT_SYMBOL[token[1]];
+            }
+            function topBarHtml() {
+                const t = state.title || "Card problem";
+                return `<div class="cb-topbar">
+                    <button id="drBackBtn" class="cb-iconbtn" title="Leave"><span class="material-symbols-outlined">close</span></button>
+                    <div class="cb-title">
+                        <div class="t">${escapeHtml(t)}</div>
+                        <div class="s">${state.role === "declarer" ? "Declarer" : "Defense"} \u00b7 ${stars(state.difficulty)} \u00b7 by ${escapeHtml(state.owner || "")} \u00b7 \u2717 ${state.wrong || 0}</div>
+                    </div>
+                    <button id="drRestartBtn" class="cb-iconbtn" title="Restart"><span class="material-symbols-outlined">restart_alt</span></button>
+                </div>`;
+            }
+            function introHtml() {
+                const c = state.contract;
+                const heroRole = state.role === "declarer"
+                    ? `You are <b>${SEAT_NAMES[state.heroSeat]}</b>, the declarer. Play both your hand and the dummy.`
+                    : `You are <b>${SEAT_NAMES[state.heroSeat]}</b>, defending. Find the card the author played at every turn.`;
+                return `<div class="dr-overlay" id="drIntro">
+                    <div class="dr-modal">
+                        <h3>${escapeHtml(state.title || "Card problem")}</h3>
+                        <div class="dr-sub" style="margin-bottom:.6rem">${contractText(c)} \u00b7 Dealer ${SEAT_NAMES[state.dealer][0]} \u00b7 Vuln ${VULN_NAMES[state.vuln]} \u00b7 ${stars(state.difficulty)}</div>
+                        <div class="dr-hint" style="margin-bottom:.6rem">${heroRole}</div>
+                        ${state.problemComment ? `<div class="dr-label">Problem / defensive agreements</div><div class="dr-comment" style="margin-bottom:.6rem">${escapeHtml(state.problemComment)}</div>` : ""}
+                        <div class="dr-label">Auction</div>
+                        ${auctionHtml(state.dealer, state.vuln, state.calls, null, state.heroSeat)}
+                        ${state.bidComment ? `<div class="dr-comment" style="margin-top:.5rem">${escapeHtml(state.bidComment)}</div>` : ""}
+                        <div class="dr-modalfoot">
+                            <button class="dr-btn ghost" id="drIntroClose">Back</button>
+                            <button class="dr-btn gold" id="drIntroStart"><span class="material-symbols-outlined">playing_cards</span>Start play</button>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            function lineReviewHtml() {
+                const line = state.line || [];
+                const trump = state.trump;
+                let out = "";
+                for (let t = 0; t < line.length; t += 4) {
+                    const trick = line.slice(t, t + 4);
+                    if (trick.length < 4) break;
+                    const win = trickWinnerJS(trick.map((p) => ({ seat: p.seat, card: p.card })), trump);
+                    const cards = trick.map((p) => {
+                        const red = p.card[1] === "H" || p.card[1] === "D";
+                        const rank = p.card[0] === "T" ? "10" : p.card[0];
+                        const wc = p.seat === win ? " win" : "";
+                        return `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:1px"><span class="dr-tk-seat">${SEAT_NAMES[p.seat][0]}</span><span class="dr-tk-mini ${red ? "red" : "blk"}${wc}">${rank}<br>${SUIT_SYMBOL[p.card[1]]}</span></span>`;
+                    }).join("");
+                    const msgs = trick.filter((p) => p.msg).map((p) => `<div class="dr-line-msg"><b>${SEAT_NAMES[p.seat][0]}</b> ${cardNameJS(p.card)}: ${escapeHtml(p.msg)}</div>`).join("");
+                    out += `<div class="dr-line-trick"><span class="dr-line-no">${t / 4 + 1}</span><span style="display:flex;gap:.3rem">${cards}</span></div>${msgs}`;
+                }
+                return `<div class="dr-line">${out}</div>`;
+            }
+            function doneViewHtml() {
+                const r = state.result || {};
+                const c = r.contract || state.contract;
+                const need = c ? c.level + 6 : 0;
+                const margin = r.tricks - need;
+                const madeTxt = margin >= 0 ? (margin > 0 ? "made +" + margin : "made exactly") : margin + " down";
+                return `<div class="flex-1 min-h-0 flex flex-col">
+                    ${topBarHtml()}
+                    <div class="cb-mid" style="max-width:42rem">
+                        <div class="cb-done pop-in">
+                            <div class="cb-done-head">
+                                <div class="cb-done-score">
+                                    <div class="cb-done-contract">${dcolorSuits(contractText(c))}</div>
+                                    <div class="cb-done-tricks">${r.tricks} tricks \u2014 ${madeTxt}${r.claimed ? " \u00b7 claimed" : ""}</div>
+                                    <div class="cb-done-imps"><span class="lbl">Result (N-S)</span>
+                                        <span class="dr-result-big" style="color:${r.scoreNs >= 0 ? "#8fd694" : "#f08a8a"}">${scoreText(r.scoreNs)}</span></div>
+                                </div>
+                                <div class="cb-done-par"><div class="lbl">Wrong picks</div><div class="val">${r.wrong || 0}</div></div>
+                            </div>
+                            ${state.hands ? doneDiagramHtml(state.hands, state.heroSeat, state.dealer, state.calls) : ""}
+                            ${(state.problemComment || state.bidComment) ? `<div style="display:flex;flex-direction:column;gap:.4rem">
+                                ${state.problemComment ? `<div><div class="dr-label">Problem / defence</div><div class="dr-comment">${escapeHtml(state.problemComment)}</div></div>` : ""}
+                                ${state.bidComment ? `<div><div class="dr-label">Bidding</div><div class="dr-comment">${escapeHtml(state.bidComment)}</div></div>` : ""}
+                            </div>` : ""}
+                            <div><div class="dr-label">The author's line</div>${lineReviewHtml()}</div>
+                            <div class="cb-done-foot" style="gap:.5rem">
+                                <button id="drAgainBtn" class="dr-btn gold"><span class="material-symbols-outlined">restart_alt</span>Practise again</button>
+                                <button id="drLibBtn" class="dr-btn ghost"><span class="material-symbols-outlined">library_books</span>Library</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            function sessionHtml() {
+                const plays = state.plays || [];
+                const doneRevealed = state.phase === "done" && revealCount >= plays.length;
+                if (doneRevealed) return doneViewHtml();
+                return `<div class="flex-1 min-h-0 flex flex-col">
+                    ${topBarHtml()}
+                    <div class="cb-playview">
+                        ${playTableView()}
+                        ${playFanHtml()}
+                    </div>
+                </div>`;
+            }
+            function loginCardHtml() {
+                return `<div class="dr-wrap"><div class="cb-ready pop-in">
+                    <span class="material-symbols-outlined text-4xl text-[#e8e6e3]" style="font-variation-settings:'FILL' 1;">style</span>
+                    <p class="font-headline font-extrabold text-xl text-white mt-3">Card problems</p>
+                    <p class="text-xs text-[#908f8d] mt-2 leading-relaxed max-w-xs">Log in to author scripted card-play problems and practise the community library.</p>
+                    <button id="loginBtn" class="dr-btn gold mt-5">Log in</button>
+                </div></div>`;
+            }
+
+            // ===================== Lobby =====================
+            async function loadLibrary() {
+                try {
+                    const r = await api("GET", "/api/drills");
+                    library = (r.ok && r.data && r.data.problems) ? r.data.problems : [];
+                } catch (e) { library = library || []; }
+                render();
+            }
+            function filteredLibrary() {
+                return (library || []).filter((p) =>
+                    (filters.role === "all" || p.role === filters.role) &&
+                    (filters.difficulty === 0 || p.difficulty === filters.difficulty) &&
+                    (filters.author === "all" || p.owner === filters.author));
+            }
+            function authors() {
+                const s = new Set((library || []).map((p) => p.owner));
+                return [...s].sort();
+            }
+            function problemRow(p, mine) {
+                const title = p.title || contractLabel(p);
+                const badge = p.role === "declarer"
+                    ? `<span class="dr-badge decl">declarer</span>`
+                    : `<span class="dr-badge def">defense</span>`;
+                const right = mine
+                    ? `<button class="dr-btn ghost" data-edit="${p.id}"><span class="material-symbols-outlined">edit</span>Edit</button>
+                       <button class="dr-btn danger" data-del="${p.id}"><span class="material-symbols-outlined">delete</span></button>`
+                    : `<button class="dr-btn gold" data-practice="${p.id}"><span class="material-symbols-outlined">playing_cards</span>Practise</button>`;
+                return `<div class="dr-row">
+                    <div class="grow">
+                        <div class="dr-title">${escapeHtml(title)} ${p.claimed ? '<span class="dr-sub" style="display:inline"> \u00b7 claimed</span>' : ""}</div>
+                        <div class="dr-sub">${badge} ${stars(p.difficulty)} \u00b7 ${dcolorSuits(contractLabel(p))} \u00b7 by ${escapeHtml(p.owner)}${p.updated ? " \u00b7 " + timeAgo(p.updated) : ""}</div>
+                    </div>
+                    ${right}
+                </div>`;
+            }
+            function contractLabel(p) { return p.contract || "auction"; }
+            function filterChip(label, on, attr, val) {
+                return `<button class="dr-chip${on ? " on" : ""}" data-filter="${attr}" data-val="${val}">${label}</button>`;
+            }
+            function practiceTabHtml() {
+                const list = filteredLibrary();
+                const authOpts = ['<option value="all">Everyone</option>']
+                    .concat(authors().map((a) => `<option value="${escapeHtml(a)}"${filters.author === a ? " selected" : ""}>${escapeHtml(a)}</option>`)).join("");
+                return `<div class="dr-panel">
+                    <h3><span class="material-symbols-outlined" style="font-size:18px">tune</span>Filters</h3>
+                    <div class="dr-filters">
+                        ${filterChip("All", filters.role === "all", "role", "all")}
+                        ${filterChip("Declarer", filters.role === "declarer", "role", "declarer")}
+                        ${filterChip("Defense", filters.role === "defense", "role", "defense")}
+                    </div>
+                    <div class="dr-filters">
+                        ${filterChip("Any \u2605", filters.difficulty === 0, "difficulty", "0")}
+                        ${[1, 2, 3, 4, 5].map((d) => filterChip("\u2605".repeat(d), filters.difficulty === d, "difficulty", String(d))).join("")}
+                    </div>
+                    <div class="dr-filters">
+                        <select class="dr-input" id="drAuthor" style="max-width:14rem;padding:.4rem .6rem">${authOpts}</select>
+                    </div>
+                </div>
+                <div class="dr-panel">
+                    <h3><span class="material-symbols-outlined" style="font-size:18px">library_books</span>Library <span class="dr-sub">(${list.length})</span></h3>
+                    ${list.length ? list.map((p) => problemRow(p, false)).join("") : `<div class="dr-empty">No problems match. ${library && library.length ? "Try loosening the filters." : "Be the first to author one in the Create tab."}</div>`}
+                </div>`;
+            }
+            function createTabHtml() {
+                const me = (window.currentUser || "").toLowerCase();
+                const mine = (library || []).filter((p) => (p.owner || "").toLowerCase() === me)
+                    .sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
+                return `<div class="dr-panel">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.4rem">
+                        <h3 style="margin:0"><span class="material-symbols-outlined" style="font-size:18px">edit_note</span>Your problems <span class="dr-sub">(${mine.length})</span></h3>
+                        <button class="dr-btn gold" id="drNewBtn"><span class="material-symbols-outlined">add</span>New</button>
+                    </div>
+                    ${mine.length ? mine.map((p) => problemRow(p, true)).join("") : `<div class="dr-empty">You have not authored any problems yet. Tap <b>New</b> to build one: pick the deal and auction, add your defensive agreements, then script every card with the reasoning behind the hero's plays.</div>`}
+                </div>`;
+            }
+            function lobbyHtml() {
+                return `<div class="dr-wrap">
+                    <div class="dr-tabs">
+                        <button class="dr-tab${lobbyTab === "practice" ? " on" : ""}" data-tab="practice"><span class="material-symbols-outlined" style="font-size:18px">playing_cards</span>Practice</button>
+                        <button class="dr-tab${lobbyTab === "create" ? " on" : ""}" data-tab="create"><span class="material-symbols-outlined" style="font-size:18px">edit_note</span>Create</button>
+                    </div>
+                    ${busy && !library ? `<div class="dr-panel"><div class="dr-empty">${spinner("Loading\u2026")}</div></div>` : lobbyTab === "practice" ? practiceTabHtml() : createTabHtml()}
+                </div>`;
+            }
+
+            // ---- session controls ----
+            async function startSession(id) {
+                busy = true; render();
+                try {
+                    const r = await api("POST", `/api/drills/${id}/session`);
+                    busy = false;
+                    if (!r.ok) { showToast((r.data && r.data.error) || "Could not start", true); render(); return; }
+                    view = "session"; showIntro = true;
+                    onSessionState(r.data, true);
+                } catch (e) { busy = false; render(); }
+            }
+            async function resumeSession(id) {
+                try {
+                    const r = await api("GET", `/api/drill/session/${id}`);
+                    if (!r.ok) { localStorage.removeItem(SESSION_KEY); return; }
+                    view = "session"; showIntro = false;
+                    onSessionState(r.data, true);
+                } catch (e) { /* ignore */ }
+            }
+            async function leaveSession() {
+                const id = state && state.id;
+                view = "lobby"; state = null; hintMsg = null; showIntro = false;
+                clearTimeout(paceTimer);
+                localStorage.removeItem(SESSION_KEY);
+                render();
+                if (id) { try { await api("DELETE", `/api/drill/session/${id}`); } catch (e) { } }
+                loadLibrary();
+            }
+            function restartSession() {
+                const pid = state && state.problemId;
+                if (pid) startSession(pid);
+            }
+
+            // ===================== Authoring wizard =====================
+            const WIZ_STEPS = ["Setup", "Hands", "Auction", "Hero", "Play"];
+            function blankWiz() {
+                return {
+                    id: null, title: "", role: "defense", difficulty: 3, dealer: 0, vuln: 0,
+                    assign: {}, calls: [], bidComment: "", problemComment: "",
+                    heroSeat: -1, plays: [], claim: null, step: 0, selSeat: 2,
+                };
+            }
+            function buildHand(assign, seat) {
+                const parts = [];
+                for (const suit of STORE_SUIT_ORDER) {
+                    let ranks = "";
+                    for (const r of PLAY_RANK_ORDER) if (assign[r + suit] === seat) ranks += r;
+                    parts.push(ranks);
+                }
+                return parts.join(".");
+            }
+            function handsFromAssign(assign) { return [0, 1, 2, 3].map((s) => buildHand(assign, s)); }
+            function assignFromHands(hands) {
+                const a = {};
+                for (let s = 0; s < 4; s++) for (const c of handToCards(hands[s] || "")) a[c] = s;
+                return a;
+            }
+            function startWiz(existing) {
+                if (existing) {
+                    wiz = {
+                        id: existing.id, title: existing.title || "", role: existing.role, difficulty: existing.difficulty,
+                        dealer: existing.dealer, vuln: existing.vuln, assign: assignFromHands(existing.hands),
+                        calls: (existing.calls || []).slice(), bidComment: existing.bidComment || "", problemComment: existing.problemComment || "",
+                        heroSeat: existing.heroSeat, plays: (existing.plays || []).map((p) => ({ seat: p.seat, card: p.card, msg: p.msg || "" })),
+                        claim: existing.claim ? { tricks: existing.claim.tricks, scoreNs: existing.claim.scoreNs } : null,
+                        step: 0, selSeat: 2,
+                    };
+                } else wiz = blankWiz();
+                view = "wizard"; wizModal = null;
+                render();
+            }
+            function wizContract() { return contractFromCalls(wiz.dealer, wiz.calls); }
+            function recHeroSeats(contract) {
+                if (!contract) return [];
+                return wiz.role === "declarer" ? [contract.declarer, (contract.declarer + 2) % 4] : [wiz.heroSeat];
+            }
+            function handsOk() {
+                const h = handsFromAssign(wiz.assign);
+                return h.every((x) => x.replace(/\./g, "").length === 13) && Object.keys(wiz.assign).length === 52;
+            }
+            function auctionOk() { return auctionOver(wiz.calls) && wizContract() !== null; }
+            function heroOk() {
+                const c = wizContract();
+                if (!c) return false;
+                if (wiz.role === "declarer") { wiz.heroSeat = c.declarer; return true; }
+                return wiz.heroSeat === (c.declarer + 1) % 4 || wiz.heroSeat === (c.declarer + 3) % 4;
+            }
+            function recNextSeat(contract) {
+                const n = wiz.plays.length;
+                if (n === 0) return (contract.declarer + 1) % 4;
+                if (n % 4 === 0) {
+                    const trick = wiz.plays.slice(n - 4, n).map((p) => ({ seat: p.seat, card: p.card }));
+                    return trickWinnerJS(trick, contract.denom[0]);
+                }
+                return (wiz.plays[n - 1].seat + 1) % 4;
+            }
+            function recRemaining(seat) {
+                const hands = handsFromAssign(wiz.assign);
+                const played = new Set(wiz.plays.filter((p) => p.seat === seat).map((p) => p.card));
+                return handToCards(hands[seat]).filter((c) => !played.has(c));
+            }
+            function recLegal(seat, contract) {
+                const rem = recRemaining(seat);
+                const n = wiz.plays.length;
+                if (n % 4 === 0) return rem;
+                const lead = wiz.plays[Math.floor(n / 4) * 4].card[1];
+                const follow = rem.filter((c) => c[1] === lead);
+                return follow.length ? follow : rem;
+            }
+            function recDeclTricks(contract) {
+                let won = 0;
+                for (let t = 0; t * 4 + 4 <= wiz.plays.length; t++) {
+                    const trick = wiz.plays.slice(t * 4, t * 4 + 4).map((p) => ({ seat: p.seat, card: p.card }));
+                    const w = trickWinnerJS(trick, contract.denom[0]);
+                    if (w === contract.declarer || w === (contract.declarer + 2) % 4) won++;
+                }
+                return won;
+            }
+            function playOk() {
+                const c = wizContract();
+                if (!c || !heroOk()) return false;
+                if (wiz.plays.length === 52) return true;
+                if (wiz.claim) return wiz.plays.length >= 4 && wiz.plays.length % 4 === 0;
+                return false;
+            }
+            function stepOk(step) {
+                if (step === 1) return handsOk();
+                if (step === 2) return auctionOk();
+                if (step === 3) return heroOk();
+                if (step === 4) return playOk();
+                return true;
+            }
+
+            // ---- wizard step HTML ----
+            function segBtns(attr, opts, cur) {
+                return `<div class="dr-seg">` + opts.map((o) =>
+                    `<button data-${attr}="${o.v}" class="${String(cur) === String(o.v) ? "on" : ""}">${o.label}</button>`).join("") + `</div>`;
+            }
+            function wizStepSetup() {
+                return `
+                <div class="dr-field"><label class="dr-label">Title (optional)</label>
+                    <input class="dr-input" id="wizTitle" maxlength="60" placeholder="e.g. Strip squeeze, board 4" value="${escapeHtml(wiz.title)}"></div>
+                <div class="dr-field"><label class="dr-label">Difficulty</label>
+                    ${segBtns("diff", [1, 2, 3, 4, 5].map((d) => ({ v: d, label: "\u2605".repeat(d) })), wiz.difficulty)}</div>
+                <div class="dr-field"><label class="dr-label">Dealer</label>
+                    ${segBtns("dealer", [0, 1, 2, 3].map((s) => ({ v: s, label: SEAT_NAMES[s] })), wiz.dealer)}</div>
+                <div class="dr-field"><label class="dr-label">Vulnerability</label>
+                    ${segBtns("vuln", [0, 1, 2, 3].map((v) => ({ v, label: VULN_NAMES[v] })), wiz.vuln)}</div>
+                <div class="dr-field"><label class="dr-label">Problem type (who is tested)</label>
+                    ${segBtns("role", [{ v: "declarer", label: "Declarer play" }, { v: "defense", label: "Defense" }], wiz.role)}</div>`;
+            }
+            function deckHtml() {
+                const suits = [["S", "\u2660"], ["H", "\u2665"], ["D", "\u2666"], ["C", "\u2663"]];
+                return suits.map(([suit, sym]) => {
+                    const red = suit === "H" || suit === "D";
+                    let cells = "";
+                    for (const r of PLAY_RANK_ORDER) {
+                        const tok = r + suit, owner = wiz.assign[tok];
+                        const cls = owner === undefined ? "free" : "s" + owner;
+                        const badge = owner === undefined ? "" : `<span class="own">${"NESW"[owner]}</span>`;
+                        cells += `<div class="dr-dcard ${red ? "red" : "blk"} ${cls}" data-card="${tok}">${r === "T" ? "10" : r}<span class="sym">${sym}</span>${badge}</div>`;
+                    }
+                    return `<div style="display:flex;align-items:center;gap:.4rem;margin-top:.3rem">
+                        <span style="width:1rem;color:${red ? "#f08a8a" : "#8fd694"}">${sym}</span>
+                        <div class="dr-deck" style="flex:1">${cells}</div></div>`;
+                }).join("");
+            }
+            function fmtHand(h) {
+                const parts = String(h || "").split(".");
+                const suits = [["\u2660", 0], ["\u2665", 1], ["\u2666", 2], ["\u2663", 3]];
+                return suits.map(([sym, i]) => {
+                    const r = (parts[i] || "").split("").map((x) => x === "T" ? "10" : x).join(" ");
+                    return `<span style="color:${i === 1 || i === 2 ? "#f08a8a" : "#8fd694"}">${sym}</span> ${r || "\u2014"}`;
+                }).join("<br>");
+            }
+            function handBoxesHtml() {
+                const hands = handsFromAssign(wiz.assign);
+                return `<div class="dr-hands4">` + [0, 1, 2, 3].map((s) => {
+                    const cnt = Object.values(wiz.assign).filter((x) => x === s).length;
+                    return `<div class="dr-handbox${wiz.selSeat === s ? " sel" : ""}" data-sel="${s}">
+                        <div class="hd"><span>${SEAT_NAMES[s]}</span><span class="cnt${cnt === 13 ? " ok" : ""}">${cnt}/13</span></div>
+                        <div class="body">${fmtHand(hands[s])}</div></div>`;
+                }).join("") + `</div>`;
+            }
+            function wizStepHands() {
+                return `<div class="dr-hint">Tap a seat below to select it, then tap cards to deal them to that seat. Tapping a dealt card re-assigns it to the selected seat; tap a card already in the selected seat to clear it.</div>
+                    ${handBoxesHtml()}
+                    <div style="margin-top:.7rem">${deckHtml()}</div>
+                    <div class="dr-nav"><span class="dr-hint">${Object.keys(wiz.assign).length}/52 dealt</span>
+                        <button class="dr-btn ghost" id="wizClearHands">Clear</button></div>`;
+            }
+            function bidBoxHtml() {
+                if (auctionOver(wiz.calls))
+                    return `<div class="dr-hint">Auction complete \u2014 ${escapeHtml(contractText(wizContract()))}. Use Undo to change it.</div>`;
+                const legal = new Set(legalCalls(wiz.dealer, wiz.calls));
+                let grid = "";
+                for (let lv = 1; lv <= 7; lv++)
+                    for (const d of ["C", "D", "H", "S", "N"]) {
+                        const tok = lv + d, sym = d === "N" ? "NT" : SUIT_SYMBOL[d];
+                        grid += `<button class="cb-tile cb-tile-${TILE_CLS[d]}" data-call="${tok}" ${legal.has(tok) ? "" : "disabled"}>${lv}<b>${sym}</b></button>`;
+                    }
+                const specials = `<button class="cb-tile cb-tile-x" data-call="X" ${legal.has("X") ? "" : "disabled"}>X</button>
+                    <button class="cb-tile cb-tile-xx" data-call="XX" ${legal.has("XX") ? "" : "disabled"}>XX</button>
+                    <button class="cb-pass" data-call="P" ${legal.has("P") ? "" : "disabled"}>Pass</button>`;
+                return `<div class="cb-bidpanel" style="display:grid;grid-template-columns:repeat(5,1fr);gap:.4rem">${grid}</div>
+                    <div class="cb-bidpanel" style="margin-top:.4rem;justify-content:center;gap:.5rem">${specials}</div>`;
+            }
+            function wizStepAuction() {
+                const next = auctionOver(wiz.calls) ? null : (wiz.dealer + wiz.calls.length) % 4;
+                return `<div class="dr-field">${auctionHtml(wiz.dealer, wiz.vuln, wiz.calls, next, wiz.heroSeat >= 0 ? wiz.heroSeat : null)}</div>
+                    <div class="dr-field">${bidBoxHtml()}
+                        ${wiz.calls.length ? `<div class="dr-nav"><span></span><button class="dr-btn ghost" id="wizUndoCall"><span class="material-symbols-outlined">undo</span>Undo call</button></div>` : ""}</div>
+                    <div class="dr-field"><label class="dr-label">Comment about the bidding</label>
+                        <textarea class="dr-input" id="wizBidComment" placeholder="What the auction shows, conventions in play\u2026">${escapeHtml(wiz.bidComment)}</textarea></div>
+                    <div class="dr-field"><label class="dr-label">Problem comment \u2014 include the defenders' agreements</label>
+                        <textarea class="dr-input" id="wizProblemComment" placeholder="Defensive carding: leads, signals, discards, count/attitude agreements\u2026">${escapeHtml(wiz.problemComment)}</textarea></div>`;
+            }
+            function wizStepHero() {
+                const c = wizContract();
+                if (!c) return `<div class="dr-hint">Complete the auction first.</div>`;
+                if (wiz.role === "declarer") {
+                    wiz.heroSeat = c.declarer;
+                    return `<div class="dr-hint">Declarer problem: the hero is <b>${SEAT_NAMES[c.declarer]}</b> (the declarer), who plays both the closed hand and the dummy. Nothing to choose here.</div>`;
+                }
+                const defs = [(c.declarer + 1) % 4, (c.declarer + 3) % 4];
+                return `<div class="dr-hint" style="margin-bottom:.5rem">Defense problem: choose which defender the hero is. Only that defender's cards carry your reasoning; the other defender, declarer and dummy play themselves from your script.</div>
+                    ${segBtns("heroseat", defs.map((s) => ({ v: s, label: SEAT_NAMES[s] })), wiz.heroSeat)}`;
+            }
+            function recTrickHtml(contract) {
+                const n = wiz.plays.length;
+                const cur = wiz.plays.slice(Math.floor(n / 4) * 4);
+                if (!cur.length) return `<div class="dr-hint">Opening lead by ${SEAT_NAMES[(contract.declarer + 1) % 4]}.</div>`;
+                const win = cur.length === 4 ? trickWinnerJS(cur.map((p) => ({ seat: p.seat, card: p.card })), contract.denom[0]) : null;
+                return `<div style="display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap">` + cur.map((p) => {
+                    const red = p.card[1] === "H" || p.card[1] === "D";
+                    const rank = p.card[0] === "T" ? "10" : p.card[0];
+                    const wc = win !== null && p.seat === win ? " win" : "";
+                    return `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:1px"><span class="dr-tk-seat">${SEAT_NAMES[p.seat][0]}</span><span class="dr-tk-mini ${red ? "red" : "blk"}${wc}">${rank}<br>${SUIT_SYMBOL[p.card[1]]}</span></span>`;
+                }).join("") + `</div>`;
+            }
+            function recHandsHtml(contract) {
+                const hands = handsFromAssign(wiz.assign);
+                const next = recNextSeat(contract);
+                const legal = new Set(recLegal(next, contract));
+                const hero = recHeroSeats(contract);
+                const done = wiz.plays.length === 52;
+                return [0, 1, 2, 3].map((s) => {
+                    const played = new Set(wiz.plays.filter((p) => p.seat === s).map((p) => p.card));
+                    const cards = sortHand(handToCards(hands[s])).map((c) => {
+                        const red = c[1] === "H" || c[1] === "D";
+                        const rank = c[0] === "T" ? "10" : c[0];
+                        const isPlayed = played.has(c);
+                        const clickable = !done && s === next && legal.has(c);
+                        return `<span class="dr-rc ${red ? "red" : "blk"}${isPlayed ? " played" : ""}${clickable ? " legal" : ""}" ${clickable ? `data-rec="${c}"` : ""}>${rank}<span class="sym">${SUIT_SYMBOL[c[1]]}</span></span>`;
+                    }).join("");
+                    return `<div class="dr-rechand${!done && s === next ? " act" : ""}">
+                        <div class="who">${SEAT_NAMES[s]}${hero.indexOf(s) >= 0 ? " \u2605" : ""}</div>
+                        <div class="dr-reccards">${cards}</div></div>`;
+                }).join("");
+            }
+            function wizStepPlay() {
+                const c = wizContract();
+                if (!c) return `<div class="dr-hint">Complete the auction first.</div>`;
+                if (!heroOk()) return `<div class="dr-hint">Choose the hero defender first.</div>`;
+                if (wiz.role === "declarer") wiz.heroSeat = c.declarer;
+                const n = wiz.plays.length;
+                const won = recDeclTricks(c);
+                const remaining = Math.floor((52 - n) / 4);
+                const canClaim = n >= 4 && n % 4 === 0 && n < 52;
+                const claimTxt = wiz.claim
+                    ? `Claim: declarer takes ${wiz.claim.tricks} tricks, result <b>${scoreText(wiz.claim.scoreNs)}</b> (N-S).`
+                    : (n === 52 ? "All 52 cards scripted \u2014 the result is scored from the play." : `Script the play, or claim at a trick boundary.`);
+                return `<div class="dr-hint" style="margin-bottom:.5rem">${dcolorSuits(contractText(c))} \u00b7 trump ${c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom]} \u00b7 hero ${SEAT_NAMES[wiz.heroSeat]}. Click a highlighted card of the seat to play; \u2605 seats ask for your reasoning.</div>
+                    <div class="dr-panel" style="margin-bottom:.5rem;padding:.6rem">${recTrickHtml(c)}</div>
+                    <div class="dr-rec">${recHandsHtml(c)}</div>
+                    <div class="dr-filters" style="margin-top:.7rem">
+                        <span class="dr-hint" style="flex:1">${n}/52 played \u00b7 declarer ${won} trick${won === 1 ? "" : "s"}${remaining ? " \u00b7 " + remaining + " to come" : ""}</span>
+                        <button class="dr-btn ghost" id="wizUndoPlay" ${n ? "" : "disabled"}><span class="material-symbols-outlined">undo</span>Undo</button>
+                        <button class="dr-btn ghost" id="wizClaimBtn" ${canClaim || wiz.claim ? "" : "disabled"}><span class="material-symbols-outlined">flag</span>${wiz.claim ? "Edit claim" : "Claim"}</button>
+                    </div>
+                    <div class="dr-hint">${claimTxt}</div>`;
+            }
+            function wizHtml() {
+                const steps = WIZ_STEPS.map((name, i) => {
+                    const cls = i === wiz.step ? "on" : (i < wiz.step && stepOk(i) ? "done" : "");
+                    return `<div class="dr-step ${cls}" data-goto="${i}">${i + 1}. ${name}</div>`;
+                }).join("");
+                let body = "";
+                if (wiz.step === 0) body = wizStepSetup();
+                else if (wiz.step === 1) body = wizStepHands();
+                else if (wiz.step === 2) body = wizStepAuction();
+                else if (wiz.step === 3) body = wizStepHero();
+                else body = wizStepPlay();
+                const last = wiz.step === WIZ_STEPS.length - 1;
+                return `<div class="dr-wrap">
+                    <div class="dr-panel">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.6rem">
+                            <button class="dr-btn ghost" id="wizCancel"><span class="material-symbols-outlined">close</span>${wiz.id ? "Close" : "Cancel"}</button>
+                            <h3 style="margin:0">${wiz.id ? "Edit problem" : "New problem"}</h3>
+                            <button class="dr-btn gold" id="wizSave" ${playOk() ? "" : "disabled"}><span class="material-symbols-outlined">save</span>Save</button>
+                        </div>
+                        <div class="dr-steps">${steps}</div>
+                        ${body}
+                        <div class="dr-nav">
+                            <button class="dr-btn ghost" id="wizBack" ${wiz.step === 0 ? "disabled" : ""}><span class="material-symbols-outlined">arrow_back</span>Back</button>
+                            ${last ? `<span></span>` : `<button class="dr-btn" id="wizNext" ${stepOk(wiz.step) ? "" : "disabled"}>Next<span class="material-symbols-outlined">arrow_forward</span></button>`}
+                        </div>
+                    </div>
+                </div>`;
+            }
+
+            // ---- modal state (shared by wizard + lobby) ----
+            let modal = null; // {kind:'msg'|'claim'|'delete', ...}
+            function defaultMsg(card) { return `I just decided to play the ${cardNameJS(card)} instead.`; }
+            function modalHtml() {
+                if (!modal) return "";
+                if (modal.kind === "msg") {
+                    return `<div class="dr-overlay"><div class="dr-modal">
+                        <h3>Why the ${cardNameJS(modal.card)}?</h3>
+                        <div class="dr-hint" style="margin-bottom:.5rem">${SEAT_NAMES[modal.seat]} (hero) plays the ${cardNameJS(modal.card)}. Explain the reasoning \u2014 it is revealed to anyone who picks a different card.</div>
+                        <textarea class="dr-input" id="msgText" rows="3">${escapeHtml(modal.msg)}</textarea>
+                        <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn gold" id="msgOk"><span class="material-symbols-outlined">playing_cards</span>Play card</button></div>
+                    </div></div>`;
+                }
+                if (modal.kind === "claim") {
+                    return `<div class="dr-overlay"><div class="dr-modal">
+                        <h3>Claim the remaining tricks</h3>
+                        <div class="dr-hint" style="margin-bottom:.6rem">Declarer has won ${modal.min} trick${modal.min === 1 ? "" : "s"} so far; ${modal.max - modal.min} remain to be played. Set the total declarer takes and the final score.</div>
+                        <div class="dr-field"><label class="dr-label">Tricks declarer takes (total)</label>
+                            <input class="dr-input" id="claimTricks" type="number" min="${modal.min}" max="${modal.max}" value="${modal.tricks}"></div>
+                        <div class="dr-field"><label class="dr-label">Final score (N-S positive)</label>
+                            <input class="dr-input" id="claimScore" type="number" step="10" value="${modal.scoreNs}"></div>
+                        <div class="dr-modalfoot">
+                            <button class="dr-btn ghost" data-modal-cancel>Cancel</button>
+                            ${wiz && wiz.claim ? `<button class="dr-btn danger" id="claimRemove">Remove claim</button>` : ""}
+                            <button class="dr-btn gold" id="claimOk">Set claim</button>
+                        </div>
+                    </div></div>`;
+                }
+                if (modal.kind === "delete") {
+                    return `<div class="dr-overlay"><div class="dr-modal">
+                        <h3>Delete this problem?</h3>
+                        <div class="dr-hint">It is removed from the library for everyone. This cannot be undone.</div>
+                        <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn danger" id="delOk"><span class="material-symbols-outlined">delete</span>Delete</button></div>
+                    </div></div>`;
+                }
+                return "";
+            }
+
+            // ---- wizard actions ----
+            function wizSet(field, val) {
+                if (field === "role") {
+                    wiz.role = val;
+                    const c = wizContract();
+                    if (val === "declarer" && c) wiz.heroSeat = c.declarer;
+                    else if (val === "defense") wiz.heroSeat = -1;
+                } else if (field === "dealer") {
+                    wiz.dealer = parseInt(val);
+                    wiz.calls = []; // dealer defines the auction's meaning
+                    wiz.heroSeat = wiz.role === "defense" ? -1 : wiz.heroSeat;
+                } else if (["difficulty", "vuln", "heroseat"].indexOf(field) >= 0) {
+                    wiz[field === "heroseat" ? "heroSeat" : field] = parseInt(val);
+                }
+                render();
+            }
+            function addCall(tok) {
+                wiz.calls.push(tok);
+                if (auctionOver(wiz.calls) && wiz.role === "declarer") {
+                    const c = wizContract();
+                    if (c) wiz.heroSeat = c.declarer;
+                }
+                render();
+            }
+            function undoCall() { wiz.calls.pop(); render(); }
+            function assignCard(tok) {
+                if (wiz.assign[tok] === wiz.selSeat) delete wiz.assign[tok];
+                else wiz.assign[tok] = wiz.selSeat;
+                render();
+            }
+            function recCard(token) {
+                const c = wizContract();
+                if (!c) return;
+                const seat = recNextSeat(c);
+                if (!recLegal(seat, c).includes(token)) return;
+                if (recHeroSeats(c).indexOf(seat) >= 0) {
+                    modal = { kind: "msg", seat, card: token, msg: defaultMsg(token) };
+                    render();
+                } else {
+                    wiz.plays.push({ seat, card: token, msg: "" });
+                    render();
+                }
+            }
+            function recUndo() { wiz.plays.pop(); render(); }
+            function openClaimModal() {
+                const c = wizContract();
+                if (!c) return;
+                const won = recDeclTricks(c);
+                const remaining = Math.floor((52 - wiz.plays.length) / 4);
+                const tricks = wiz.claim ? wiz.claim.tricks : Math.min(13, won + remaining);
+                modal = { kind: "claim", min: won, max: won + remaining, tricks, scoreNs: wiz.claim ? wiz.claim.scoreNs : 0 };
+                render();
+                suggestScore(c, tricks);
+            }
+            async function suggestScore(c, tricks) {
+                try {
+                    const r = await api("POST", "/api/drills/score", { level: c.level, denom: c.denom, penalty: c.penalty, declarer: c.declarer, vuln: wiz.vuln, tricks });
+                    if (r.ok && modal && modal.kind === "claim") {
+                        modal.scoreNs = r.data.scoreNs;
+                        const el = document.getElementById("claimScore");
+                        if (el && document.activeElement !== el) el.value = r.data.scoreNs;
+                    }
+                } catch (e) { /* ignore */ }
+            }
+            async function saveWiz() {
+                if (!playOk()) { showToast("Finish the deal, auction, hero and play first", true); return; }
+                const problem = {
+                    title: (wiz.title || "").trim(), role: wiz.role, heroSeat: wiz.heroSeat,
+                    difficulty: wiz.difficulty, dealer: wiz.dealer, vuln: wiz.vuln,
+                    hands: handsFromAssign(wiz.assign), calls: wiz.calls,
+                    bidComment: wiz.bidComment, problemComment: wiz.problemComment,
+                    plays: wiz.plays, claim: wiz.claim,
+                };
+                busy = true; render();
+                try {
+                    const r = wiz.id ? await api("PUT", `/api/drills/${wiz.id}`, problem) : await api("POST", "/api/drills", problem);
+                    busy = false;
+                    if (!r.ok) { showToast((r.data && r.data.error) || "Save failed", true); render(); return; }
+                    showToast("Problem saved");
+                    wiz = null; view = "lobby"; lobbyTab = "create"; render(); loadLibrary();
+                } catch (e) { busy = false; render(); }
+            }
+            async function editProblem(id) {
+                busy = true; render();
+                try {
+                    const r = await api("GET", `/api/drills/${id}`);
+                    busy = false;
+                    if (!r.ok) { showToast((r.data && r.data.error) || "Cannot open", true); render(); return; }
+                    startWiz(r.data);
+                } catch (e) { busy = false; render(); }
+            }
+            async function deleteProblem(id) {
+                busy = true; render();
+                try {
+                    const r = await api("DELETE", `/api/drills/${id}`);
+                    busy = false;
+                    if (!r.ok) { showToast((r.data && r.data.error) || "Delete failed", true); render(); return; }
+                    showToast("Deleted"); modal = null; render(); loadLibrary();
+                } catch (e) { busy = false; render(); }
+            }
+
+            // ===================== Master render =====================
+            function render() {
+                const content = document.getElementById("main-content");
+                if (!content) return;
+                syncReveal();
+                const full = view === "session" && state; // full-screen play table
+                const header = content.previousElementSibling;
+                if (header && header.tagName === "HEADER") header.style.display = full ? "none" : "";
+                const appHeader = document.querySelector("#app > header");
+                if (appHeader) appHeader.style.display = full ? "none" : "";
+                const sidebar = document.getElementById("sidebar");
+                if (sidebar) sidebar.style.display = full ? "none" : "";
+                const shell = document.querySelector(".app-shell");
+                if (shell) shell.style.paddingTop = full ? "0" : "";
+                const wrap = content.parentElement;
+                const main = content.closest("main");
+                if (main) main.style.overflowY = full ? "hidden" : "";
+                if (wrap) {
+                    wrap.style.height = full ? "100%" : "";
+                    wrap.style.display = full ? "flex" : "";
+                    wrap.style.flexDirection = full ? "column" : "";
+                    wrap.style.padding = full ? "0" : "";
+                    wrap.style.maxWidth = full ? "none" : "";
+                }
+                content.className = full ? "flex-1 min-h-0 flex flex-col" : "";
+                document.body.classList.toggle("dr-noscroll", !!full);
+
+                if (!window.currentUser) {
+                    content.innerHTML = loginCardHtml();
+                    const lb = document.getElementById("loginBtn");
+                    if (lb) lb.onclick = () => showAuthDialog("login");
+                    return;
+                }
+                if (view === "session" && state) content.innerHTML = sessionHtml();
+                else if (view === "wizard" && wiz) content.innerHTML = wizHtml();
+                else content.innerHTML = lobbyHtml();
+
+                // overlays (intro briefing + modal) mount on <body>
+                document.querySelectorAll("#drIntro, #drModalHost").forEach((n) => n.remove());
+                if (view === "session" && state && showIntro) {
+                    const d = document.createElement("div");
+                    d.innerHTML = introHtml();
+                    document.body.appendChild(d.firstElementChild);
+                }
+                if (modal) {
+                    const tmp = document.createElement("div");
+                    tmp.innerHTML = modalHtml();
+                    const ov = tmp.firstElementChild;
+                    if (ov) { ov.id = "drModalHost"; document.body.appendChild(ov); }
+                }
+                wireEvents();
+                if (view === "session") drivePlay();
+            }
+
+            function wireEvents() {
+                const $ = (id) => document.getElementById(id);
+                const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+                // session
+                on("drBackBtn", () => leaveSession());
+                on("drRestartBtn", () => restartSession());
+                on("drAgainBtn", () => restartSession());
+                on("drLibBtn", () => { view = "lobby"; state = null; localStorage.removeItem(SESSION_KEY); render(); loadLibrary(); });
+                on("drIntroStart", () => { showIntro = false; render(); });
+                on("drIntroClose", () => leaveSession());
+                on("drAuctionBtn", () => { showAuction = !showAuction; showNotes = false; render(); });
+                on("drNotesBtn", () => { showNotes = !showNotes; showAuction = false; render(); });
+                on("drLastTrickBtn", () => { showLastTrick = !showLastTrick; render(); });
+                on("drHintClose", () => { hintMsg = null; render(); });
+                document.querySelectorAll("[data-play]").forEach((el) => {
+                    el.onclick = () => onCardClick(el.getAttribute("data-play"));
+                });
+                // lobby
+                document.querySelectorAll("[data-tab]").forEach((el) => {
+                    el.onclick = () => { lobbyTab = el.dataset.tab; render(); };
+                });
+                document.querySelectorAll("[data-filter]").forEach((el) => {
+                    el.onclick = () => {
+                        const attr = el.dataset.filter;
+                        let val = el.dataset.val;
+                        if (attr === "difficulty") val = parseInt(val);
+                        filters[attr] = val;
+                        render();
+                    };
+                });
+                const auth = $("drAuthor");
+                if (auth) auth.onchange = () => { filters.author = auth.value; render(); };
+                document.querySelectorAll("[data-practice]").forEach((el) => {
+                    el.onclick = () => startSession(el.getAttribute("data-practice"));
+                });
+                document.querySelectorAll("[data-edit]").forEach((el) => {
+                    el.onclick = () => editProblem(el.getAttribute("data-edit"));
+                });
+                document.querySelectorAll("[data-del]").forEach((el) => {
+                    el.onclick = () => { modal = { kind: "delete", id: el.getAttribute("data-del") }; render(); };
+                });
+                on("drNewBtn", () => startWiz(null));
+                // wizard nav
+                on("wizCancel", () => { wiz = null; modal = null; view = "lobby"; render(); });
+                on("wizSave", () => saveWiz());
+                on("wizBack", () => { if (wiz.step > 0) { wiz.step--; render(); } });
+                on("wizNext", () => { if (stepOk(wiz.step) && wiz.step < WIZ_STEPS.length - 1) { wiz.step++; render(); } });
+                document.querySelectorAll("[data-goto]").forEach((el) => {
+                    el.onclick = () => {
+                        const s = parseInt(el.dataset.goto);
+                        let ok = true;
+                        for (let i = 0; i < s; i++) if (!stepOk(i)) { ok = false; break; }
+                        if (ok) { wiz.step = s; render(); }
+                        else showToast("Finish the earlier steps first", true);
+                    };
+                });
+                document.querySelectorAll("[data-diff]").forEach((el) => el.onclick = () => wizSet("difficulty", el.dataset.diff));
+                document.querySelectorAll("[data-dealer]").forEach((el) => el.onclick = () => wizSet("dealer", el.dataset.dealer));
+                document.querySelectorAll("[data-vuln]").forEach((el) => el.onclick = () => wizSet("vuln", el.dataset.vuln));
+                document.querySelectorAll("[data-role]").forEach((el) => el.onclick = () => wizSet("role", el.dataset.role));
+                document.querySelectorAll("[data-heroseat]").forEach((el) => el.onclick = () => wizSet("heroseat", el.dataset.heroseat));
+                document.querySelectorAll("[data-call]").forEach((el) => el.onclick = () => addCall(el.dataset.call));
+                document.querySelectorAll("[data-card]").forEach((el) => el.onclick = () => assignCard(el.dataset.card));
+                document.querySelectorAll("[data-sel]").forEach((el) => el.onclick = () => { wiz.selSeat = parseInt(el.dataset.sel); render(); });
+                document.querySelectorAll("[data-rec]").forEach((el) => el.onclick = () => recCard(el.dataset.rec));
+                on("wizClearHands", () => { wiz.assign = {}; render(); });
+                on("wizUndoCall", () => undoCall());
+                on("wizUndoPlay", () => recUndo());
+                on("wizClaimBtn", () => openClaimModal());
+                // text inputs update the draft without re-render (keep focus)
+                const bindInput = (id, fn) => { const el = $(id); if (el) el.oninput = () => fn(el.value); };
+                bindInput("wizTitle", (v) => { wiz.title = v; });
+                bindInput("wizBidComment", (v) => { wiz.bidComment = v; });
+                bindInput("wizProblemComment", (v) => { wiz.problemComment = v; });
+                // save button live-enables as the play step fills in
+                const rec = document.querySelector("[data-rec], #wizUndoPlay");
+                if (rec) { const sv = $("wizSave"); if (sv) sv.disabled = !playOk(); }
+                // modals
+                document.querySelectorAll("[data-modal-cancel]").forEach((el) => el.onclick = () => { modal = null; render(); });
+                on("msgOk", () => {
+                    const el = $("msgText");
+                    wiz.plays.push({ seat: modal.seat, card: modal.card, msg: (el ? el.value : modal.msg).trim() });
+                    modal = null; render();
+                });
+                on("claimOk", () => {
+                    const t = parseInt(($("claimTricks") || {}).value);
+                    const s = parseInt(($("claimScore") || {}).value);
+                    if (isNaN(t) || t < modal.min || t > modal.max) { showToast("Tricks out of range", true); return; }
+                    wiz.claim = { tricks: t, scoreNs: isNaN(s) ? 0 : s };
+                    modal = null; render();
+                });
+                on("claimRemove", () => { wiz.claim = null; modal = null; render(); });
+                on("delOk", () => { if (modal && modal.id) deleteProblem(modal.id); });
+                const ct = $("claimTricks");
+                if (ct) ct.oninput = () => { const c = wizContract(); if (c) suggestScore(c, parseInt(ct.value) || modal.min); };
+            }
+
+            // ---- bootstrap ----
+            document.addEventListener("authchange", () => {
+                if (window.currentUser) {
+                    loadLibrary();
+                    const sid = localStorage.getItem(SESSION_KEY);
+                    if (sid) resumeSession(sid);
+                } else {
+                    view = "lobby"; state = null; wiz = null; modal = null;
+                    localStorage.removeItem(SESSION_KEY);
+                    render();
+                }
+            });
+            document.addEventListener("visibilitychange", () => {
+                if (!document.hidden && view === "session") drivePlay();
+            });
+            refreshAuthState();
+            render();
+            if (window.currentUser) loadLibrary();
+        </script>
+    </body>
+</html>

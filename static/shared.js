@@ -524,7 +524,7 @@ function renderLayout(options) {
     // options: { mode: 'view' | 'edit' | 'practice' | 'play' | 'index', title: '', titleId: '', subtitle: '', badge: '', badgeColor: '' }
     const mode = options.mode || 'index';
     const badgeColor = options.badgeColor || 'bg-gold/90 text-on-gold';
-    const modeLabel = mode === 'edit' ? 'Edit Mode' : mode === 'view' ? 'View Mode' : mode === 'practice' ? 'Practice Mode' : mode === 'bridge' ? 'Play Bridge' : mode === 'play' ? 'Bid Only' : 'Home';
+    const modeLabel = mode === 'edit' ? 'Edit Mode' : mode === 'view' ? 'View Mode' : mode === 'practice' ? 'Practice Mode' : mode === 'bridge' ? 'Play Bridge' : mode === 'play' ? 'Bid Only' : mode === 'drill' ? 'Card Problems' : 'Home';
 
     const btnGhost = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-[#3d3a36] text-[#e8e6e3] border border-white/10 rounded font-label text-sm hover:bg-[#4a4642] transition-all no-underline active:translate-y-px";
     const btnPrimary = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-gradient-to-b from-gold-light to-gold text-on-gold rounded font-label text-sm hover:brightness-105 shadow-[0_2px_0_rgba(0,0,0,0.3)] transition-all no-underline active:translate-y-px active:shadow-none";
@@ -632,7 +632,7 @@ function renderLayout(options) {
                     <span class="font-headline font-extrabold text-lg sm:text-xl text-white tracking-tight">Bridge Trainer</span>
                 </a>
                 <nav class="hidden md:flex items-center gap-2 font-headline tracking-tight text-sm">
-                    <a class="${mode === 'play' || mode === 'bridge' ? navIdle : navActive}" href="/">
+                    <a class="${mode === 'play' || mode === 'bridge' || mode === 'drill' ? navIdle : navActive}" href="/">
                         <span class="material-symbols-outlined text-base">account_tree</span>
                         Collections
                     </a>
@@ -643,6 +643,10 @@ function renderLayout(options) {
                     <a class="${mode === 'bridge' ? navActive : navIdle}" href="/play?m=play">
                         <span class="material-symbols-outlined text-base">casino</span>
                         Play bridge
+                    </a>
+                    <a class="${mode === 'drill' ? navActive : navIdle}" href="/drills">
+                        <span class="material-symbols-outlined text-base">style</span>
+                        Card problems
                     </a>
                 </nav>
             </div>
@@ -670,7 +674,7 @@ function renderLayout(options) {
                     ${sideAction}
                 </div>
                 <nav class="flex-grow space-y-1 overflow-y-auto">
-                    <a href="/" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' || mode === 'bridge' ? sideIdle : sideActive}">
+                    <a href="/" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' || mode === 'bridge' || mode === 'drill' ? sideIdle : sideActive}">
                         <span class="material-symbols-outlined text-lg">account_tree</span>
                         Collections
                     </a>
@@ -681,6 +685,10 @@ function renderLayout(options) {
                     <a href="/play?m=play" onclick="closeSidebar()" class="${sideLink} ${mode === 'bridge' ? sideActive : sideIdle}">
                         <span class="material-symbols-outlined text-lg">casino</span>
                         Play bridge
+                    </a>
+                    <a href="/drills" onclick="closeSidebar()" class="${sideLink} ${mode === 'drill' ? sideActive : sideIdle}">
+                        <span class="material-symbols-outlined text-lg">style</span>
+                        Card problems
                     </a>
                 </nav>
                 <div class="px-6 pt-4 mt-4 border-t border-white/10 text-[10px] text-white/35 font-label tracking-[0.2em] uppercase">
