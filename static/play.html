@@ -642,11 +642,8 @@
                 flex-shrink: 0;
                 transition: box-shadow 0.14s ease;
             }
-            .cb-flat .cb-card + .cb-card { margin-left: -1.5rem; }
-            .cb-flat-v .cb-card + .cb-card {
-                margin-left: 0;
-                margin-top: -2.2rem;
-            }
+            .cb-flat-h .cb-card + .cb-card { margin-left: -1.5rem; }
+            .cb-flat-v .cb-card + .cb-card { margin-top: -2.2rem; }
             .cb-flat .cb-card:first-child { margin-left: 0; margin-top: 0; }
             .cb-flat .cb-corner b { font-size: 0.72rem; }
             .cb-flat .cb-corner i { font-size: 0.62rem; }
@@ -671,7 +668,7 @@
                     width: 1.9rem;
                     height: 2.75rem;
                 }
-                .cb-flat .cb-card + .cb-card { margin-left: -1.35rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.35rem; }
                 .cb-flat-v .cb-card + .cb-card { margin-top: -2rem; }
                 .cb-flat .cb-corner b { font-size: 0.65rem; }
                 .cb-flat .cb-corner i { font-size: 0.56rem; }
@@ -732,27 +729,15 @@
                 text-overflow: ellipsis;
             }
 
-            /* ---- Card-play table ---- */
-            .cb-pinfo {
-                display: flex;
-                flex-wrap: wrap;
-                align-items: center;
-                gap: 0.4rem 0.7rem;
-                background: #302e2c;
-                border: 1px solid rgba(255, 255, 255, 0.06);
-                border-radius: 0.8rem;
-                padding: 0.45rem 0.7rem;
-                font-family: Inter, sans-serif;
-                font-size: 0.72rem;
-                color: #bababa;
-            }
-            .cb-pinfo b { color: #fff; }
-            .cb-pinfo .sep { opacity: 0.35; }
+            /* ---- Card-play table ----
+               No separate info bar: the contract (with X/XX and the
+               declarer's letter, e.g. 4♠XN) sits top-right on North's row and
+               the You/Them trick stack top-left on the same line. */
             .cb-ptable {
                 display: grid;
                 grid-template-columns: auto 1fr auto;
                 grid-template-areas:
-                    ". n ."
+                    "tl n tr"
                     "w c e"
                     ". s .";
                 gap: 0.5rem 0.6rem;
@@ -768,6 +753,21 @@
             .cb-pt-s { grid-area: s; }
             .cb-pt-w { grid-area: w; }
             .cb-pt-c { grid-area: c; }
+            .cb-pt-tl {
+                grid-area: tl;
+                justify-self: start;
+                align-self: start;
+            }
+            .cb-pt-tr {
+                grid-area: tr;
+                justify-self: end;
+                align-self: start;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.9rem;
+                color: #e8e6e3;
+                white-space: nowrap;
+            }
             .cb-pseat {
                 display: flex;
                 flex-direction: column;
@@ -791,12 +791,6 @@
                 white-space: nowrap;
             }
             .cb-pseat-name .you { color: #e8e6e3; font-weight: 700; }
-            .cb-pseat-name .role {
-                background: rgba(255, 255, 255, 0.12);
-                border-radius: 999px;
-                padding: 0 0.35rem;
-                font-size: 0.56rem;
-            }
             .cb-pseat.act .cb-pseat-name { color: #e8e6e3; }
             .cb-pseat.act {
                 filter: drop-shadow(0 0 6px rgba(232, 230, 227, 0.25));
@@ -901,14 +895,15 @@
             }
             .cb-ptally {
                 display: flex;
-                gap: 0.75rem;
-                justify-content: center;
+                flex-direction: column;
+                gap: 1px;
                 font-family: Inter, sans-serif;
-                font-size: 0.7rem;
+                font-size: 0.64rem;
+                line-height: 1.3;
                 color: #bababa;
-                margin-top: 0.2rem;
+                white-space: nowrap;
             }
-            .cb-ptally b { font-size: 0.9rem; }
+            .cb-ptally b { font-size: 0.8rem; color: #fff; }
             .cb-pprompt {
                 text-align: center;
                 font-family: Inter, sans-serif;
@@ -949,6 +944,11 @@
                 flex-shrink: 0;
             }
             .cb-playrow .cb-pprompt { flex: 1; min-width: 0; }
+            /* anchor for the last-trick popup: it opens just above the row */
+            .cb-playbottom {
+                position: relative;
+                flex-shrink: 0;
+            }
             /* short screens: compress the table so everything still fits */
             @media (max-height: 640px) {
                 .cb-ptable { padding: 0.45rem 0.5rem; gap: 0.35rem 0.5rem; }
@@ -956,18 +956,15 @@
                 .cb-ptrick .tkc,
                 .cb-ptrick .tk-slot { width: 1.8rem; height: 2.55rem; }
                 .cb-flat .cb-card { width: 1.9rem; height: 2.7rem; }
-                .cb-flat .cb-card + .cb-card { margin-left: -1.35rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.35rem; }
                 .cb-flat-v .cb-card + .cb-card { margin-top: -1.85rem; }
                 .cb-flat .cb-corner b { font-size: 0.62rem; }
                 .cb-flat .cb-corner i { font-size: 0.54rem; }
                 .cb-pback { width: 1.3rem; height: 1.85rem; margin-left: -0.8rem; }
                 .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.35rem; }
                 .cb-fan .cb-card { width: 2.6rem; height: 3.8rem; margin-left: -1.35rem; }
-                .cb-pinfo { padding: 0.3rem 0.6rem; font-size: 0.66rem; }
             }
             @media (max-height: 540px) {
-                .cb-pinfo,
-                .cb-ptally { display: none; }
                 .cb-ptable { padding: 0.35rem 0.4rem; gap: 0.3rem 0.4rem; }
                 .cb-ptrick { width: 6.6rem; height: 5.4rem; }
                 .cb-ptrick .tkc,
@@ -998,13 +995,13 @@
                 color: #e8e6e3;
                 border-color: rgba(255, 255, 255, 0.25);
             }
-            /* the reviewed trick floats over the table so the single
-               screen never grows taller */
+            /* the reviewed trick pops up right above the last-trick button
+               (bottom of the screen), never in the middle of the table, so
+               the single screen keeps its height */
             .cb-lasttrick {
                 position: absolute;
-                left: 50%;
-                top: 45%;
-                transform: translate(-50%, -50%);
+                bottom: calc(100% + 0.3rem);
+                right: 0;
                 z-index: 30;
                 display: flex;
                 flex-direction: column;
@@ -2625,14 +2622,9 @@
             function playSeatHtml(seat) {
                 const p = state.play;
                 const isDummy = seat === p.dummy;
-                const isDecl = seat === p.declarer;
                 const isYou = seat === state.humanSeat;
                 const acting = playReady() && p.actSeat === seat;
                 const botActing = !p.yourTurn && p.nextSeat === seat;
-                const tags = [];
-                if (isYou) tags.push('<span class="you">you</span>');
-                if (isDecl) tags.push('<span class="role">declarer</span>');
-                else if (isDummy) tags.push('<span class="role">dummy</span>');
                 // The dummy is only face up once the opening lead is on the
                 // table; until then it is a face-down hand like any opponent.
                 // (When the human IS the dummy their hand is the footer fan.)
@@ -2661,7 +2653,7 @@
                 }
                 const actCls = acting || botActing ? " act" : "";
                 return `<div class="cb-pseat${actCls}">
-                    <div class="cb-pseat-name"><span class="cb-pbadge">${"NESW"[seat]}</span>${SEAT_NAMES[seat]} ${tags.join(" ")}</div>
+                    <div class="cb-pseat-name"><span class="cb-pbadge">${"NESW"[seat]}</span>${SEAT_NAMES[seat]}${isYou ? ' <span class="you">you</span>' : ""}</div>
                     ${body}
                 </div>`;
             }
@@ -2722,21 +2714,17 @@
                 return trickCrossHtml(td.cards, win, slots);
             }
 
-            function playInfoHtml() {
-                const p = state.play;
-                const c = p.contract;
-                const pen = c
-                    ? ["", " doubled", " redoubled"][c.penalty] || ""
-                    : "";
-                const contractStr = c
-                    ? `${c.level}${SUIT_SYMBOL[c.denom]}${pen} by ${SEAT_NAMES[c.declarer]}`
-                    : "—";
-                const trumpStr = p.trump === "N" ? "NT" : SUIT_SYMBOL[p.trump];
-                return `<div class="cb-pinfo">
-                    <span>${dcolorSuits(contractStr)}</span>
-                    <span class="sep">·</span><span>trump <b>${trumpStr}</b></span>
-                    <span class="sep">·</span><span>dummy <b>${SEAT_NAMES[p.dummy]}</b></span>
-                </div>`;
+            // Contract tag for the table's top-right corner: level and suit
+            // (NT for notrump), X/XX when doubled, then the declarer's letter
+            // with no space -- e.g. 4♠XN, 3NTS.
+            function contractTagHtml() {
+                const c = state.play && state.play.contract;
+                if (!c) return "";
+                const pen = ["", "X", "XX"][c.penalty] || "";
+                const suit = c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom];
+                return dcolorSuits(
+                    `${c.level}${suit}${pen}${"NESW"[c.declarer]}`,
+                );
             }
 
             function playTallyHtml() {
@@ -2766,15 +2754,7 @@
             function playPromptHtml() {
                 const p = state.play;
                 if (busy) return spinner("Playing the hand…");
-                if (playReady()) {
-                    const seatName = SEAT_NAMES[p.actSeat];
-                    const lead = revealedPlays().length % 4 === 0 ? "lead" : "play";
-                    const who =
-                        p.actSeat === p.dummy && p.actSeat !== state.humanSeat
-                            ? " (dummy)"
-                            : "";
-                    return `Your turn — ${lead} from ${seatName}${who}`;
-                }
+                if (playReady()) return "Your turn";
                 const plays = p.plays || [];
                 const nextSeat =
                     revealCount < plays.length
@@ -2793,8 +2773,8 @@
 
             // Req 6: no running record of past tricks -- just the last one,
             // shown only on click, crosswise and in the table's card style.
-            // The panel floats over the table so the single screen keeps its
-            // height; the button lives in the prompt row.
+            // The panel pops up right above the button (not over the table
+            // center) so the single screen keeps its height.
             function lastTrickBtnHtml() {
                 const trick = lastTrickPlays();
                 const open = showLastTrick && trick;
@@ -2816,20 +2796,22 @@
 
             function playTableView() {
                 return `
-                    ${playInfoHtml()}
                     <div class="cb-ptable">
+                        <div class="cb-pt-tl">${playTallyHtml()}</div>
                         <div class="cb-pt-n">${playSeatHtml(0)}</div>
+                        <div class="cb-pt-tr">${contractTagHtml()}</div>
                         <div class="cb-pt-w">${playSeatHtml(3)}</div>
                         <div class="cb-pt-c">${trickCenterHtml()}</div>
                         <div class="cb-pt-e">${playSeatHtml(1)}</div>
                         <div class="cb-pt-s">${playSeatHtml(2)}</div>
                     </div>
-                    ${playTallyHtml()}
-                    <div class="cb-playrow">
-                        <div class="cb-pprompt">${playPromptHtml()}</div>
-                        ${lastTrickBtnHtml()}
-                    </div>
-                    ${lastTrickPanelHtml()}`;
+                    <div class="cb-playbottom">
+                        ${lastTrickPanelHtml()}
+                        <div class="cb-playrow">
+                            <div class="cb-pprompt">${playPromptHtml()}</div>
+                            ${lastTrickBtnHtml()}
+                        </div>
+                    </div>`;
             }
 
             // Two-click play: the first tap on a legal card lifts it (select);
