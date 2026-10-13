@@ -1755,7 +1755,18 @@
                     .replace(/\u2666/g, '<span style="color:#f08a8a;">\u2666</span>')
                     .replace(/\u2665/g, '<span style="color:#f08a8a;">\u2665</span>');
             }
-            function scoreText(n) { return n > 0 ? "+" + n : String(n); }
+            // Suit shorthand, exactly like the system collections: typing !s
+            // in a comment/message inserts ♠ (and !h ♥, !d ♦, !c ♣) live.
+            function replaceSymbols(text) {
+                return String(text == null ? "" : text)
+                    .replace(/!c/g, "\u2663")
+                    .replace(/!d/g, "\u2666")
+                    .replace(/!h/g, "\u2665")
+                    .replace(/!s/g, "\u2660");
+            }
+            // display a comment/reasoning string: expand any !s tokens, escape,
+            // and colour the suit glyphs (used for every description box).
+            function suitify(text) { return dcolorSuits(replaceSymbols(text)); }
             function hcpOf(handStr) {
                 let t = 0;
                 for (const c of String(handStr || "").replace(/\./g, "")) {
@@ -1936,6 +1947,16 @@
                 const pen = ["", "X", "XX"][c.penalty] || "";
                 const sym = c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom];
                 return `${c.level}${sym}${pen} by ${SEAT_NAMES[c.declarer]}`;
+            }
+            // The result of a hand as contract + margin, e.g. "4\u2660\u22121",
+            // "3NT=", "4\u2665+2" -- no score, no IMPs.
+            function resultText(c, tricks) {
+                if (!c) return "passed out";
+                const pen = ["", "X", "XX"][c.penalty] || "";
+                const sym = c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom];
+                const margin = (tricks || 0) - (c.level + 6);
+                const tail = margin === 0 ? "=" : margin > 0 ? "+" + margin : "\u2212" + Math.abs(margin);
+                return `${c.level}${sym}${pen}${tail}`;
             }
 
             // ===================== Practice table (hero rotated to bottom) =====================
@@ -2130,13 +2151,13 @@
             function notesPanelHtml() {
                 if (!showNotes) return "";
                 const parts = [];
-                if (state.problemComment) parts.push(`<div style="margin-bottom:.4rem"><div class="dr-label">Problem / defence</div><div class="dr-comment">${escapeHtml(state.problemComment)}</div></div>`);
-                if (state.bidComment) parts.push(`<div><div class="dr-label">Bidding</div><div class="dr-comment">${escapeHtml(state.bidComment)}</div></div>`);
+                if (state.problemComment) parts.push(`<div style="margin-bottom:.4rem"><div class="dr-label">Problem / defence</div><div class="dr-comment">${suitify(state.problemComment)}</div></div>`);
+                if (state.bidComment) parts.push(`<div><div class="dr-label">Bidding</div><div class="dr-comment">${suitify(state.bidComment)}</div></div>`);
                 return `<div class="cb-auctionpop" style="left:0;right:0"><div style="padding:.4rem .5rem">${parts.join("")}</div></div>`;
             }
             function hintBubbleHtml() {
                 if (!hintMsg) return "";
-                return `<div class="dr-msg dr-msg-float"><span class="material-symbols-outlined">tips_and_updates</span><span style="flex:1">${escapeHtml(hintMsg)}</span><button id="drHintClose" class="dr-hintclose" title="Dismiss"><span class="material-symbols-outlined">close</span></button></div>`;
+                return `<div class="dr-msg dr-msg-float"><span class="material-symbols-outlined">tips_and_updates</span><span style="flex:1">${suitify(hintMsg)}</span><button id="drHintClose" class="dr-hintclose" title="Dismiss"><span class="material-symbols-outlined">close</span></button></div>`;
             }
             function playTableView() {
                 return `<div class="cb-ptable">
@@ -2250,10 +2271,10 @@
                         <h3>${escapeHtml(state.title || "Card problem")}</h3>
                         <div class="dr-sub" style="margin-bottom:.6rem">${contractText(c)} \u00b7 Dealer ${SEAT_NAMES[state.dealer][0]} \u00b7 Vuln ${VULN_NAMES[state.vuln]} \u00b7 ${stars(state.difficulty)}</div>
                         <div class="dr-hint" style="margin-bottom:.6rem">${heroRole}</div>
-                        ${state.problemComment ? `<div class="dr-label">Problem / defensive agreements</div><div class="dr-comment" style="margin-bottom:.6rem">${escapeHtml(state.problemComment)}</div>` : ""}
+                        ${state.problemComment ? `<div class="dr-label">Problem / defensive agreements</div><div class="dr-comment" style="margin-bottom:.6rem">${suitify(state.problemComment)}</div>` : ""}
                         <div class="dr-label">Auction</div>
                         ${auctionHtml(state.dealer, state.vuln, state.calls, null, state.heroSeat)}
-                        ${state.bidComment ? `<div class="dr-comment" style="margin-top:.5rem">${escapeHtml(state.bidComment)}</div>` : ""}
+                        ${state.bidComment ? `<div class="dr-comment" style="margin-top:.5rem">${suitify(state.bidComment)}</div>` : ""}
                         <div class="dr-modalfoot">
                             <button class="dr-btn ghost" id="drIntroClose">Back</button>
                             <button class="dr-btn gold" id="drIntroStart"><span class="material-symbols-outlined">playing_cards</span>Start play</button>
@@ -2275,7 +2296,7 @@
                         const wc = p.seat === win ? " win" : "";
                         return `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:1px"><span class="dr-tk-seat">${SEAT_NAMES[p.seat][0]}</span><span class="dr-tk-mini ${red ? "red" : "blk"}${wc}">${rank}<br>${SUIT_SYMBOL[p.card[1]]}</span></span>`;
                     }).join("");
-                    const msgs = trick.filter((p) => p.msg).map((p) => `<div class="dr-line-msg"><b>${SEAT_NAMES[p.seat][0]}</b> ${cardNameJS(p.card)}: ${escapeHtml(p.msg)}</div>`).join("");
+                    const msgs = trick.filter((p) => p.msg).map((p) => `<div class="dr-line-msg"><b>${SEAT_NAMES[p.seat][0]}</b> ${cardNameJS(p.card)}: ${suitify(p.msg)}</div>`).join("");
                     out += `<div class="dr-line-trick"><span class="dr-line-no">${t / 4 + 1}</span><span style="display:flex;gap:.3rem">${cards}</span></div>${msgs}`;
                 }
                 return `<div class="dr-line">${out}</div>`;
@@ -2283,26 +2304,22 @@
             function doneViewHtml() {
                 const r = state.result || {};
                 const c = r.contract || state.contract;
-                const need = c ? c.level + 6 : 0;
-                const margin = r.tricks - need;
-                const madeTxt = margin >= 0 ? (margin > 0 ? "made +" + margin : "made exactly") : margin + " down";
+                const decl = c ? SEAT_NAMES[c.declarer] : "";
                 return `<div class="flex-1 min-h-0 flex flex-col">
                     ${topBarHtml()}
                     <div class="cb-mid" style="max-width:42rem">
                         <div class="cb-done pop-in">
                             <div class="cb-done-head">
                                 <div class="cb-done-score">
-                                    <div class="cb-done-contract">${dcolorSuits(contractText(c))}</div>
-                                    <div class="cb-done-tricks">${r.tricks} tricks \u2014 ${madeTxt}${r.claimed ? " \u00b7 claimed" : ""}</div>
-                                    <div class="cb-done-imps"><span class="lbl">Result (N-S)</span>
-                                        <span class="dr-result-big" style="color:${r.scoreNs >= 0 ? "#8fd694" : "#f08a8a"}">${scoreText(r.scoreNs)}</span></div>
+                                    <div class="dr-result-big" style="color:#e8e6e3">${dcolorSuits(resultText(c, r.tricks))}</div>
+                                    <div class="cb-done-tricks">by ${decl} \u00b7 ${r.tricks || 0} trick${r.tricks === 1 ? "" : "s"}${r.claimed ? " \u00b7 claimed" : ""}</div>
                                 </div>
                                 <div class="cb-done-par"><div class="lbl">Wrong picks</div><div class="val">${r.wrong || 0}</div></div>
                             </div>
                             ${state.hands ? doneDiagramHtml(state.hands, state.heroSeat, state.dealer, state.calls) : ""}
                             ${(state.problemComment || state.bidComment) ? `<div style="display:flex;flex-direction:column;gap:.4rem">
-                                ${state.problemComment ? `<div><div class="dr-label">Problem / defence</div><div class="dr-comment">${escapeHtml(state.problemComment)}</div></div>` : ""}
-                                ${state.bidComment ? `<div><div class="dr-label">Bidding</div><div class="dr-comment">${escapeHtml(state.bidComment)}</div></div>` : ""}
+                                ${state.problemComment ? `<div><div class="dr-label">Problem / defence</div><div class="dr-comment">${suitify(state.problemComment)}</div></div>` : ""}
+                                ${state.bidComment ? `<div><div class="dr-label">Bidding</div><div class="dr-comment">${suitify(state.bidComment)}</div></div>` : ""}
                             </div>` : ""}
                             <div><div class="dr-label">The author's line</div>${lineReviewHtml()}</div>
                             <div class="cb-done-foot" style="gap:.5rem">
@@ -2483,7 +2500,7 @@
                         dealer: existing.dealer, vuln: existing.vuln, assign: assignFromHands(existing.hands),
                         calls: (existing.calls || []).slice(), bidComment: existing.bidComment || "", problemComment: existing.problemComment || "",
                         heroSeat: existing.heroSeat, plays: (existing.plays || []).map((p) => ({ seat: p.seat, card: p.card, msg: p.msg || "" })),
-                        claim: existing.claim ? { tricks: existing.claim.tricks, scoreNs: existing.claim.scoreNs } : null,
+                        claim: existing.claim ? { tricks: existing.claim.tricks } : null,
                         step: 0, selSeat: 2,
                     };
                 } else wiz = blankWiz();
@@ -2631,9 +2648,9 @@
                 return `<div class="dr-field">${auctionHtml(wiz.dealer, wiz.vuln, wiz.calls, next, wiz.heroSeat >= 0 ? wiz.heroSeat : null)}</div>
                     <div class="dr-field">${bidBoxHtml()}
                         ${wiz.calls.length ? `<div class="dr-nav"><span></span><button class="dr-btn ghost" id="wizUndoCall"><span class="material-symbols-outlined">undo</span>Undo call</button></div>` : ""}</div>
-                    <div class="dr-field"><label class="dr-label">Comment about the bidding</label>
+                    <div class="dr-field"><label class="dr-label">Comment about the bidding <span style="text-transform:none;letter-spacing:0;opacity:.7">(!s \u2660 !h \u2665 !d \u2666 !c \u2663)</span></label>
                         <textarea class="dr-input" id="wizBidComment" placeholder="What the auction shows, conventions in play\u2026">${escapeHtml(wiz.bidComment)}</textarea></div>
-                    <div class="dr-field"><label class="dr-label">Problem comment \u2014 include the defenders' agreements</label>
+                    <div class="dr-field"><label class="dr-label">Problem comment \u2014 include the defenders' agreements <span style="text-transform:none;letter-spacing:0;opacity:.7">(!s \u2660 !h \u2665 !d \u2666 !c \u2663)</span></label>
                         <textarea class="dr-input" id="wizProblemComment" placeholder="Defensive carding: leads, signals, discards, count/attitude agreements\u2026">${escapeHtml(wiz.problemComment)}</textarea></div>`;
             }
             function wizStepHero() {
@@ -2689,8 +2706,8 @@
                 const remaining = Math.floor((52 - n) / 4);
                 const canClaim = n >= 4 && n % 4 === 0 && n < 52;
                 const claimTxt = wiz.claim
-                    ? `Claim: declarer takes ${wiz.claim.tricks} tricks, result <b>${scoreText(wiz.claim.scoreNs)}</b> (N-S).`
-                    : (n === 52 ? "All 52 cards scripted \u2014 the result is scored from the play." : `Script the play, or claim at a trick boundary.`);
+                    ? `Claim: declarer takes ${wiz.claim.tricks} tricks \u2014 result <b>${dcolorSuits(resultText(c, wiz.claim.tricks))}</b>.`
+                    : (n === 52 ? "All 52 cards scripted \u2014 the result is counted from the play." : `Script the play, or claim at a trick boundary.`);
                 return `<div class="dr-hint" style="margin-bottom:.5rem">${dcolorSuits(contractText(c))} \u00b7 trump ${c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom]} \u00b7 hero ${SEAT_NAMES[wiz.heroSeat]}. Click a highlighted card of the seat to play; \u2605 seats ask for your reasoning.</div>
                     <div class="dr-panel" style="margin-bottom:.5rem;padding:.6rem">${recTrickHtml(c)}</div>
                     <div class="dr-rec">${recHandsHtml(c)}</div>
@@ -2738,19 +2755,20 @@
                 if (modal.kind === "msg") {
                     return `<div class="dr-overlay"><div class="dr-modal">
                         <h3>Why the ${cardNameJS(modal.card)}?</h3>
-                        <div class="dr-hint" style="margin-bottom:.5rem">${SEAT_NAMES[modal.seat]} (hero) plays the ${cardNameJS(modal.card)}. Explain the reasoning \u2014 it is revealed to anyone who picks a different card.</div>
+                        <div class="dr-hint" style="margin-bottom:.5rem">${SEAT_NAMES[modal.seat]} (hero) plays the ${cardNameJS(modal.card)}. Explain the reasoning \u2014 it is revealed to anyone who picks a different card. <span style="opacity:.75">Type !s !h !d !c for \u2660 \u2665 \u2666 \u2663.</span></div>
                         <textarea class="dr-input" id="msgText" rows="3">${escapeHtml(modal.msg)}</textarea>
                         <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn gold" id="msgOk"><span class="material-symbols-outlined">playing_cards</span>Play card</button></div>
                     </div></div>`;
                 }
                 if (modal.kind === "claim") {
+                    const c = modal.contract;
                     return `<div class="dr-overlay"><div class="dr-modal">
                         <h3>Claim the remaining tricks</h3>
-                        <div class="dr-hint" style="margin-bottom:.6rem">Declarer has won ${modal.min} trick${modal.min === 1 ? "" : "s"} so far; ${modal.max - modal.min} remain to be played. Set the total declarer takes and the final score.</div>
+                        <div class="dr-hint" style="margin-bottom:.6rem">Declarer has won ${modal.min} trick${modal.min === 1 ? "" : "s"} so far; ${modal.max - modal.min} remain to be played. Set the total number declarer takes \u2014 the result is shown as the contract and its margin.</div>
                         <div class="dr-field"><label class="dr-label">Tricks declarer takes (total)</label>
                             <input class="dr-input" id="claimTricks" type="number" min="${modal.min}" max="${modal.max}" value="${modal.tricks}"></div>
-                        <div class="dr-field"><label class="dr-label">Final score (N-S positive)</label>
-                            <input class="dr-input" id="claimScore" type="number" step="10" value="${modal.scoreNs}"></div>
+                        <div class="dr-field"><span class="dr-label">Result</span>
+                            <div class="dr-result-big" id="claimPreview" style="color:#e8e6e3;font-size:1.4rem">${c ? dcolorSuits(resultText(c, modal.tricks)) : ""}</div></div>
                         <div class="dr-modalfoot">
                             <button class="dr-btn ghost" data-modal-cancel>Cancel</button>
                             ${wiz && wiz.claim ? `<button class="dr-btn danger" id="claimRemove">Remove claim</button>` : ""}
@@ -2818,19 +2836,16 @@
                 const won = recDeclTricks(c);
                 const remaining = Math.floor((52 - wiz.plays.length) / 4);
                 const tricks = wiz.claim ? wiz.claim.tricks : Math.min(13, won + remaining);
-                modal = { kind: "claim", min: won, max: won + remaining, tricks, scoreNs: wiz.claim ? wiz.claim.scoreNs : 0 };
+                modal = { kind: "claim", min: won, max: won + remaining, tricks, contract: c };
                 render();
-                suggestScore(c, tricks);
             }
-            async function suggestScore(c, tricks) {
-                try {
-                    const r = await api("POST", "/api/drills/score", { level: c.level, denom: c.denom, penalty: c.penalty, declarer: c.declarer, vuln: wiz.vuln, tricks });
-                    if (r.ok && modal && modal.kind === "claim") {
-                        modal.scoreNs = r.data.scoreNs;
-                        const el = document.getElementById("claimScore");
-                        if (el && document.activeElement !== el) el.value = r.data.scoreNs;
-                    }
-                } catch (e) { /* ignore */ }
+            // live-update the result preview as the trick count changes
+            function refreshClaimPreview() {
+                if (!modal || modal.kind !== "claim" || !modal.contract) return;
+                const ti = document.getElementById("claimTricks");
+                const el = document.getElementById("claimPreview");
+                const t = ti ? parseInt(ti.value) : NaN;
+                if (el && !isNaN(t)) el.innerHTML = dcolorSuits(resultText(modal.contract, t));
             }
             async function saveWiz() {
                 if (!playOk()) { showToast("Finish the deal, auction, hero and play first", true); return; }
@@ -2992,11 +3007,22 @@
                 on("wizUndoCall", () => undoCall());
                 on("wizUndoPlay", () => recUndo());
                 on("wizClaimBtn", () => openClaimModal());
-                // text inputs update the draft without re-render (keep focus)
+                // text inputs update the draft without re-render (keep focus);
+                // comment/reasoning fields also expand !s/!h/!d/!c to suit glyphs
                 const bindInput = (id, fn) => { const el = $(id); if (el) el.oninput = () => fn(el.value); };
+                const bindSymbol = (id, fn) => {
+                    const el = $(id);
+                    if (el) el.oninput = () => {
+                        const start = el.selectionStart;
+                        const t = replaceSymbols(el.value);
+                        if (t !== el.value) { el.value = t; try { el.setSelectionRange(start, start); } catch (e) { } }
+                        fn(el.value);
+                    };
+                };
                 bindInput("wizTitle", (v) => { wiz.title = v; });
-                bindInput("wizBidComment", (v) => { wiz.bidComment = v; });
-                bindInput("wizProblemComment", (v) => { wiz.problemComment = v; });
+                bindSymbol("wizBidComment", (v) => { wiz.bidComment = v; });
+                bindSymbol("wizProblemComment", (v) => { wiz.problemComment = v; });
+                bindSymbol("msgText", (v) => { if (modal) modal.msg = v; });
                 // save button live-enables as the play step fills in
                 const rec = document.querySelector("[data-rec], #wizUndoPlay");
                 if (rec) { const sv = $("wizSave"); if (sv) sv.disabled = !playOk(); }
@@ -3009,15 +3035,14 @@
                 });
                 on("claimOk", () => {
                     const t = parseInt(($("claimTricks") || {}).value);
-                    const s = parseInt(($("claimScore") || {}).value);
                     if (isNaN(t) || t < modal.min || t > modal.max) { showToast("Tricks out of range", true); return; }
-                    wiz.claim = { tricks: t, scoreNs: isNaN(s) ? 0 : s };
+                    wiz.claim = { tricks: t };
                     modal = null; render();
                 });
                 on("claimRemove", () => { wiz.claim = null; modal = null; render(); });
                 on("delOk", () => { if (modal && modal.id) deleteProblem(modal.id); });
                 const ct = $("claimTricks");
-                if (ct) ct.oninput = () => { const c = wizContract(); if (c) suggestScore(c, parseInt(ct.value) || modal.min); };
+                if (ct) ct.oninput = () => refreshClaimPreview();
             }
 
             // ---- bootstrap ----

@@ -41,9 +41,9 @@ board keeps that mode for its whole life.
 
 Author fully-scripted **card-play problems** and practise the community library.
 This section is self-contained: it never calls the bidding-dt sidecar — every
-rule (auction legality, follow-suit, trick winners, the plain duplicate score)
-is checked locally in `drills.go`, and problems persist to
-`data/drills/<id>.json`. Two tabs:
+rule (auction legality, follow-suit, trick winners, claim bounds) is checked
+locally in `drills.go`, and problems persist to `data/drills/<id>.json`. Two
+tabs:
 
 - **Create** — build a problem in a five-step wizard: setup (optional title,
   difficulty 1–5 ★, dealer, vulnerability, and whether it tests **Declarer** or
@@ -53,10 +53,12 @@ is checked locally in `drills.go`, and problems persist to
   defense problem, then the **card play**. The play is scripted card by card in
   god-mode; every card played by a *hero* seat (declarer + dummy, or the one
   chosen defender) asks for the author's reasoning, pre-filled with
-  *"I just decided to play the [card] instead."* End the hand by playing all 52
-  cards or by **claiming** at a trick boundary — a claim stores the declarer's
-  total tricks and a plain final score (N-S positive), auto-suggested from
-  `POST /api/drills/score`. Authors can edit or delete their own problems.
+  *"I just decided to play the [card] instead."* Every comment and reasoning box
+  expands the suit shorthand `!s !h !d !c` into ♠ ♥ ♦ ♣ live, exactly like the
+  system collections. End the hand by playing all 52 cards or by **claiming** at
+  a trick boundary — a claim just records the declarer's total tricks, and the
+  result is shown as the contract and its margin (e.g. **4♠−1**, **3NT=**,
+  **4♥+2**). Authors can edit or delete their own problems.
 - **Practice** — filter the library of everyone's problems by role, author and
   difficulty, then play one. The bidding is shown up front with the problem
   comment, then the hand runs like a play-a-hand table (hero rotated to the
@@ -65,8 +67,9 @@ is checked locally in `drills.go`, and problems persist to
   one, it is **not** played: the server answers `409` with the author's message
   for the correct card (a wrong pick is counted) and the hero chooses again.
   Messages stay hidden while you play correctly and are all revealed in the
-  end-of-hand review. The result is the final score only — **no IMPs, no par** —
-  so drills never touch the rankings or `play_stats.json`.
+  end-of-hand review. The result is the contract and its margin (e.g. **4♠−1**)
+  — **no score, no IMPs, no par** — so drills never touch the rankings or
+  `play_stats.json`.
 
 Practice runs are in-memory sessions (`DrillSession`, 6 h TTL, one per user, the
 problem snapshotted at the start so an edit cannot desync a run in flight); the

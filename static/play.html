@@ -447,6 +447,26 @@
             .cb-pass:disabled {
                 opacity: 0.4;
             }
+            /* selected call: yellow ring until confirmed (like a lifted card) */
+            .cb-tile.sel,
+            .cb-pass.sel {
+                box-shadow:
+                    0 0 0 2px #ffd54a,
+                    0 3px 0 rgba(0, 0, 0, 0.35);
+                transform: translateY(-2px);
+            }
+            .cb-confirmbar {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                margin-top: 0.5rem;
+            }
+            .cb-confirm-what {
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.1rem;
+                color: #e8e6e3;
+            }
 
             .cb-wait {
                 background: #302e2c;
@@ -598,7 +618,9 @@
                other card -- they are simply not clickable. */
             .cb-fan-play {
                 flex-wrap: nowrap;
-                justify-content: safe center;
+                /* pinned left, like a real hand on the table: when a card is
+                   played the remaining cards do not move */
+                justify-content: flex-start;
                 max-width: 100%;
                 overflow-x: auto;
                 overscroll-behavior-x: contain;
@@ -613,11 +635,15 @@
                     box-shadow 0.14s ease;
             }
             .cb-fan-play .cb-card:first-child { margin-left: 0; }
-            /* big, uncut indices: the overlap step (1.65rem) is wider than the
-               widest rank ("10") plus its inset */
-            .cb-fan-play .cb-corner { left: 0.18rem; top: 0.18rem; }
-            .cb-fan-play .cb-corner b { font-size: 1.05rem; }
-            .cb-fan-play .cb-corner i { font-size: 0.95rem; margin-top: 0; }
+            /* big, uncut indices, shared by your fan and the tabled dummy:
+               the overlap step (1.65rem) is wider than the widest rank ("10")
+               plus its inset */
+            .cb-fan-play .cb-corner,
+            .cb-flat .cb-corner { left: 0.18rem; top: 0.18rem; }
+            .cb-fan-play .cb-corner b,
+            .cb-flat .cb-corner b { font-size: 1.05rem; }
+            .cb-fan-play .cb-corner i,
+            .cb-flat .cb-corner i { font-size: 0.95rem; margin-top: 0; }
             .cb-fan-play .cb-midsuit {
                 font-size: 1.6rem;
                 right: 0.25rem;
@@ -632,6 +658,54 @@
             .cb-fan-play .cb-card.playable:hover {
                 transform: translateY(-4px);
             }
+            /* the tabled dummy: exactly the same card faces and sizes as
+               your own fan at the bottom */
+            .cb-flat {
+                display: flex;
+                padding: 0.15rem 0.1rem;
+            }
+            .cb-flat-h {
+                flex-direction: row;
+                /* pinned like your fan: playing a card never shifts the rest */
+                justify-content: flex-start;
+                max-width: 100%;
+                overflow-x: auto;
+                overscroll-behavior-x: contain;
+            }
+            /* a column keeps the height of a full 13-card hand, so the table
+               never grows or shrinks (and never re-centers) as dummy plays */
+            .cb-flat-v {
+                flex-direction: column;
+                height: 20.1rem;
+            }
+            .cb-flat .cb-card {
+                width: 3.05rem;
+                height: 4.5rem;
+                margin: 0;
+                border-radius: 0.35rem;
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+                flex-shrink: 0;
+                transition: box-shadow 0.14s ease;
+            }
+            .cb-flat-h .cb-card + .cb-card { margin-left: -1.4rem; }
+            .cb-flat-v .cb-card + .cb-card { margin-top: -3.2rem; }
+            .cb-flat .cb-card:first-child { margin-left: 0; margin-top: 0; }
+            /* in a column only a thin top strip of each card shows, so the
+               corner turns sideways: rank and suit side by side */
+            .cb-flat-v .cb-corner {
+                flex-direction: row;
+                align-items: baseline;
+                gap: 1px;
+            }
+            .cb-flat .cb-midsuit { display: none; }
+            .cb-flat .cb-card.playable {
+                cursor: pointer;
+                box-shadow:
+                    0 0 0 1.5px rgba(232, 230, 227, 0.5),
+                    0 1px 4px rgba(0, 0, 0, 0.45);
+            }
+            /* selected card: yellow border in either hand, second tap plays
+               it (declared after the playable ring so it always wins) */
             .cb-fan-play .cb-card.sel,
             .cb-flat .cb-card.sel {
                 transform: translateY(-0.55rem);
@@ -640,62 +714,25 @@
                     0 6px 12px rgba(0, 0, 0, 0.55);
                 z-index: 5;
             }
-            /* the tabled dummy: every remaining card, face up, one line */
-            .cb-flat {
-                display: flex;
-                padding: 0.15rem 0.1rem;
-            }
-            .cb-flat-h { flex-direction: row; }
-            .cb-flat-v { flex-direction: column; }
-            .cb-flat .cb-card {
-                width: 2.6rem;
-                height: 3.7rem;
-                margin: 0;
-                border-radius: 0.35rem;
-                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
-                flex-shrink: 0;
-                transition: box-shadow 0.14s ease;
-            }
-            .cb-flat-h .cb-card + .cb-card { margin-left: -1.35rem; }
-            .cb-flat-v .cb-card + .cb-card { margin-top: -2.35rem; }
-            .cb-flat .cb-card:first-child { margin-left: 0; margin-top: 0; }
-            /* indices as big as the visible strip allows: 1.25rem of each card
-               shows in a row, 1.35rem in a column (sideways corner) */
-            .cb-flat .cb-corner { left: 0.15rem; top: 0.15rem; }
-            .cb-flat .cb-corner b { font-size: 0.9rem; }
-            .cb-flat .cb-corner i { font-size: 0.8rem; }
-            .cb-flat .cb-midsuit { display: none; }
-            /* in a column only a thin top strip of each card shows, so the
-               corner turns sideways: rank and suit side by side */
-            .cb-flat-v .cb-corner {
-                flex-direction: row;
-                align-items: baseline;
-                gap: 1px;
-            }
-            .cb-flat-v .cb-corner i { margin-top: 0; }
-            .cb-flat .cb-card.playable {
-                cursor: pointer;
-                box-shadow:
-                    0 0 0 1.5px rgba(232, 230, 227, 0.5),
-                    0 1px 4px rgba(0, 0, 0, 0.45);
-            }
             .cb-flat .cb-card.sel { transform: none; }
             @media (max-width: 400px) {
+                .cb-fan-play .cb-card,
                 .cb-flat .cb-card {
-                    width: 2.2rem;
-                    height: 3.2rem;
-                }
-                .cb-flat-h .cb-card + .cb-card { margin-left: -1.1rem; }
-                .cb-flat-v .cb-card + .cb-card { margin-top: -2rem; }
-                .cb-flat .cb-corner b { font-size: 0.8rem; }
-                .cb-flat .cb-corner i { font-size: 0.7rem; }
-                .cb-fan-play .cb-card {
                     width: 2.75rem;
                     height: 4.1rem;
-                    margin-left: -1.3rem;
                 }
-                .cb-fan-play .cb-corner b { font-size: 0.95rem; }
-                .cb-fan-play .cb-corner i { font-size: 0.85rem; }
+                .cb-fan-play .cb-card { margin-left: -1.3rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.3rem; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -2.9rem; }
+                .cb-flat-v { height: 18.5rem; }
+                .cb-ptable.dv {
+                    grid-template-rows: auto minmax(18.5rem, auto) auto;
+                }
+                .cb-ptable.dh .cb-pt-n { min-height: 4.1rem; }
+                .cb-fan-play .cb-corner b,
+                .cb-flat .cb-corner b { font-size: 0.95rem; }
+                .cb-fan-play .cb-corner i,
+                .cb-flat .cb-corner i { font-size: 0.85rem; }
             }
 
             .cb-diagram {
@@ -789,6 +826,18 @@
                 grid-area: tr;
                 justify-self: end;
                 align-self: start;
+            }
+            /* Reserve the space the tabled dummy will occupy once the opening
+               lead lands, so tabling it -- and every card after -- never
+               resizes the table (and never re-centers the view). */
+            .cb-ptable.dv {
+                grid-template-rows: auto minmax(20.1rem, auto) auto;
+            }
+            .cb-ptable.dh .cb-pt-n {
+                min-height: 4.5rem;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
             }
             .cb-pseat {
                 display: flex;
@@ -910,6 +959,21 @@
                 background: rgba(255, 213, 74, 0.08);
                 animation: cb-pulse 1.6s ease-in-out infinite;
             }
+            /* the final contract fills the empty table center while the
+               opening lead is awaited (e.g. 4♥W) */
+            .cb-leadc {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.8rem;
+                letter-spacing: 0.02em;
+                color: #e8e6e3;
+                pointer-events: none;
+            }
             .cb-ptally {
                 display: flex;
                 flex-direction: column;
@@ -923,12 +987,17 @@
             }
             .cb-ptally b { font-size: 0.85rem; color: #fff; }
             .cb-pprompt {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.35rem;
+                height: 1.5rem; /* same height spinning or not: no jumps */
                 text-align: center;
                 font-family: Inter, sans-serif;
                 font-size: 0.78rem;
                 color: #e8e6e3;
-                min-height: 1.2rem;
             }
+            .cb-pprompt .material-symbols-outlined { font-size: 15px; }
             /* ---- The single play screen ----
                Table and your hand are ONE view that always fits the screen:
                nothing scrolls. The table floats in the middle, the prompt row
@@ -973,30 +1042,45 @@
                 .cb-ptrick { width: 8.2rem; height: 6.8rem; }
                 .cb-ptrick .tkc,
                 .cb-ptrick .tk-slot { width: 2rem; height: 2.9rem; }
-                .cb-flat .cb-card { width: 2.3rem; height: 3.3rem; }
-                .cb-flat-h .cb-card + .cb-card { margin-left: -1.25rem; }
-                .cb-flat-v .cb-card + .cb-card { margin-top: -2.25rem; }
-                .cb-flat .cb-corner b { font-size: 0.8rem; }
-                .cb-flat .cb-corner i { font-size: 0.68rem; }
+                .cb-fan-play .cb-card,
+                .cb-flat .cb-card { width: 2.9rem; height: 4.2rem; }
+                .cb-fan-play .cb-card { margin-left: -1.4rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.4rem; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -2.95rem; }
+                .cb-flat-v { height: 19.2rem; }
+                .cb-ptable.dv {
+                    grid-template-rows: auto minmax(19.2rem, auto) auto;
+                }
+                .cb-ptable.dh .cb-pt-n { min-height: 4.2rem; }
+                .cb-fan-play .cb-corner b,
+                .cb-flat .cb-corner b { font-size: 1rem; }
+                .cb-fan-play .cb-corner i,
+                .cb-flat .cb-corner i { font-size: 0.9rem; }
                 .cb-pback { width: 1.5rem; height: 2.15rem; margin-left: -0.9rem; }
                 .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.5rem; }
-                .cb-fan-play .cb-card { width: 2.9rem; height: 4.2rem; margin-left: -1.4rem; }
             }
             @media (max-height: 540px) {
                 .cb-ptable { padding: 0.3rem 0.2rem; gap: 0.3rem 0.4rem; }
                 .cb-ptrick { width: 7rem; height: 5.8rem; }
                 .cb-ptrick .tkc,
                 .cb-ptrick .tk-slot { width: 1.7rem; height: 2.45rem; }
-                .cb-flat .cb-card { width: 2rem; height: 2.9rem; }
-                .cb-flat-h .cb-card + .cb-card { margin-left: -1.1rem; }
+                .cb-fan-play .cb-card,
+                .cb-flat .cb-card { width: 2.6rem; height: 3.8rem; }
+                .cb-fan-play .cb-card { margin-left: -1.35rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.35rem; }
                 .cb-flat-v .cb-corner i { display: none; }
-                .cb-flat-v .cb-card + .cb-card { margin-top: -2.05rem; }
-                .cb-flat .cb-corner b { font-size: 0.68rem; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -2.7rem; }
+                .cb-flat-v { height: 17rem; }
+                .cb-ptable.dv {
+                    grid-template-rows: auto minmax(17rem, auto) auto;
+                }
+                .cb-ptable.dh .cb-pt-n { min-height: 3.8rem; }
+                .cb-fan-play .cb-corner b,
+                .cb-flat .cb-corner b { font-size: 0.85rem; }
+                .cb-fan-play .cb-corner i,
+                .cb-flat .cb-corner i { font-size: 0.75rem; }
                 .cb-pback { width: 1.3rem; height: 1.85rem; margin-left: -0.75rem; }
                 .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.3rem; }
-                .cb-fan-play .cb-card { width: 2.6rem; height: 3.8rem; margin-left: -1.35rem; }
-                .cb-fan-play .cb-corner b { font-size: 0.85rem; }
-                .cb-fan-play .cb-corner i { font-size: 0.75rem; }
                 .cb-pprompt { font-size: 0.7rem; }
             }
             /* Laptops and desktops: the play view used to sit in a small
@@ -1298,6 +1382,7 @@
             let bidTab = "solo"; // bid-only lobby tab: "solo" | "partner"
             let rankings = null; // {soloBid, soloPlay, pairBid}
             let rankTab = PLAY_MODE === "play" ? "soloPlay" : "soloBid";
+            let recentShown = 12; // how many recent boards the lobby lists
             let busy = false;
             let autoRetries = 0;
             let bidLevelSel = null;
@@ -1319,8 +1404,21 @@
             let paceTimer = null; // reveal/fetch timer
             let stepping = false; // a paced bot-card fetch is in flight
             let selectedCard = null; // two-click: card currently lifted, awaiting confirmation
+            let selectedCall = null; // bid currently selected, awaiting confirmation
             let showLastTrick = false; // "last trick" review panel open?
             let showAuction = false; // "bidding" review panel open?
+
+            // ---- Bid pacing (solo) ----
+            // The server answers with every bot call up to the human in one
+            // response; the client reveals them one at a time, at least
+            // BID_PACE_MS apart (the human's own calls land at once), so the
+            // auction unfolds call by call like the card play does.
+            const BID_PACE_MS = 500;
+            let callRevealCount = 0; // how many of state.calls are on screen
+            let callRevealBoardId = null; // board id callRevealCount belongs to
+            let lastCallRevealTs = 0; // when the last call was revealed
+            let callPaceTimer = null;
+            let freshBoard = false; // just-dealt board: pace the opening bids
 
             function dcolorSuits(text) {
                 return escapeHtml(text)
@@ -1510,10 +1608,28 @@
                 );
             }
 
-            // Default box content: the alert of the most recent bot bid, so
-            // every bid the bots make is announced as it lands.
+            // Default box content: while a call is selected, what THAT call
+            // would promise (its alert, if it has one); otherwise the alert of
+            // the most recent bot bid already on screen.
             function defaultAlertLine() {
-                const list = (state && state.calls) || [];
+                if (selectedCall && state) {
+                    const i = (state.legal || []).indexOf(selectedCall);
+                    const a =
+                        i >= 0 && state.optionAlerts
+                            ? state.optionAlerts[i]
+                            : null;
+                    if (a)
+                        return alertBoxLine(
+                            `Your ${callLabel(selectedCall)}`,
+                            alertText(a),
+                        );
+                    return alertBoxLine(
+                        "",
+                        `Your ${callLabel(selectedCall)} carries no alert.`,
+                        true,
+                    );
+                }
+                const list = revealedCalls();
                 for (let i = list.length - 1; i >= 0; i--) {
                     const a = state.alerts && state.alerts[i];
                     if (a) {
@@ -1937,11 +2053,13 @@
                     state && state.mode !== "team" && state.boardMode
                         ? state.boardMode
                         : PLAY_MODE;
+                freshBoard = true; // pace this board's opening bids
                 await post("/api/play/new", { mode: mode });
             }
 
             async function makeCall(call) {
                 if (!state || busy || state.done || !state.yourTurn) return;
+                selectedCall = null;
                 if (state.mode === "team") {
                     await post(`/api/play/team/${state.id}/call`, {
                         call: call,
@@ -2204,6 +2322,7 @@
                     .join("");
                 const l = bidLevelSel;
                 const opt = optionAlertMap();
+                const selCls = (c) => (selectedCall === c ? " sel" : "");
                 const optBits = (c) => {
                     const a = opt[c];
                     if (!a) return { t: "", b: "" };
@@ -2218,39 +2337,77 @@
                 const tiles = SUIT_ORDER.map((d) => {
                     const ok = l !== null && legal.has(l + d) && !busy;
                     const sym = d === "N" ? "NT" : SUIT_SYMBOL[d];
-                    const o = optBits(`${l}${d}`);
-                    return `<button data-call="${l}${d}" data-opt="${l}${d}" ${ok ? "" : "disabled"}${o.t} class="cb-tile cb-tile-${TILE_CLS[d]}">${l}<b>${sym}</b>${o.b}</button>`;
+                    const c = `${l}${d}`;
+                    const o = optBits(c);
+                    return `<button data-call="${c}" data-opt="${c}" ${ok ? "" : "disabled"}${o.t} class="cb-tile cb-tile-${TILE_CLS[d]}${selCls(c)}">${l}<b>${sym}</b>${o.b}</button>`;
                 }).join("");
                 const xo = optBits("X");
                 const dbl =
                     legal.has("X") && !busy
-                        ? `<button data-call="X" data-opt="X"${xo.t} class="cb-tile cb-tile-x">X${xo.b}</button>`
+                        ? `<button data-call="X" data-opt="X"${xo.t} class="cb-tile cb-tile-x${selCls("X")}">X${xo.b}</button>`
                         : "";
                 const xxo = optBits("XX");
                 const rdbl =
                     legal.has("XX") && !busy
-                        ? `<button data-call="XX" data-opt="XX"${xxo.t} class="cb-tile cb-tile-xx">XX${xxo.b}</button>`
+                        ? `<button data-call="XX" data-opt="XX"${xxo.t} class="cb-tile cb-tile-xx${selCls("XX")}">XX${xxo.b}</button>`
                         : "";
                 const po = optBits("P");
-                const pass = `<button data-call="P" data-opt="P"${po.t} ${legal.has("P") && !busy ? "" : "disabled"} class="cb-pass">PASS${po.b}</button>`;
+                const pass = `<button data-call="P" data-opt="P"${po.t} ${legal.has("P") && !busy ? "" : "disabled"} class="cb-pass${selCls("P")}">PASS${po.b}</button>`;
+                // selecting a call shows what it promises (alert box) and a
+                // confirm button; nothing is bid on a single tap
+                const confirm =
+                    selectedCall && legal.has(selectedCall)
+                        ? `<div class="cb-confirmbar">
+                            <span class="cb-confirm-what">${dcolorSuits(callLabel(selectedCall))}</span>
+                            <button data-confirm-call class="cb-btn-green">
+                                <span class="material-symbols-outlined text-sm">check</span>Confirm call
+                            </button>
+                            <button data-cancel-call class="cb-iconbtn" title="Cancel">
+                                <span class="material-symbols-outlined text-base">close</span>
+                            </button>
+                        </div>`
+                        : "";
                 return `<span id="bidArea" class="block">
                     <div class="cb-levels">${tabs}</div>
                     <div class="cb-bidpanel">${tiles}${dbl}${rdbl}${pass}</div>
+                    ${confirm}
                 </span>`;
             }
 
             function wireBidArea(root) {
                 const box = root.getElementById("bidArea");
                 if (!box) return;
+                const resel = () => {
+                    refreshBidArea();
+                    setAlertBox(defaultAlertLine());
+                };
                 box.querySelectorAll("[data-level]").forEach((btn) => {
                     btn.onclick = () => {
                         bidLevelSel = parseInt(btn.dataset.level, 10);
-                        refreshBidArea();
+                        selectedCall = null;
+                        resel();
                     };
                 });
+                // first tap selects the call (and shows its alert); the
+                // confirm button makes it
                 box.querySelectorAll("[data-call]").forEach((btn) => {
-                    btn.onclick = () => makeCall(btn.dataset.call);
+                    btn.onclick = () => {
+                        const c = btn.dataset.call;
+                        selectedCall = selectedCall === c ? null : c;
+                        resel();
+                    };
                 });
+                const confirm = box.querySelector("[data-confirm-call]");
+                if (confirm)
+                    confirm.onclick = () => {
+                        if (selectedCall) makeCall(selectedCall);
+                    };
+                const cancel = box.querySelector("[data-cancel-call]");
+                if (cancel)
+                    cancel.onclick = () => {
+                        selectedCall = null;
+                        resel();
+                    };
                 box.querySelectorAll("[data-opt]").forEach((btn) => {
                     const c = btn.dataset.opt;
                     btn.onmouseenter = () => showOptAlert(c);
@@ -2763,23 +2920,33 @@
                     for (let s = 0; s < 4; s++) {
                         if (played.has(s)) continue;
                         const mine = s === next && playReady();
-                        slots += `<div class="tk ${pos[s]}"><div class="tk-slot${mine ? " mine" : s === next ? " now" : ""}"></div></div>`;
+                        // same seat label a played card carries, so slot and
+                        // card occupy exactly the same space: no jump when the
+                        // card lands
+                        slots += `<div class="tk ${pos[s]}"><span class="who">${SEAT_NAMES[s][0]}</span><div class="tk-slot${mine ? " mine" : s === next ? " now" : ""}"></div></div>`;
                     }
+                    // before the opening lead the table is empty: the final
+                    // contract sits in the middle until the first card lands
+                    if (!plays.length)
+                        slots += `<div class="cb-leadc">${dcolorSuits(contractTagString())}</div>`;
                 }
                 return trickCrossHtml(td.cards, win, slots);
             }
 
-            // Contract tag for the table's top-right corner: level and suit
-            // (NT for notrump), X/XX when doubled, then the declarer's letter
-            // with no space -- e.g. 4♠XN, 3NTS.
-            function contractTagHtml() {
+            // Contract tag: level and suit (NT for notrump), X/XX when
+            // doubled, then the declarer's letter with no space -- 4♠XN,
+            // 3NTS. Shown small in the table's top-left corner and big in the
+            // empty center while the opening lead is awaited.
+            function contractTagString() {
                 const c = state.play && state.play.contract;
                 if (!c) return "";
                 const pen = ["", "X", "XX"][c.penalty] || "";
                 const suit = c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom];
-                return dcolorSuits(
-                    `${c.level}${suit}${pen}${"NESW"[c.declarer]}`,
-                );
+                return `${c.level}${suit}${pen}${"NESW"[c.declarer]}`;
+            }
+
+            function contractTagHtml() {
+                return dcolorSuits(contractTagString());
             }
 
             function playTallyHtml() {
@@ -2865,8 +3032,17 @@
             }
 
             function playTableView() {
+                const p = state.play;
+                // dv/dh: where the tabled dummy will lie (column at E/W, row
+                // at N) so the table can reserve its space up front
+                const dcls =
+                    p.dummy === 1 || p.dummy === 3
+                        ? " dv"
+                        : p.dummy === 0
+                          ? " dh"
+                          : "";
                 return `
-                    <div class="cb-ptable">
+                    <div class="cb-ptable${dcls}">
                         <div class="cb-pt-tl">${contractTagHtml()}</div>
                         <div class="cb-pt-n">${playSeatHtml(0)}</div>
                         <div class="cb-pt-tr">${playTallyHtml()}</div>
@@ -2905,6 +3081,48 @@
                     return;
                 selectedCard = null;
                 await post(`/api/play/${state.id}/card`, { card: card });
+            }
+
+            // The calls currently on screen (paced by callRevealCount);
+            // outside solo bidding everything known is shown at once.
+            function revealedCalls() {
+                if (!state) return [];
+                return (state.calls || []).slice(0, callRevealCount);
+            }
+
+            // True once every known call is on screen and the human may bid.
+            function bidsReady() {
+                return !state || callRevealCount >= (state.calls || []).length;
+            }
+
+            // Reveal the known calls one at a time (>= BID_PACE_MS apart).
+            // Nothing to fetch: the server already ran the bots up to the
+            // human, this only paces what the response brought.
+            function driveBids() {
+                clearTimeout(callPaceTimer);
+                callPaceTimer = null;
+                if (
+                    !state ||
+                    state.mode !== "solo" ||
+                    state.phase !== "bid" ||
+                    state.done
+                )
+                    return;
+                const calls = state.calls || [];
+                if (callRevealCount >= calls.length) return;
+                const human =
+                    (state.dealer + callRevealCount) % 4 === state.humanSeat;
+                const wait = human
+                    ? 0
+                    : Math.max(
+                          0,
+                          BID_PACE_MS - (Date.now() - lastCallRevealTs),
+                      );
+                callPaceTimer = setTimeout(() => {
+                    callRevealCount++;
+                    lastCallRevealTs = Date.now();
+                    render();
+                }, wait);
             }
 
             // ---- Play pacing ----
@@ -2998,9 +3216,26 @@
                 if (!state) {
                     revealBoardId = null;
                     revealCount = 0;
+                    callRevealBoardId = null;
+                    callRevealCount = 0;
                     selectedCard = null;
+                    selectedCall = null;
                     selectedCtx = null;
                     return;
+                }
+                if (state.mode !== "solo") {
+                    // partner tables poll coarsely: never pace there
+                    callRevealCount = (state.calls || []).length;
+                    freshBoard = false;
+                } else if (state.id !== callRevealBoardId) {
+                    callRevealBoardId = state.id;
+                    // a just-dealt board paces its opening bids from zero; a
+                    // board restored on load shows its auction at once
+                    callRevealCount = freshBoard
+                        ? 0
+                        : (state.calls || []).length;
+                    lastCallRevealTs = 0;
+                    freshBoard = false;
                 }
                 if (state.id !== revealBoardId) {
                     revealBoardId = state.id;
@@ -3010,16 +3245,23 @@
                             : 0;
                     lastRevealTs = 0;
                     selectedCard = null;
+                    selectedCall = null;
                     showLastTrick = false;
                     showAuction = false;
                 }
+                // the lifted card / selected call survives between the two
+                // clicks that pick it, but is dropped whenever the acting
+                // context changes (new turn, new reveal, new phase)
                 const ctx =
                     state.phase === "play" && state.play
-                        ? `${state.play.actSeat}|${revealCount}|${state.play.yourTurn}`
-                        : "";
+                        ? `p${state.play.actSeat}|${revealCount}|${state.play.yourTurn}`
+                        : state.phase === "bid"
+                          ? `b${(state.calls || []).length}|${state.yourTurn}`
+                          : "";
                 if (ctx !== selectedCtx) {
                     selectedCtx = ctx;
                     selectedCard = null;
+                    selectedCall = null;
                 }
             }
 
@@ -3059,12 +3301,19 @@
                     mid = doneViewHtml();
                 } else {
                     midCls = "cb-mid cb-mid-bid";
+                    const calls = revealedCalls();
+                    // while calls are still landing, the "?" sits on the seat
+                    // whose bid is next to appear
+                    const pending =
+                        state.mode === "solo" && !bidsReady()
+                            ? (state.dealer + calls.length) % 4
+                            : state.nextSeat;
                     const parts = [
                         auctionHtml(
                             state.dealer,
                             state.vuln,
-                            state.calls,
-                            state.nextSeat,
+                            calls,
+                            pending,
                             state.humanSeat,
                             state.alerts,
                         ),
@@ -3073,7 +3322,8 @@
                     if (
                         busy ||
                         !state.yourTurn ||
-                        (state.yourTurn && !state.legal)
+                        (state.yourTurn && !state.legal) ||
+                        !bidsReady()
                     ) {
                         parts.push(waitingHtml());
                     } else {
@@ -3185,16 +3435,17 @@
             }
 
             function recentHtml() {
-                const recs =
-                    (PLAY_MODE === "play"
-                        ? stats && stats.recentPlay
-                        : stats && stats.recent) || [];
-                if (recs.length === 0) return "";
-                const rows = recs
-                    .slice(0, 12)
+                const all = soloHistoryItems().filter((it) =>
+                    PLAY_MODE === "play"
+                        ? it.mode === "play"
+                        : it.mode !== "play",
+                );
+                if (all.length === 0) return "";
+                const shown = all.slice(0, recentShown);
+                const rows = shown
                     .map(
                         (rec) => `
-                        <tr class="border-t border-white/5">
+                        <tr data-hist-open="${rec.idx}" class="border-t border-white/5 cursor-pointer hover:bg-white/5" title="Review cards &amp; auction">
                             <td class="px-3 py-1.5 text-xs text-[#908f8d] whitespace-nowrap">${timeAgo(rec.ts)}</td>
                             <td class="px-3 py-1.5 text-xs text-[#908f8d] whitespace-nowrap">${SEAT_NAMES[rec.dealer][0]} · ${VULN_NAMES[rec.vuln]}</td>
                             <td class="px-3 py-1.5 text-sm font-headline font-semibold text-white">${contractHtml(rec.contract)}</td>
@@ -3203,15 +3454,14 @@
                         </tr>`,
                     )
                     .join("");
+                const left = all.length - shown.length;
                 return `
                     <div class="mt-8">
                         <div class="flex items-center justify-between mb-2">
                             <div class="text-[10px] uppercase tracking-[0.2em] text-[#908f8d] font-label font-bold flex items-center gap-1.5">
                                 <span class="material-symbols-outlined text-sm text-[#e8e6e3]">history</span>Recent boards
                             </div>
-                            <button id="historyBtn" class="flex items-center gap-1 text-xs font-label font-semibold text-[#bababa] hover:text-[#e8e6e3]">
-                                <span class="material-symbols-outlined text-sm">style</span>Review cards &amp; auctions
-                            </button>
+                            <div class="text-[10px] text-[#787572] font-label">tap a board for its cards &amp; auction</div>
                         </div>
                         <div class="cb-cardpanel overflow-x-auto">
                             <table class="w-full border-collapse min-w-[520px]">
@@ -3225,6 +3475,12 @@
                                 <tbody>${rows}</tbody>
                             </table>
                         </div>
+                        ${left > 0 ? `
+                        <div class="flex justify-center mt-3">
+                            <button data-recent-more class="cb-btn-ghost">
+                                <span class="material-symbols-outlined text-sm">expand_more</span>Load more hands (${left} more)
+                            </button>
+                        </div>` : ""}
                     </div>`;
             }
 
@@ -3355,6 +3611,7 @@
                 return {
                     no: null,
                     ts: rec.ts,
+                    mode: rec.mode,
                     dealer: rec.dealer,
                     vuln: rec.vuln,
                     calls: rec.calls || [],
@@ -3366,6 +3623,33 @@
                     imps: rec.imps,
                     hands: rec.hands || null,
                 };
+            }
+
+            // Every solo board (bid-only and played out), newest first -- the
+            // one list both the recent-boards rows and the history overlay
+            // use, so a row index always matches an overlay item.
+            function soloHistoryItems() {
+                const recs = [
+                    ...((stats && stats.recent) || []),
+                    ...((stats && stats.recentPlay) || []),
+                ];
+                recs.sort((a, b) => new Date(b.ts || 0) - new Date(a.ts || 0));
+                const items = recs.map(historyItemFromSolo);
+                items.forEach((it, i) => (it.idx = i));
+                return items;
+            }
+
+            // A recent-boards row: straight to that board's cards & auction.
+            function openSoloHistoryDetail(idx) {
+                const items = soloHistoryItems();
+                overlay = {
+                    items,
+                    groups: null,
+                    detail: items.find((it) => it.idx === idx) || null,
+                    loading: false,
+                    error: false,
+                };
+                renderOverlay();
             }
 
             function historyItemFromTeam(b) {
@@ -3425,12 +3709,7 @@
                         overlay.error = true;
                     }
                 } else {
-                    const recs = [
-                        ...((stats && stats.recent) || []),
-                        ...((stats && stats.recentPlay) || []),
-                    ];
-                    recs.sort((a, b) => new Date(b.ts || 0) - new Date(a.ts || 0));
-                    overlay.items = recs.map(historyItemFromSolo);
+                    overlay.items = soloHistoryItems();
                 }
                 overlay.loading = false;
                 renderOverlay();
@@ -3713,6 +3992,18 @@
                         closeMenu();
                         openHistory();
                     };
+                content.querySelectorAll("[data-hist-open]").forEach((row) => {
+                    row.onclick = () =>
+                        openSoloHistoryDetail(
+                            parseInt(row.dataset.histOpen, 10),
+                        );
+                });
+                const moreBtn = content.querySelector("[data-recent-more]");
+                if (moreBtn)
+                    moreBtn.onclick = () => {
+                        recentShown += 24;
+                        render();
+                    };
                 const leave = document.getElementById("leaveBtn");
                 if (leave)
                     leave.onclick = () => {
@@ -3775,8 +4066,12 @@
                     aucBody.scrollTop = aucBody.scrollHeight;
                 const miniAuc = content.querySelector(".cb-dg-a");
                 if (miniAuc) miniAuc.scrollTop = miniAuc.scrollHeight;
-                renderOverlay();
+                // Deliberately no renderOverlay() here: a finished hand can
+                // never change, so the history overlay only re-renders when
+                // it is opened, closed or navigated -- polling and the paced
+                // card reveal must not rebuild (and flicker) it.
                 schedulePoll();
+                driveBids();
                 drivePlay();
             }
 
@@ -3830,6 +4125,7 @@
                     state = null;
                     stats = null;
                     games = null;
+                    closeHistory();
                     render();
                 }
             });
@@ -3848,6 +4144,12 @@
                     !state.done
                 )
                     drivePlay();
+                else if (
+                    state.mode === "solo" &&
+                    state.phase === "bid" &&
+                    !state.done
+                )
+                    driveBids();
                 else refreshBoard(true);
             });
 

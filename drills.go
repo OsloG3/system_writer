@@ -50,11 +50,11 @@ type DrillPlay struct {
 	Msg  string `json:"msg,omitempty"`
 }
 
-// DrillClaim ends the hand early: the declarer's final trick count and the
-// plain score of the hand (N-S positive). nil = all 52 cards are played out.
+// DrillClaim ends the hand early: the declarer's final trick count. The result
+// is shown as the contract and its margin (e.g. "4S-1") -- no score, no IMPs.
+// nil = all 52 cards are played out.
 type DrillClaim struct {
-	Tricks  int `json:"tricks"`
-	ScoreNS int `json:"scoreNs"`
+	Tricks int `json:"tricks"`
 }
 
 type DrillProblem struct {
@@ -79,7 +79,6 @@ type DrillProblem struct {
 type DrillResult struct {
 	Contract *PlayContract `json:"contract"`
 	Tricks   int           `json:"tricks"`
-	ScoreNS  int           `json:"scoreNs"`
 	Claimed  bool          `json:"claimed"`
 	Wrong    int           `json:"wrong"`
 }
@@ -384,117 +383,6 @@ func validateDrill(p *DrillProblem) (*PlayContract, error) {
 	return contract, nil
 }
 
-// ---- Scoring ----
-
-// scoreContractNS returns the plain duplicate score of a contract taking
-// `tricks`, positive for N-S. No IMPs, no par -- drills only ever show the
-// final score.
-func scoreContractNS(c *PlayContract, tricks, vuln int) int {
-	if c == nil || c.Level < 1 || c.Level > 7 {
-		return 0
-	}
-	declVuln := (c.Declarer%2 == 0 && (vuln == 1 || vuln == 3)) ||
-		(c.Declarer%2 == 1 && (vuln == 2 || vuln == 3))
-	perTrick := 30
-	switch c.Denom {
-	case "C", "D":
-		perTrick = 20
-	case "N":
-		perTrick = 30 // first trick scores 40; handled below
-	}
-	contractPoints := perTrick * c.Level
-	if c.Denom == "N" {
-		contractPoints = 40 + 30*(c.Level-1)
-	}
-	mult := 1
-	if c.Penalty == 1 {
-		mult = 2
-	} else if c.Penalty >= 2 {
-		mult = 4
-	}
-	need := 6 + c.Level
-	score := 0
-	if tricks >= need {
-		score = contractPoints * mult
-		over := tricks - need
-		switch {
-		case mult == 1:
-			score += over * perTrick
-		case mult == 2:
-			if declVuln {
-				score += over * 200
-			} else {
-				score += over * 100
-			}
-			score += 50 // insult
-		default:
-			if declVuln {
-				score += over * 400
-			} else {
-				score += over * 200
-			}
-			score += 100
-		}
-		if contractPoints*mult >= 100 {
-			if declVuln {
-				score += 500
-			} else {
-				score += 300
-			}
-		} else {
-			score += 50
-		}
-		switch c.Level {
-		case 6:
-			if declVuln {
-				score += 750
-			} else {
-				score += 500
-			}
-		case 7:
-			if declVuln {
-				score += 1500
-			} else {
-				score += 1000
-			}
-		}
-	} else {
-		down := need - tricks
-		switch {
-		case mult == 1:
-			score = -50 * down
-		case mult == 2:
-			if declVuln {
-				score = -200 * down
-			} else {
-				score = -100
-				if down > 1 {
-					score -= 200 * min(down-1, 2)
-				}
-				if down > 3 {
-					score -= 300 * (down - 3)
-				}
-			}
-		default:
-			if declVuln {
-				score = -400 * down
-			} else {
-				score = -200
-				if down > 1 {
-					score -= 400 * min(down-1, 2)
-				}
-				if down > 3 {
-					score -= 600 * (down - 3)
-				}
-			}
-		}
-	}
-	if c.Declarer%2 == 0 { // N or S declared: positive for N-S
-		return score
-	}
-	return -score
-}
-
 var cardRankNames = map[byte]string{
 	'A': "A", 'K': "K", 'Q': "Q", 'J': "J", 'T': "10",
 	'9': "9", '8': "8", '7': "7", '6': "6", '5': "5",
@@ -597,15 +485,14 @@ func (s *DrillSession) finishLocked() {
 	s.Done = true
 	if c := s.Problem.Claim; c != nil {
 		s.Result = &DrillResult{
-			Contract: s.contract, Tricks: c.Tricks, ScoreNS: c.ScoreNS,
+			Contract: s.contract, Tricks: c.Tricks,
 			Claimed: true, Wrong: s.Wrong,
 		}
 		return
 	}
 	s.Result = &DrillResult{
 		Contract: s.contract, Tricks: s.DeclTricks,
-		ScoreNS: scoreContractNS(s.contract, s.DeclTricks, s.Problem.Vuln),
-		Wrong:   s.Wrong,
+		Wrong: s.Wrong,
 	}
 }
 
@@ -918,43 +805,6 @@ func handleDrillDelete(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Could not remove drill file: %v", err)
 	}
 	writeJSON(w, map[string]bool{"ok": true})
-}
-
-// POST /api/drills/score - the plain final score of a contract taking tricks,
-// used to pre-fill the claim dialog. Body: {level, denom, penalty, declarer,
-// vuln, tricks}.
-func handleDrillScore(w http.ResponseWriter, r *http.Request) {
-	if requireLogin(w, r) == "" {
-		return
-	}
-	limitBody(w, r, maxBodyAuth)
-	var body struct {
-		Level    int    `json:"level"`
-		Denom    string `json:"denom"`
-		Penalty  int    `json:"penalty"`
-		Declarer int    `json:"declarer"`
-		Vuln     int    `json:"vuln"`
-		Tricks   int    `json:"tricks"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid JSON")
-		return
-	}
-	denom := strings.ToUpper(strings.TrimSpace(body.Denom))
-	if len(denom) == 2 && denom[1] == 'T' {
-		denom = denom[:1] + "N"
-	}
-	c := &PlayContract{
-		Level: body.Level, Denom: denom,
-		Declarer: body.Declarer, Penalty: body.Penalty,
-	}
-	if c.Level < 1 || c.Level > 7 || strings.IndexByte("CDHSN", denom[0:1][0]) < 0 ||
-		!validSeat(c.Declarer) || !validSeat(body.Vuln) || body.Tricks < 0 || body.Tricks > 13 ||
-		(body.Penalty != 0 && body.Penalty != 1 && body.Penalty != 2) {
-		jsonError(w, http.StatusBadRequest, "invalid contract")
-		return
-	}
-	writeJSON(w, map[string]int{"scoreNs": scoreContractNS(c, body.Tricks, body.Vuln)})
 }
 
 // POST /api/drills/{id}/session - start practicing a problem.

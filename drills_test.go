@@ -64,7 +64,7 @@ func naivePlayLine(hands [4]string, opener int, trump byte) []DrillPlay {
 }
 
 // drillProblem builds a valid defense problem: 4H by North, hero is East,
-// one scripted trick and a claim of 10 tricks for +420 (N-S).
+// one scripted trick and a claim of 10 tricks (result shown as 4H=).
 func drillProblem() DrillProblem {
 	return DrillProblem{
 		Title: "Lead problem", Role: "defense", HeroSeat: 1,
@@ -79,7 +79,7 @@ func drillProblem() DrillProblem {
 			{Seat: 3, Card: "QS"},
 			{Seat: 0, Card: "7S"},
 		},
-		Claim: &DrillClaim{Tricks: 10, ScoreNS: 420},
+		Claim: &DrillClaim{Tricks: 10},
 	}
 }
 
@@ -152,44 +152,6 @@ func TestValidateAuction(t *testing.T) {
 	// opponent); a redouble by anyone else must be rejected.
 	if _, err := validateAuction(0, []string{"1H", "P", "P", "XX"}); err == nil {
 		t.Fatal("stray redouble accepted")
-	}
-}
-
-func TestScoreContractNS(t *testing.T) {
-	c := func(level int, denom string, declarer, penalty int) *PlayContract {
-		return &PlayContract{Level: level, Denom: denom, Declarer: declarer, Penalty: penalty}
-	}
-	cases := []struct {
-		contract *PlayContract
-		tricks   int
-		vuln     int
-		want     int
-	}{
-		{c(3, "N", 0, 0), 9, 0, 400},   // 3NT NV making
-		{c(3, "N", 2, 0), 9, 1, 600},   // 3NT V (N-S) by S making
-		{c(4, "S", 2, 0), 10, 0, 420},  // 4S NV making
-		{c(4, "S", 0, 0), 11, 1, 650},  // 4S V +1
-		{c(4, "S", 0, 1), 10, 1, 790},  // 4SX V making
-		{c(4, "S", 0, 1), 11, 1, 990},  // 4SX V +1
-		{c(3, "N", 2, 1), 9, 0, 550},   // 3NTX NV making
-		{c(3, "N", 2, 0), 7, 0, -100},  // 3NT NV -2
-		{c(3, "N", 2, 1), 7, 0, -300},  // 3NTX NV -2
-		{c(3, "N", 2, 1), 7, 1, -400},  // 3NTX V -2 (N-S vul, S declares)
-		{c(3, "N", 2, 2), 7, 0, -600},  // 3NTXX NV -2
-		{c(2, "H", 1, 0), 8, 0, -110},  // 2H by E making: N-S pays 110
-		{c(6, "S", 0, 0), 12, 0, 980},  // small slam NV
-		{c(7, "N", 2, 0), 13, 1, 2220}, // grand slam V
-		{c(4, "S", 3, 1), 9, 0, 100},   // 4SX NV by W -1: N-S +100
-		{c(5, "D", 1, 1), 11, 3, -750}, // 5DX V by E making: N-S -750
-		{c(1, "C", 2, 0), 7, 0, 70},    // partscore NV
-		{c(3, "N", 2, 2), 7, 3, -800},  // 3NTXX both vul by S -2
-	}
-	for _, tc := range cases {
-		got := scoreContractNS(tc.contract, tc.tricks, tc.vuln)
-		if got != tc.want {
-			t.Errorf("score(%s, %d tricks, vuln %d) = %d, want %d",
-				tc.contract, tc.tricks, tc.vuln, got, tc.want)
-		}
 	}
 }
 
@@ -280,10 +242,6 @@ func TestDrillSessionPlayedOut(t *testing.T) {
 	}
 	if s.Result.Tricks != s.DeclTricks {
 		t.Fatalf("result tricks %d != counted %d", s.Result.Tricks, s.DeclTricks)
-	}
-	want := scoreContractNS(s.contract, s.DeclTricks, p.Vuln)
-	if s.Result.ScoreNS != want {
-		t.Fatalf("result score %d != scored %d", s.Result.ScoreNS, want)
 	}
 	st = s.stateLocked()
 	if st["phase"] != "done" || st["hands"] == nil || st["line"] == nil {
@@ -497,8 +455,11 @@ func TestDrillHandlersCRUDAndSession(t *testing.T) {
 		t.Fatalf("session not done after the claim: %+v", st)
 	}
 	res := st["result"].(map[string]any)
-	if res["tricks"] != float64(10) || res["scoreNs"] != float64(420) || res["claimed"] != true {
+	if res["tricks"] != float64(10) || res["claimed"] != true {
 		t.Fatalf("bad result: %+v", res)
+	}
+	if _, has := res["scoreNs"]; has {
+		t.Fatalf("result must not carry a score: %+v", res)
 	}
 	if len(st["plays"].([]any)) != 4 || st["hands"] == nil || st["line"] == nil {
 		t.Fatalf("done state incomplete: %+v", st)
@@ -549,29 +510,6 @@ func TestDrillHandlersCRUDAndSession(t *testing.T) {
 	}
 	if _, err := os.Stat(drillPath(id)); !os.IsNotExist(err) {
 		t.Fatalf("problem file still there: %v", err)
-	}
-}
-
-func TestDrillScoreHandler(t *testing.T) {
-	token := drillLogin(t, "alice")
-	rr := httptest.NewRecorder()
-	handleDrillScore(rr, drillReq(t, "POST", "/api/drills/score",
-		`{"level":4,"denom":"S","penalty":0,"declarer":0,"vuln":1,"tricks":11}`, token))
-	if rr.Code != http.StatusOK {
-		t.Fatalf("score: %d %s", rr.Code, rr.Body.String())
-	}
-	var out struct {
-		ScoreNS int `json:"scoreNs"`
-	}
-	json.Unmarshal(rr.Body.Bytes(), &out)
-	if out.ScoreNS != 650 {
-		t.Fatalf("scoreNs = %d, want 650", out.ScoreNS)
-	}
-	rr = httptest.NewRecorder()
-	handleDrillScore(rr, drillReq(t, "POST", "/api/drills/score",
-		`{"level":8,"denom":"S","penalty":0,"declarer":0,"vuln":0,"tricks":11}`, token))
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("bad level accepted: %d", rr.Code)
 	}
 }
 
