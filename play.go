@@ -155,10 +155,13 @@ func initPlay() {
 		}
 	}
 	loadPlayStats()
+	loadPlayBoards()
 	log.Printf("Play bots: sidecar %s, seat models %v", botURL, botModels)
 }
 
 func playStatsPath() string { return filepath.Join(gameDir(), "play_stats.json") }
+
+func playBoardsPath() string { return filepath.Join(gameDir(), "play_boards.json") }
 
 func loadPlayStats() {
 	data, err := os.ReadFile(playStatsPath())
@@ -202,6 +205,117 @@ func loadPlayStats() {
 // savePlayStatsLocked writes the history to disk. Callers must hold playMu.
 func savePlayStatsLocked() error {
 	return writeJSONFile(playStatsPath(), playStats)
+}
+
+// savedPlayBoard is the on-disk form of an unfinished board: a hand mid-way
+// survives restarts and cannot be abandoned -- the player finishes it (or it
+// expires after playBoardTTL) before a new board of the same mode is dealt.
+type savedPlayBoard struct {
+	ID       string     `json:"id"`
+	User     string     `json:"user"`
+	Mode     string     `json:"mode"`
+	Hands    [4]string  `json:"hands"`
+	Dealer   int        `json:"dealer"`
+	Vuln     int        `json:"vuln"`
+	Calls    []string   `json:"calls"`
+	Legal    []string   `json:"legal"`
+	LegalLen int        `json:"legalLen"`
+	Play     *PlayState `json:"play,omitempty"`
+	Created  time.Time  `json:"created"`
+}
+
+func loadPlayBoards() {
+	data, err := os.ReadFile(playBoardsPath())
+	if err != nil {
+		return
+	}
+	var list []savedPlayBoard
+	if err := json.Unmarshal(data, &list); err != nil {
+		log.Printf("Could not parse play_boards.json: %v", err)
+		return
+	}
+	now := time.Now()
+	playMu.Lock()
+	n := 0
+	for _, s := range list {
+		if s.ID == "" || s.User == "" || now.Sub(s.Created) > playBoardTTL {
+			continue
+		}
+		if _, dup := playBoards[s.ID]; dup {
+			continue
+		}
+		calls := s.Calls
+		if calls == nil {
+			calls = []string{}
+		}
+		playBoards[s.ID] = &PlayBoard{
+			ID: s.ID, User: s.User, Mode: s.Mode, Hands: s.Hands,
+			Dealer: s.Dealer, Vuln: s.Vuln, Calls: calls,
+			Legal: s.Legal, LegalLen: s.LegalLen, Play: s.Play,
+			Created: s.Created,
+		}
+		n++
+	}
+	playMu.Unlock()
+	if n > 0 {
+		log.Printf("Restored %d unfinished board(s)", n)
+	}
+}
+
+// persistPlayBoards writes every unfinished board to disk. It takes playMu
+// only to snapshot the map, then each board lock on its own (lock order
+// elsewhere is board -> playMu, so never nest the other way).
+func persistPlayBoards() {
+	playMu.Lock()
+	boards := make([]*PlayBoard, 0, len(playBoards))
+	for _, b := range playBoards {
+		boards = append(boards, b)
+	}
+	playMu.Unlock()
+	list := make([]savedPlayBoard, 0, len(boards))
+	for _, b := range boards {
+		b.mu.Lock()
+		if b.Result == nil {
+			list = append(list, savedPlayBoard{
+				ID: b.ID, User: b.User, Mode: b.Mode, Hands: b.Hands,
+				Dealer: b.Dealer, Vuln: b.Vuln,
+				Calls:    append([]string(nil), b.Calls...),
+				Legal:    append([]string(nil), b.Legal...),
+				LegalLen: b.LegalLen, Play: b.Play, Created: b.Created,
+			})
+		}
+		b.mu.Unlock()
+	}
+	data, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.WriteFile(playBoardsPath(), data, 0600); err != nil {
+		log.Printf("Could not persist play boards: %v", err)
+	}
+}
+
+// activePlayBoard returns the user's unfinished board in a mode, if any:
+// one hand at a time per mode, played to the end. Snapshot under playMu,
+// then inspect board locks on their own (lock order is board -> playMu).
+func activePlayBoard(username, mode string) *PlayBoard {
+	playMu.Lock()
+	cands := make([]*PlayBoard, 0, 2)
+	for _, b := range playBoards {
+		if b.User == username && b.Mode == mode {
+			cands = append(cands, b)
+		}
+	}
+	playMu.Unlock()
+	for _, b := range cands {
+		b.mu.Lock()
+		over := b.Result != nil || (b.Play != nil && b.Play.Done)
+		b.mu.Unlock()
+		if !over {
+			return b
+		}
+	}
+	return nil
 }
 
 func getPlayStats(username string) PlayStats {
@@ -931,6 +1045,23 @@ func handlePlayNew(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err == nil && body.Mode == "play" {
 		mode = "play"
 	}
+	// A hand mid-way cannot be abandoned or swapped: asking for a new board
+	// in a mode that still has an unfinished one resumes that one instead.
+	if b := activePlayBoard(username, mode); b != nil {
+		b.mu.Lock()
+		if b.Result == nil {
+			if err := b.advance(); err != nil {
+				b.mu.Unlock()
+				jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
+				return
+			}
+		}
+		st := b.stateLocked(getPlayStats(username))
+		b.mu.Unlock()
+		writeJSON(w, st)
+		persistPlayBoards()
+		return
+	}
 	var deal struct {
 		Hands  [4]string `json:"hands"`
 		Dealer int       `json:"dealer"`
@@ -959,6 +1090,7 @@ func handlePlayNew(w http.ResponseWriter, r *http.Request) {
 	st := b.stateLocked(stats)
 	b.mu.Unlock()
 	writeJSON(w, st)
+	persistPlayBoards()
 }
 
 // GET /api/play/{id} - current board state (re-advances stalled bot turns)
@@ -977,6 +1109,9 @@ func handlePlayGet(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusNotFound, "no such board")
 		return
 	}
+	// after the board lock is released: keep the on-disk copy current so a
+	// restart never loses a hand mid-way
+	defer persistPlayBoards()
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.Result == nil {
@@ -1018,6 +1153,7 @@ func handlePlayCall(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusNotFound, "no such board")
 		return
 	}
+	defer persistPlayBoards() // after the board unlock, keep disk current
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.Result != nil {
@@ -1088,6 +1224,7 @@ func handlePlayCard(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusNotFound, "no such board")
 		return
 	}
+	defer persistPlayBoards() // after the board unlock, keep disk current
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.Result != nil {

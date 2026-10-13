@@ -455,17 +455,27 @@
                     0 3px 0 rgba(0, 0, 0, 0.35);
                 transform: translateY(-2px);
             }
-            .cb-confirmbar {
-                display: flex;
+            /* confirm button: always in the panel, inert until a call is
+               selected; then it names the call it would make */
+            .cb-confirm {
+                display: inline-flex;
                 align-items: center;
-                gap: 0.5rem;
-                margin-top: 0.5rem;
-            }
-            .cb-confirm-what {
-                font-family: Manrope, sans-serif;
+                justify-content: center;
+                gap: 0.3rem;
+                height: 2.9rem;
+                padding: 0 1.1rem;
+                border-radius: 0.9rem;
+                background: #ffd54a;
+                color: #1b1f27;
+                font-family: Inter, sans-serif;
                 font-weight: 800;
-                font-size: 1.1rem;
-                color: #e8e6e3;
+                font-size: 1.05rem;
+                letter-spacing: 0.03em;
+                box-shadow: 0 3px 0 #b0932e;
+            }
+            .cb-confirm:disabled {
+                opacity: 0.4;
+                box-shadow: none;
             }
 
             .cb-wait {
@@ -618,8 +628,10 @@
                other card -- they are simply not clickable. */
             .cb-fan-play {
                 flex-wrap: nowrap;
-                /* pinned left, like a real hand on the table: when a card is
-                   played the remaining cards do not move */
+                /* shrink-wrap and center like the bidding fan; cards stay
+                   pinned at the fan's own left edge so playing a card never
+                   slides the rest, and overflow scrolls from the start */
+                align-self: center;
                 justify-content: flex-start;
                 max-width: 100%;
                 overflow-x: auto;
@@ -1419,6 +1431,7 @@
             let lastCallRevealTs = 0; // when the last call was revealed
             let callPaceTimer = null;
             let freshBoard = false; // just-dealt board: pace the opening bids
+            let requestFresh = false; // /new in flight: may pace if it deals
 
             function dcolorSuits(text) {
                 return escapeHtml(text)
@@ -2013,6 +2026,14 @@
                     return;
                 }
                 data.mode = "solo";
+                // the server refuses a second unfinished board in a mode, so
+                // /new may resume the old one: only a genuinely new board
+                // paces its opening bids from zero
+                freshBoard =
+                    requestFresh &&
+                    localStorage.getItem(boardKeyFor(data.boardMode)) !==
+                        data.id;
+                requestFresh = false;
                 state = data;
                 localStorage.setItem(boardKeyFor(data.boardMode), data.id);
                 // a partner table only competes with the bid-only solo board
@@ -2053,10 +2074,9 @@
                     state && state.mode !== "team" && state.boardMode
                         ? state.boardMode
                         : PLAY_MODE;
-                freshBoard = true; // pace this board's opening bids
+                requestFresh = true; // pace the bids if this actually deals
                 await post("/api/play/new", { mode: mode });
             }
-
             async function makeCall(call) {
                 if (!state || busy || state.done || !state.yourTurn) return;
                 selectedCall = null;
@@ -2165,8 +2185,10 @@
             function leaveTable() {
                 if (state && state.mode === "team") {
                     localStorage.removeItem(TEAM_KEY);
-                } else {
-                    localStorage.removeItem(boardKeyFor(state && state.boardMode));
+                } else if (state && state.done) {
+                    // finished boards clear; a hand mid-way stays resumable
+                    // (it cannot be abandoned)
+                    localStorage.removeItem(boardKeyFor(state.boardMode));
                 }
                 state = null;
                 refreshLobby();
@@ -2353,24 +2375,14 @@
                         : "";
                 const po = optBits("P");
                 const pass = `<button data-call="P" data-opt="P"${po.t} ${legal.has("P") && !busy ? "" : "disabled"} class="cb-pass${selCls("P")}">PASS${po.b}</button>`;
-                // selecting a call shows what it promises (alert box) and a
-                // confirm button; nothing is bid on a single tap
-                const confirm =
-                    selectedCall && legal.has(selectedCall)
-                        ? `<div class="cb-confirmbar">
-                            <span class="cb-confirm-what">${dcolorSuits(callLabel(selectedCall))}</span>
-                            <button data-confirm-call class="cb-btn-green">
-                                <span class="material-symbols-outlined text-sm">check</span>Confirm call
-                            </button>
-                            <button data-cancel-call class="cb-iconbtn" title="Cancel">
-                                <span class="material-symbols-outlined text-base">close</span>
-                            </button>
-                        </div>`
-                        : "";
+                // the confirm button lives in the panel and is always there,
+                // just inert until a call is selected
+                const selOk = selectedCall && legal.has(selectedCall);
+                const confirm = `<button data-confirm-call ${selOk && !busy ? "" : "disabled"} class="cb-confirm">
+                    <span class="material-symbols-outlined text-sm">check</span>${selOk ? dcolorSuits(callLabel(selectedCall)) : "Confirm"}</button>`;
                 return `<span id="bidArea" class="block">
                     <div class="cb-levels">${tabs}</div>
-                    <div class="cb-bidpanel">${tiles}${dbl}${rdbl}${pass}</div>
-                    ${confirm}
+                    <div class="cb-bidpanel">${tiles}${dbl}${rdbl}${pass}${confirm}</div>
                 </span>`;
             }
 
@@ -2401,12 +2413,6 @@
                 if (confirm)
                     confirm.onclick = () => {
                         if (selectedCall) makeCall(selectedCall);
-                    };
-                const cancel = box.querySelector("[data-cancel-call]");
-                if (cancel)
-                    cancel.onclick = () => {
-                        selectedCall = null;
-                        resel();
                     };
                 box.querySelectorAll("[data-opt]").forEach((btn) => {
                     const c = btn.dataset.opt;
@@ -2670,7 +2676,6 @@
                         <div id="cbMenu" class="cb-menu" style="display:none;">
                             <button id="historyBtn"><span class="material-symbols-outlined text-base">history</span>Past boards</button>
                             ${team && state.matchDone ? `<button id="newMatchBtn"><span class="material-symbols-outlined text-base">restart_alt</span>Start next match</button>` : ""}
-                            ${!team ? `<button id="abandonBtn"><span class="material-symbols-outlined text-base">casino</span>New board</button>` : ""}
                             <button id="leaveBtn"><span class="material-symbols-outlined text-base">logout</span>${team ? "Leave table" : "Leave board"}</button>
                         </div>
                     </div>`;
@@ -3192,6 +3197,7 @@
                     }
                     data.mode = "solo";
                     state = data;
+                    requestFresh = false;
                     if (data.stats) stats = data.stats;
                     autoRetries = 0;
                     stepping = false;
@@ -3341,6 +3347,9 @@
 
             function soloCardHtml() {
                 const isPlay = PLAY_MODE === "play";
+                // an unfinished board of this mode resumes instead of dealing
+                // (the server deals one hand at a time per mode)
+                const resume = !!localStorage.getItem(boardKeyFor(PLAY_MODE));
                 const title = isPlay ? "Play a full hand" : "Bid with a bot partner";
                 const icon = isPlay ? "casino" : "gavel";
                 const desc = isPlay
@@ -3359,7 +3368,7 @@
                             ${desc}
                         </p>
                         <button id="dealBtn" class="cb-btn-green mt-4 justify-center !px-5 !py-3 !text-sm">
-                            <span class="material-symbols-outlined text-sm">casino</span>${isPlay ? "Deal &amp; play a board" : "Deal a board"}
+                            <span class="material-symbols-outlined text-sm">${resume ? "play_arrow" : "casino"}</span>${resume ? "Resume your board" : isPlay ? "Deal &amp; play a board" : "Deal a board"}
                         </button>
                     </div>`;
             }
@@ -4009,12 +4018,6 @@
                     leave.onclick = () => {
                         closeMenu();
                         leaveTable();
-                    };
-                const abandon = document.getElementById("abandonBtn");
-                if (abandon)
-                    abandon.onclick = () => {
-                        closeMenu();
-                        newBoard();
                     };
                 const next = document.getElementById("nextBoardBtn");
                 if (next)

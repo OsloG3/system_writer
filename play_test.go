@@ -1,8 +1,10 @@
 package main
 
 import (
+	"os"
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestHandCardsAndNormalizeCard(t *testing.T) {
@@ -144,5 +146,74 @@ func TestHumanControlsPlay(t *testing.T) {
 	b = playBoardTest(t, 1) // East declares -> human South defends
 	if !b.humanControlsPlay(2) || b.humanControlsPlay(0) {
 		t.Fatalf("human defender controls only South")
+	}
+}
+
+func TestActivePlayBoardOnePerMode(t *testing.T) {
+	old := playBoards
+	t.Cleanup(func() { playBoards = old })
+	playBoards = map[string]*PlayBoard{}
+
+	finished := playBoardTest(t, 0)
+	finished.ID, finished.User, finished.Mode = "done1", "u", "bid"
+	finished.Result = &PlayResult{}
+	live := playBoardTest(t, 0)
+	live.ID, live.User, live.Mode = "live1", "u", "bid"
+	other := playBoardTest(t, 0)
+	other.ID, other.User, other.Mode = "live2", "u", "play"
+	for _, b := range []*PlayBoard{finished, live, other} {
+		playBoards[b.ID] = b
+	}
+	if b := activePlayBoard("u", "bid"); b == nil || b.ID != "live1" {
+		t.Fatalf("active bid board = %v, want live1", b)
+	}
+	if b := activePlayBoard("u", "play"); b == nil || b.ID != "live2" {
+		t.Fatalf("active play board = %v, want live2", b)
+	}
+	if b := activePlayBoard("someone-else", "bid"); b != nil {
+		t.Fatalf("another user got a board: %v", b.ID)
+	}
+	// finishing the hand frees the mode up for a new board
+	live.mu.Lock()
+	live.Result = &PlayResult{}
+	live.mu.Unlock()
+	if b := activePlayBoard("u", "bid"); b != nil {
+		t.Fatalf("finished board still blocks the mode: %v", b.ID)
+	}
+}
+
+func TestPlayBoardsPersistRoundTrip(t *testing.T) {
+	oldBoards, oldDir := playBoards, dataDir
+	t.Cleanup(func() { playBoards = oldBoards; dataDir = oldDir })
+	dataDir = t.TempDir()
+	if err := os.MkdirAll(gameDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	playBoards = map[string]*PlayBoard{}
+
+	live := playBoardTest(t, 2)
+	live.ID, live.User, live.Mode = "persist1", "u", "play"
+	live.Created = time.Now()
+	live.Calls = []string{"1H", "P", "2H", "P", "P", "P"}
+	live.Play.Plays = []PlayCard{{1, "5S"}}
+	playBoards[live.ID] = live
+	done := playBoardTest(t, 0)
+	done.ID, done.User, done.Mode = "persist2", "u", "bid"
+	done.Result = &PlayResult{}
+	playBoards[done.ID] = done
+
+	persistPlayBoards()
+
+	playBoards = map[string]*PlayBoard{}
+	loadPlayBoards()
+	got := playBoards["persist1"]
+	if got == nil {
+		t.Fatal("unfinished board was not restored")
+	}
+	if got.Mode != "play" || len(got.Calls) != 6 || len(got.Play.Plays) != 1 {
+		t.Fatalf("restored board wrong: %+v", got)
+	}
+	if _, ok := playBoards["persist2"]; ok {
+		t.Fatal("finished board must not be persisted")
 	}
 }
