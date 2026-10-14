@@ -47,6 +47,10 @@ type User struct {
 	PassHash string `json:"passHash"`
 	Iters    int    `json:"iters"`
 	Created  string `json:"created"`
+	// Google accounts have no password; GoogleID is the stable "sub" claim
+	// and Email links a Google login to a pre-existing password account
+	Email    string `json:"email,omitempty"`
+	GoogleID string `json:"googleId,omitempty"`
 }
 
 type Session struct {
@@ -178,6 +182,7 @@ func main() {
 	http.HandleFunc("POST /api/login", handleLogin)
 	http.HandleFunc("POST /api/logout", handleLogout)
 	http.HandleFunc("GET /api/auth", handleAuthStatus)
+	http.HandleFunc("POST /api/auth/google", handleGoogleAuth)
 	http.HandleFunc("GET /api/users", handleListUsers)
 	http.HandleFunc("POST /api/new", handleCreateTree)
 	http.HandleFunc("GET /api/list", handleListTrees)
@@ -232,6 +237,7 @@ func main() {
 	http.HandleFunc("/drills/", serveHTML("static/drills.html"))
 	http.HandleFunc("/play", serveHTML("static/play.html"))
 	http.HandleFunc("/play/", serveHTML("static/play.html"))
+	http.HandleFunc("GET /privacy", serveHTML("static/privacy.html"))
 	http.Handle("/static/", staticFileHandler())
 	http.HandleFunc("/", serveHTML("static/index.html")) // Homepage to create new
 
@@ -654,8 +660,9 @@ func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	username := currentUser(r)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"loggedIn": username != "",
-		"username": username,
+		"loggedIn":       username != "",
+		"username":       username,
+		"googleClientId": googleClientID, // empty disables the Google button
 	})
 }
 

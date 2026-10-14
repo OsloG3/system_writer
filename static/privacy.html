@@ -1,0 +1,111 @@
+<!doctype html>
+
+<html class="light" lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>Bridge Trainer | Privacy Policy</title>
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+            rel="stylesheet"
+        />
+        <script src="/static/shared.js"></script>
+        <link rel="stylesheet" href="/static/shared.css" />
+    </head>
+    <body
+        class="bg-background text-on-surface font-body selection:bg-tertiary-container/30 overflow-hidden"
+    >
+        <div id="app"></div>
+
+        <script>
+            document.getElementById("app").innerHTML = renderLayout({
+                mode: "index",
+                badge: "Legal",
+                title: "Privacy Policy",
+                subtitle:
+                    "What Bridge Trainer stores about you, and why.",
+            });
+            refreshAuthState();
+
+            const sections = [
+                {
+                    icon: "person",
+                    title: "Account data",
+                    body: `When you create an account with a password we store your
+                        username and a salted password hash (PBKDF2-SHA256) — never the
+                        password itself. When you sign in with Google we store your
+                        Google account identifier and your verified email address so we
+                        can recognise you on your next visit. Google sign-in follows
+                        the <a class="text-primary underline" href="https://policies.google.com/privacy" rel="noopener" target="_blank">Google Privacy Policy</a>.`,
+                },
+                {
+                    icon: "cookie",
+                    title: "Session cookie",
+                    body: `A single session cookie (<code>atheneum_session</code>) keeps
+                        you logged in for up to 7 days. It is HTTP-only, removed on
+                        logout and contains no personal data beyond a random token.
+                        We use no advertising or third-party tracking cookies.`,
+                },
+                {
+                    icon: "account_tree",
+                    title: "Your content",
+                    body: `Bidding systems, card problems, practice results and play
+                        statistics you create are stored on our server and associated
+                        with your username so you and the people you share them with
+                        can access them. This data is only shown to logged-in users of
+                        this site.`,
+                },
+                {
+                    icon: "notifications",
+                    title: "Push notifications",
+                    body: `If you enable push notifications for a partner table, your
+                        browser's push subscription (endpoint and public keys) is
+                        stored so we can tell you when your partner makes a call. No
+                        notification content is stored.`,
+                },
+                {
+                    icon: "shield_lock",
+                    title: "Security and logs",
+                    body: `Requests are throttled per IP address to protect accounts
+                        from brute-force attempts; server logs may contain IP addresses
+                        and timestamps for this purpose and are not used for anything
+                        else.`,
+                },
+                {
+                    icon: "delete",
+                    title: "Your choices",
+                    body: `You can log out at any time, delete your systems and card
+                        problems yourself, or contact the site operator to request a
+                        copy or the deletion of your account and associated data.`,
+                },
+            ];
+
+            document.getElementById("main-content").innerHTML = `
+                <div class="space-y-4">
+                    ${sections
+                        .map(
+                            (s) => `
+                        <div class="game-panel p-5">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-b from-[#6f6c68] to-[#4a4642] shadow-[0_2px_0_rgba(0,0,0,0.22)] shrink-0">
+                                    <span class="material-symbols-outlined text-lg text-white">${s.icon}</span>
+                                </span>
+                                <span class="font-headline font-extrabold text-on-surface">${s.title}</span>
+                            </div>
+                            <p class="text-sm text-on-surface-variant font-body leading-relaxed">${s.body}</p>
+                        </div>`,
+                        )
+                        .join("")}
+                    <p class="text-xs text-on-surface-variant font-label pt-2">
+                        Last updated: October 2026
+                    </p>
+                </div>
+            `;
+        </script>
+    </body>
+</html>

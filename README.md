@@ -134,3 +134,10 @@ Environment:
 - `PLAY_BOTS` — optional per-seat model names for multi-model sidecars,
   e.g. `PLAY_BOTS="N=tiny,E=rl,W=rl"`
 - `ATHENEUM_DATA_DIR` — where accounts/trees/play stats live (default `./data`)
+- `GOOGLE_CLIENT_ID` — OAuth client ID from the Google Cloud console; when
+  set, the login dialog shows a "Continue with Google" button. The Google
+  ID token is verified server-side against Google's published keys
+  (`/api/auth/google`); a verified email links to an existing account or
+  creates a new one. Leave unset to disable Google sign-in. The OAuth
+  consent screen asks for a privacy policy URL — use
+  `https://<your-domain>/privacy` (served from `static/privacy.html`).

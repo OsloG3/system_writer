@@ -169,6 +169,7 @@ async function refreshAuthState() {
         const res = await fetch("/api/auth");
         const data = await res.json();
         window.currentUser = data.loggedIn ? data.username : null;
+        window.googleClientId = data.googleClientId || null;
     } catch (e) {
         window.currentUser = null;
     }
@@ -251,9 +252,17 @@ function showAuthDialog(tab) {
                     <button type="submit" id="authSubmit" class="px-4 py-2 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors"></button>
                 </div>
             </form>
+            <div id="googleSignIn" class="mt-4" style="display:none;">
+                <div class="flex items-center gap-2 mb-3 text-xs text-on-surface-variant">
+                    <span class="flex-1 h-px bg-current opacity-20"></span>or<span class="flex-1 h-px bg-current opacity-20"></span>
+                </div>
+                <div id="googleBtn" class="flex justify-center"></div>
+                <p class="text-[11px] text-on-surface-variant mt-3 text-center">By continuing with Google you agree to our <a href="/privacy" target="_blank" rel="noopener" class="underline">Privacy Policy</a>.</p>
+            </div>
         </div>
     `;
     document.body.appendChild(overlay);
+    initGoogleButton(overlay);
 
     let currentMode = mode;
     const userInput = overlay.querySelector("#authUser");
@@ -340,6 +349,80 @@ function showAuthDialog(tab) {
             passInput.focus();
         }
     };
+}
+
+// ---- Google sign-in ----
+
+let googleScriptPromise = null;
+
+// Load the Google Identity Services script once
+function loadGoogleScript() {
+    if (!googleScriptPromise) {
+        googleScriptPromise = new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = "https://accounts.google.com/gsi/client";
+            s.async = true;
+            s.onload = resolve;
+            s.onerror = () => {
+                googleScriptPromise = null;
+                reject(new Error("could not load google sign-in"));
+            };
+            document.head.appendChild(s);
+        });
+    }
+    return googleScriptPromise;
+}
+
+// Render the "Sign in with Google" button inside the auth dialog when the
+// server advertises a client ID
+async function initGoogleButton(overlay) {
+    if (!window.googleClientId) return;
+    const wrap = overlay.querySelector("#googleSignIn");
+    const btn = overlay.querySelector("#googleBtn");
+    try {
+        await loadGoogleScript();
+    } catch (e) {
+        return;
+    }
+    if (!document.body.contains(btn)) return; // dialog closed meanwhile
+    google.accounts.id.initialize({
+        client_id: window.googleClientId,
+        callback: onGoogleCredential,
+    });
+    google.accounts.id.renderButton(btn, {
+        theme: "outline",
+        size: "large",
+        shape: "rectangular",
+        text: "continue_with",
+        width: 300,
+    });
+    wrap.style.display = "";
+}
+
+// Exchange the Google credential for a session cookie on our server
+async function onGoogleCredential(response) {
+    try {
+        const res = await fetch("/api/auth/google", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ credential: response.credential }),
+        });
+        if (res.ok) {
+            const data = await res.json();
+            closeAuthDialog();
+            showToast("Logged in as " + data.username);
+            refreshAuthState();
+            return;
+        }
+        let msg = "Google sign-in failed";
+        try {
+            const data = await res.json();
+            if (data.error) msg = data.error;
+        } catch (e) {}
+        showToast(msg, true);
+    } catch (e) {
+        showToast("Google sign-in failed", true);
+    }
 }
 
 function closeAuthDialog() {
@@ -693,6 +776,7 @@ function renderLayout(options) {
                 </nav>
                 <div class="px-6 pt-4 mt-4 border-t border-white/10 text-[10px] text-white/35 font-label tracking-[0.2em] uppercase">
                     Bid · Practice · Conquer
+                    <a href="/privacy" onclick="closeSidebar()" class="block mt-2 text-white/45 hover:text-white/80 transition-colors no-underline normal-case tracking-normal text-[11px]">Privacy Policy</a>
                 </div>
             </aside>
             <!-- Main Content Area -->
