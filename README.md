@@ -137,7 +137,8 @@ Environment:
 - `GOOGLE_CLIENT_ID` — OAuth client ID from the Google Cloud console; when
   set, the login dialog shows a "Continue with Google" button. The Google
   ID token is verified server-side against Google's published keys
-  (`/api/auth/google`); a verified email links to an existing account or
-  creates a new one. Leave unset to disable Google sign-in. The OAuth
+  (`/api/auth/google`); a verified email links to an existing account, and
+  first-time users choose their own username (a suggestion is derived from
+  the email). Leave unset to disable Google sign-in. The OAuth
   consent screen asks for a privacy policy URL — use
   `https://<your-domain>/privacy` (served from `static/privacy.html`).

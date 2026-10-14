@@ -38,38 +38,41 @@ func TestGoogleUsername(t *testing.T) {
 	}
 }
 
-func TestGoogleUser(t *testing.T) {
+func TestGoogleFindAndCreate(t *testing.T) {
 	googleTestEnv(t)
 	claims := &googleClaims{Sub: "g-123", Email: "carol@x.com", EmailVerified: true}
 
-	u, err := googleUser(claims)
-	if err != nil {
-		t.Fatalf("googleUser: %v", err)
+	// unknown Google login: no account, the client must pick a username
+	if _, found, _ := googleFindUser(claims); found {
+		t.Fatal("found an account that does not exist")
 	}
-	if u.Username != "carol" || u.GoogleID != "g-123" || u.PassHash != "" {
+
+	u, err := createGoogleUser(claims, "carol_c")
+	if err != nil {
+		t.Fatalf("createGoogleUser: %v", err)
+	}
+	if u.Username != "carol_c" || u.GoogleID != "g-123" || u.Email != "carol@x.com" || u.PassHash != "" {
 		t.Fatalf("new account: %+v", u)
 	}
-	if _, ok := users["carol"]; !ok {
+	if _, ok := users["carol_c"]; !ok {
 		t.Fatal("account not stored")
 	}
 
 	// a second login with the same subject finds the same account
-	again, err := googleUser(claims)
-	if err != nil {
-		t.Fatalf("googleUser again: %v", err)
-	}
-	if again.Username != "carol" {
-		t.Fatalf("duplicate account: %+v", again)
+	again, found, linked := googleFindUser(claims)
+	if !found || linked || again.Username != "carol_c" {
+		t.Fatalf("second login: %+v found=%v linked=%v", again, found, linked)
 	}
 
 	// a verified email links to a pre-existing password account
 	users["dave"] = User{Username: "dave", Email: "dave@x.com", Salt: "s", PassHash: "h", Iters: 1}
-	linked, err := googleUser(&googleClaims{Sub: "g-999", Email: "dave@x.com", EmailVerified: true})
-	if err != nil {
-		t.Fatalf("googleUser link: %v", err)
+	daveClaims := &googleClaims{Sub: "g-999", Email: "dave@x.com", EmailVerified: true}
+	got, found, linked := googleFindUser(daveClaims)
+	if !found || !linked {
+		t.Fatalf("email link: found=%v linked=%v", found, linked)
 	}
-	if linked.Username != "dave" || linked.GoogleID != "g-999" || linked.PassHash != "h" {
-		t.Fatalf("linked account: %+v", linked)
+	if got.Username != "dave" || got.GoogleID != "g-999" || got.PassHash != "h" {
+		t.Fatalf("linked account: %+v", got)
 	}
 	if len(users) != 2 {
 		t.Fatalf("link created an extra account: %+v", users)

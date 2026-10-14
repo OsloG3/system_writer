@@ -399,7 +399,9 @@ async function initGoogleButton(overlay) {
     wrap.style.display = "";
 }
 
-// Exchange the Google credential for a session cookie on our server
+// Exchange the Google credential for a session cookie on our server.
+// First-time logins answer chooseUsername: the user picks their username
+// and the same (still valid) credential is posted again with it.
 async function onGoogleCredential(response) {
     try {
         const res = await fetch("/api/auth/google", {
@@ -409,6 +411,11 @@ async function onGoogleCredential(response) {
         });
         if (res.ok) {
             const data = await res.json();
+            if (data.chooseUsername) {
+                closeAuthDialog();
+                showGoogleUsernameDialog(response.credential, data.suggested);
+                return;
+            }
             closeAuthDialog();
             showToast("Logged in as " + data.username);
             refreshAuthState();
@@ -423,6 +430,82 @@ async function onGoogleCredential(response) {
     } catch (e) {
         showToast("Google sign-in failed", true);
     }
+}
+
+// Username picker shown after a first-time Google sign-in
+function showGoogleUsernameDialog(credential, suggested) {
+    closeGoogleUsernameDialog();
+    const overlay = document.createElement("div");
+    overlay.id = "googleUsernameOverlay";
+    overlay.className = "unlock-overlay";
+    overlay.innerHTML = `
+        <div class="unlock-card">
+            <span class="material-symbols-outlined text-primary text-3xl mb-2">badge</span>
+            <p class="text-sm text-on-surface-variant mb-4">
+                Choose the username you want to be known by on Bridge Trainer.
+            </p>
+            <form id="googleUsernameForm">
+                <input id="googleUsername" type="text" autocomplete="username" placeholder="Username"
+                    class="unlock-input" minlength="3" maxlength="32" required />
+                <div id="googleUsernameError" class="text-xs mt-2" style="color:#b5b1ad; display:none;"></div>
+                <div class="flex justify-end gap-2 mt-4">
+                    <button type="button" id="googleUsernameCancel" class="px-4 py-2 bg-surface-container text-on-surface-variant rounded font-label text-sm hover:bg-surface-container-high transition-colors">Cancel</button>
+                    <button type="submit" id="googleUsernameSubmit" class="px-4 py-2 bg-primary text-on-primary rounded font-label text-sm hover:bg-primary-dim transition-colors">Continue</button>
+                </div>
+            </form>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const input = overlay.querySelector("#googleUsername");
+    const errorEl = overlay.querySelector("#googleUsernameError");
+    input.value = suggested || "";
+    input.focus();
+    input.select();
+
+    overlay.querySelector("#googleUsernameCancel").onclick = closeGoogleUsernameDialog;
+    overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) closeGoogleUsernameDialog();
+    });
+    overlay.querySelector("#googleUsernameForm").onsubmit = async (e) => {
+        e.preventDefault();
+        const submit = overlay.querySelector("#googleUsernameSubmit");
+        submit.disabled = true;
+        try {
+            const res = await fetch("/api/auth/google", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    credential: credential,
+                    username: input.value.trim(),
+                }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                closeGoogleUsernameDialog();
+                showToast("Welcome " + data.username);
+                refreshAuthState();
+                return;
+            }
+            let msg = "Could not create the account";
+            try {
+                const data = await res.json();
+                if (data.error) msg = data.error;
+            } catch (err) {}
+            errorEl.textContent = msg;
+            errorEl.style.display = "block";
+        } catch (err) {
+            errorEl.textContent = "Could not create the account";
+            errorEl.style.display = "block";
+        }
+        submit.disabled = false;
+        input.focus();
+    };
+}
+
+function closeGoogleUsernameDialog() {
+    const overlay = document.getElementById("googleUsernameOverlay");
+    if (overlay) overlay.remove();
 }
 
 function closeAuthDialog() {
@@ -710,9 +793,9 @@ function renderLayout(options) {
                 </button>
                 <a href="/" class="flex items-center gap-2.5 no-underline shrink-0 group">
                     <span class="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-b from-gold-light to-gold shadow-[0_2px_0_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.4)] group-hover:scale-105 transition-transform">
-                        <span class="text-ink text-lg font-headline font-extrabold leading-none select-none">B</span>
+                        <span class="text-ink text-lg font-headline font-extrabold leading-none select-none">G</span>
                     </span>
-                    <span class="font-headline font-extrabold text-lg sm:text-xl text-white tracking-tight">Bridge Trainer</span>
+                    <span class="font-headline font-extrabold text-lg sm:text-xl text-white tracking-tight">Garbridge</span>
                 </a>
                 <nav class="hidden md:flex items-center gap-2 font-headline tracking-tight text-sm">
                     <a class="${mode === 'play' || mode === 'bridge' || mode === 'drill' ? navIdle : navActive}" href="/">

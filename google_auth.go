@@ -4,8 +4,9 @@ package main
 // Google Identity Services script and posts it to /api/auth/google; the
 // server verifies it against Google's published keys and starts a normal
 // session cookie. Accounts are keyed by the Google subject ID; a matching
-// email links to an existing password account, otherwise a new account is
-// created with a username derived from the email.
+// email links to an existing password account. First-time users pick their
+// own username (the server suggests one derived from the email) before the
+// account is created.
 
 import (
 	"context"
@@ -173,40 +174,48 @@ func googleUsername(email string) string {
 	}
 }
 
-// googleUser finds or creates the local account for a verified Google login.
-// Callers must hold usersMu.
-func googleUser(claims *googleClaims) (User, error) {
+// googleFindUser returns the existing account for a verified Google login:
+// matched by Google subject ID, or a password account with the same verified
+// email, which gets linked (its GoogleID set). Linked is true when the
+// caller must persist the link with saveUsers. Callers must hold usersMu.
+func googleFindUser(claims *googleClaims) (user User, found, linked bool) {
 	email := strings.ToLower(claims.Email)
 	for _, u := range users {
 		if u.GoogleID != "" && u.GoogleID == claims.Sub {
-			return u, nil
+			return u, true, false
 		}
 	}
 	for key, u := range users {
-		if u.Email == email && u.GoogleID == "" {
+		if u.GoogleID == "" && u.Email == email {
 			u.GoogleID = claims.Sub
 			users[key] = u
-			if err := saveUsers(); err != nil {
-				return User{}, err
-			}
-			return u, nil
+			return u, true, true
 		}
 	}
+	return User{}, false, false
+}
+
+// createGoogleUser registers a brand-new account for a verified Google
+// login under the username the user chose. Callers must hold usersMu.
+func createGoogleUser(claims *googleClaims, username string) (User, error) {
 	u := User{
-		Username: googleUsername(email),
-		Email:    email,
+		Username: username,
+		Email:    strings.ToLower(claims.Email),
 		GoogleID: claims.Sub,
 		Created:  time.Now().UTC().Format(time.RFC3339),
 	}
-	users[u.Username] = u
+	users[username] = u
 	if err := saveUsers(); err != nil {
-		delete(users, u.Username)
+		delete(users, username)
 		return User{}, err
 	}
 	return u, nil
 }
 
-// POST /api/auth/google - exchanges a Google ID token for a session cookie
+// POST /api/auth/google - exchanges a Google ID token for a session cookie.
+// A first-time login without a username answers {chooseUsername: true} with
+// a suggestion; the browser then re-posts the same (still valid) credential
+// together with the username the user picked.
 func handleGoogleAuth(w http.ResponseWriter, r *http.Request) {
 	if googleClientID == "" {
 		jsonError(w, http.StatusNotFound, "google sign-in is not configured")
@@ -218,6 +227,7 @@ func handleGoogleAuth(w http.ResponseWriter, r *http.Request) {
 	limitBody(w, r, maxBodyAuth)
 	var body struct {
 		Credential string `json:"credential"`
+		Username   string `json:"username"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Credential == "" {
 		jsonError(w, http.StatusBadRequest, "missing google credential")
@@ -229,18 +239,53 @@ func handleGoogleAuth(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusUnauthorized, "google sign-in failed")
 		return
 	}
+	username := strings.ToLower(strings.TrimSpace(body.Username))
+
 	usersMu.Lock()
-	user, err := googleUser(claims)
-	if err != nil {
+	user, found, linked := googleFindUser(claims)
+	if found {
+		if linked {
+			if err := saveUsers(); err != nil {
+				log.Printf("Could not persist google link: %v", err)
+			}
+		}
 		usersMu.Unlock()
+		googleLogin(w, r, user.Username)
+		return
+	}
+	if username == "" {
+		suggested := googleUsername(claims.Email)
+		usersMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"chooseUsername": true,
+			"suggested":      suggested,
+		})
+		return
+	}
+	if !validUsername(username) {
+		usersMu.Unlock()
+		jsonError(w, http.StatusBadRequest, "username must be 3-32 characters using letters, numbers, - or _")
+		return
+	}
+	if _, taken := users[username]; taken {
+		usersMu.Unlock()
+		jsonError(w, http.StatusConflict, "username already taken")
+		return
+	}
+	user, err = createGoogleUser(claims, username)
+	usersMu.Unlock()
+	if err != nil {
 		log.Printf("Could not persist google user: %v", err)
 		jsonError(w, http.StatusInternalServerError, "could not save user")
 		return
 	}
-	usersMu.Unlock()
+	googleLogin(w, r, user.Username)
+}
 
+func googleLogin(w http.ResponseWriter, r *http.Request, username string) {
 	recordSuccess(r)
-	newSession(w, r, user.Username)
+	newSession(w, r, username)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "username": user.Username})
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "username": username})
 }
