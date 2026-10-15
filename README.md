@@ -78,25 +78,34 @@ card-play bot as Play bridge. Two tabs:
     contract and its margin (e.g. **4♠−1**, **3NT=**, **4♥+2**) — no score, no
     IMPs, no par. Authors can edit or delete their own problems.
 - **Practice** — filter the library of everyone's problems by role, author and
-  difficulty, then play one (each row shows its ending: play-out / claim / bots,
-  and how many lines). The bidding is shown up front with the problem comment
-  (and, for a bot-ended problem, the **target** result to reach), then the hand
-  runs like a play-a-hand table (hero rotated to the bottom, dummy tabled after
-  the opening lead). Non-hero seats play themselves from the author's script.
-  If the hero picks a card that is neither the authored one nor one of its
-  declared equivalents, it is **not** played: the server answers `409` with the
-  author's message for the correct card (a wrong pick is counted) and the hero
-  chooses again. Messages stay hidden while you play correctly and are all
-  revealed in the end-of-hand review. In the bot phase every legal card is
-  accepted and the hand is **graded**: finishing at the target result is a
-  success, anything else means a mistake was made somewhere during the hand.
-  Drills never touch the rankings or `play_stats.json`.
+  difficulty, then play one. The library and the pre-play briefing deliberately
+  do **not** reveal how a hand ends (claim / bots / play-out) — that is part of
+  the exercise; the bot target only appears once the bots visibly take over, and
+  a claim's trick count only in the final result. The bidding is shown up front
+  with the problem comment, then the hand runs like a play-a-hand table (hero
+  rotated to the bottom, dummy tabled after the opening lead). Non-hero seats
+  play themselves from the author's script. If the hero picks a card that is
+  neither the authored one nor one of its declared equivalents, it is **not**
+  played: the server answers `409` with the author's message for the correct
+  card (a wrong pick is counted) and the hero chooses again. Messages stay
+  hidden while you play correctly and are all revealed in the end-of-hand
+  review. In the bot phase every legal card is accepted and the hand is
+  **graded**: finishing at the target result is a success, anything else means a
+  mistake was made somewhere during the hand. Drills never touch the rankings or
+  `play_stats.json`.
+- **Ratings** — after finishing a hand the end-of-hand screen lets you rate the
+  problem 1–5 ★ (authors cannot rate their own). Each problem carries its
+  average rating and count, and the library is ordered **highest rated first**
+  (ties: more ratings, then most recently updated).
 
 Practice runs are in-memory sessions (`DrillSession`, 6 h TTL, one per user, the
 problem snapshotted at the start so an edit cannot desync a run in flight); the
 session id is kept in `localStorage` and resumed on reload. The library endpoint
-`GET /api/drills` returns metadata only (no hands, script or comments), and a
-full problem is readable only by its author via `GET /api/drills/{id}`.
+`GET /api/drills` returns metadata only (no hands, script, comments or ending
+type, plus each caller's own rating), and a full problem is readable only by its
+author via `GET /api/drills/{id}`. Ratings are set with
+`POST /api/drills/{id}/rate` (`{stars, sessionId}`), which requires a finished
+session of that problem by the caller.
 
 ## Rankings
 

@@ -447,6 +447,36 @@
             .cb-pass:disabled {
                 opacity: 0.4;
             }
+            /* selected call: yellow ring until confirmed (like a lifted card) */
+            .cb-tile.sel,
+            .cb-pass.sel {
+                box-shadow:
+                    0 0 0 2px #ffd54a,
+                    0 3px 0 rgba(0, 0, 0, 0.35);
+                transform: translateY(-2px);
+            }
+            /* confirm button: always in the panel, inert until a call is
+               selected; then it names the call it would make */
+            .cb-confirm {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.3rem;
+                height: 2.9rem;
+                padding: 0 1.1rem;
+                border-radius: 0.9rem;
+                background: #ffd54a;
+                color: #1b1f27;
+                font-family: Inter, sans-serif;
+                font-weight: 800;
+                font-size: 1.05rem;
+                letter-spacing: 0.03em;
+                box-shadow: 0 3px 0 #b0932e;
+            }
+            .cb-confirm:disabled {
+                opacity: 0.4;
+                box-shadow: none;
+            }
 
             .cb-wait {
                 background: #302e2c;
@@ -508,7 +538,8 @@
             }
 
             .cb-handfoot {
-                padding: 0.3rem 0.75rem calc(0.55rem + env(safe-area-inset-bottom));
+                padding: 0.3rem 0.6rem
+                    calc(0.55rem + env(safe-area-inset-bottom));
                 display: flex;
                 flex-direction: column;
                 align-items: center;
@@ -517,6 +548,12 @@
                 margin: 0 auto;
                 width: 100%;
             }
+            /* the bidding fan starts at the same left edge the play fan and
+               the dummy row use, so nothing jumps when the phase changes */
+            .cb-handfoot .cb-fan {
+                width: 100%;
+                justify-content: flex-start;
+            }
             .cb-handlabel {
                 color: #e8e6e3;
                 font-family: Inter, sans-serif;
@@ -524,7 +561,9 @@
             }
             .cb-fan {
                 display: flex;
-                padding: 0.2rem 0.4rem;
+                /* no right padding: the scroll box ends exactly at the last
+                   card, so nothing is clipped and no scrollbar appears */
+                padding: 0.2rem 0 0.2rem 0.4rem;
             }
             .cb-card {
                 position: relative;
@@ -598,7 +637,10 @@
                other card -- they are simply not clickable. */
             .cb-fan-play {
                 flex-wrap: nowrap;
-                justify-content: safe center;
+                /* full-width like the dummy row above it, cards pinned at the
+                   left edge: the two hands line up and playing a card never
+                   slides the rest; overflow scrolls from the start */
+                justify-content: flex-start;
                 max-width: 100%;
                 overflow-x: auto;
                 overscroll-behavior-x: contain;
@@ -613,11 +655,15 @@
                     box-shadow 0.14s ease;
             }
             .cb-fan-play .cb-card:first-child { margin-left: 0; }
-            /* big, uncut indices: the overlap step (1.65rem) is wider than the
-               widest rank ("10") plus its inset */
-            .cb-fan-play .cb-corner { left: 0.18rem; top: 0.18rem; }
-            .cb-fan-play .cb-corner b { font-size: 1.05rem; }
-            .cb-fan-play .cb-corner i { font-size: 0.95rem; margin-top: 0; }
+            /* big, uncut indices, shared by your fan and the tabled dummy:
+               the overlap step (1.65rem) is wider than the widest rank ("10")
+               plus its inset */
+            .cb-fan-play .cb-corner,
+            .cb-flat .cb-corner { left: 0.18rem; top: 0.18rem; }
+            .cb-fan-play .cb-corner b,
+            .cb-flat .cb-corner b { font-size: 1.05rem; }
+            .cb-fan-play .cb-corner i,
+            .cb-flat .cb-corner i { font-size: 0.95rem; margin-top: 0; }
             .cb-fan-play .cb-midsuit {
                 font-size: 1.6rem;
                 right: 0.25rem;
@@ -632,6 +678,61 @@
             .cb-fan-play .cb-card.playable:hover {
                 transform: translateY(-4px);
             }
+            /* the tabled dummy: exactly the same card faces and sizes as
+               your own fan at the bottom */
+            .cb-flat {
+                display: flex;
+                /* same left inset as the fan below; no right padding so the
+                   scroll box ends at the last card */
+                padding: 0.15rem 0 0.15rem 0.4rem;
+            }
+            .cb-flat-h {
+                flex-direction: row;
+                /* pinned like your fan: playing a card never shifts the rest */
+                justify-content: flex-start;
+                width: 100%;
+                max-width: 100%;
+                overflow-x: auto;
+                overscroll-behavior-x: contain;
+                /* room for the selected card to step down towards the table
+                   without being clipped by (or scrolling) this box */
+                padding-bottom: 0.6rem;
+            }
+            /* a column keeps the height of a full 13-card hand (plus its
+               padding), so the table never grows or shrinks (and never
+               re-centers) as dummy plays */
+            .cb-flat-v {
+                flex-direction: column;
+                height: 20.4rem;
+            }
+            .cb-flat .cb-card {
+                width: 3.05rem;
+                height: 4.5rem;
+                margin: 0;
+                border-radius: 0.35rem;
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+                flex-shrink: 0;
+                transition: box-shadow 0.14s ease;
+            }
+            .cb-flat-h .cb-card + .cb-card { margin-left: -1.4rem; }
+            .cb-flat-v .cb-card + .cb-card { margin-top: -3.2rem; }
+            .cb-flat .cb-card:first-child { margin-left: 0; margin-top: 0; }
+            /* in a column only a thin top strip of each card shows, so the
+               corner turns sideways: rank and suit side by side */
+            .cb-flat-v .cb-corner {
+                flex-direction: row;
+                align-items: baseline;
+                gap: 1px;
+            }
+            .cb-flat .cb-midsuit { display: none; }
+            .cb-flat .cb-card.playable {
+                cursor: pointer;
+                box-shadow:
+                    0 0 0 1.5px rgba(232, 230, 227, 0.5),
+                    0 1px 4px rgba(0, 0, 0, 0.45);
+            }
+            /* selected card: yellow border in either hand, second tap plays
+               it (declared after the playable ring so it always wins) */
             .cb-fan-play .cb-card.sel,
             .cb-flat .cb-card.sel {
                 transform: translateY(-0.55rem);
@@ -640,62 +741,29 @@
                     0 6px 12px rgba(0, 0, 0, 0.55);
                 z-index: 5;
             }
-            /* the tabled dummy: every remaining card, face up, one line */
-            .cb-flat {
-                display: flex;
-                padding: 0.15rem 0.1rem;
-            }
-            .cb-flat-h { flex-direction: row; }
-            .cb-flat-v { flex-direction: column; }
-            .cb-flat .cb-card {
-                width: 2.6rem;
-                height: 3.7rem;
-                margin: 0;
-                border-radius: 0.35rem;
-                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
-                flex-shrink: 0;
-                transition: box-shadow 0.14s ease;
-            }
-            .cb-flat-h .cb-card + .cb-card { margin-left: -1.35rem; }
-            .cb-flat-v .cb-card + .cb-card { margin-top: -2.35rem; }
-            .cb-flat .cb-card:first-child { margin-left: 0; margin-top: 0; }
-            /* indices as big as the visible strip allows: 1.25rem of each card
-               shows in a row, 1.35rem in a column (sideways corner) */
-            .cb-flat .cb-corner { left: 0.15rem; top: 0.15rem; }
-            .cb-flat .cb-corner b { font-size: 0.9rem; }
-            .cb-flat .cb-corner i { font-size: 0.8rem; }
-            .cb-flat .cb-midsuit { display: none; }
-            /* in a column only a thin top strip of each card shows, so the
-               corner turns sideways: rank and suit side by side */
-            .cb-flat-v .cb-corner {
-                flex-direction: row;
-                align-items: baseline;
-                gap: 1px;
-            }
-            .cb-flat-v .cb-corner i { margin-top: 0; }
-            .cb-flat .cb-card.playable {
-                cursor: pointer;
-                box-shadow:
-                    0 0 0 1.5px rgba(232, 230, 227, 0.5),
-                    0 1px 4px rgba(0, 0, 0, 0.45);
-            }
-            .cb-flat .cb-card.sel { transform: none; }
+            /* a selected dummy card steps out of its row towards the table
+               center (down from North, inwards from the side seats) */
+            .cb-pt-n .cb-flat .cb-card.sel { transform: translateY(0.55rem); }
+            .cb-pt-w .cb-flat .cb-card.sel { transform: translateX(0.55rem); }
+            .cb-pt-e .cb-flat .cb-card.sel { transform: translateX(-0.55rem); }
             @media (max-width: 400px) {
+                .cb-fan-play .cb-card,
                 .cb-flat .cb-card {
-                    width: 2.2rem;
-                    height: 3.2rem;
-                }
-                .cb-flat-h .cb-card + .cb-card { margin-left: -1.1rem; }
-                .cb-flat-v .cb-card + .cb-card { margin-top: -2rem; }
-                .cb-flat .cb-corner b { font-size: 0.8rem; }
-                .cb-flat .cb-corner i { font-size: 0.7rem; }
-                .cb-fan-play .cb-card {
                     width: 2.75rem;
                     height: 4.1rem;
-                    margin-left: -1.3rem;
                 }
-                .cb-fan-play .cb-corner b { font-size: 0.95rem; }
-                .cb-fan-play .cb-corner i { font-size: 0.85rem; }
+                .cb-fan-play .cb-card { margin-left: -1.3rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.3rem; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -2.9rem; }
+                .cb-flat-v { height: 18.8rem; }
+                .cb-ptable.dv {
+                    grid-template-rows: auto minmax(20.25rem, 1fr) auto;
+                }
+                .cb-ptable.dh .cb-pt-n { min-height: 6.3rem; }
+                .cb-fan-play .cb-corner b,
+                .cb-flat .cb-corner b { font-size: 0.95rem; }
+                .cb-fan-play .cb-corner i,
+                .cb-flat .cb-corner i { font-size: 0.85rem; }
             }
 
             .cb-diagram {
@@ -765,10 +833,11 @@
                     "tl n tr"
                     "w c e"
                     ". s .";
+                grid-template-rows: auto minmax(7.8rem, 1fr) auto;
                 gap: 0.5rem 0.6rem;
                 align-items: center;
                 justify-items: center;
-                padding: 0.5rem 0.3rem;
+                padding: 0.5rem 0;
             }
             .cb-pt-n { grid-area: n; }
             .cb-pt-e { grid-area: e; }
@@ -789,6 +858,33 @@
                 grid-area: tr;
                 justify-self: end;
                 align-self: start;
+            }
+            /* Reserve the space the tabled dummy will occupy once the opening
+               lead lands, so tabling it -- and every card after -- never
+               resizes the table (and never re-centers the view). */
+            .cb-ptable.dv {
+                grid-template-rows: auto minmax(21.85rem, 1fr) auto;
+            }
+            /* dummy at North: its row spans the whole table, the same width
+               as your fan below, so the two hands line up card for card */
+            .cb-ptable.dh {
+                grid-template-areas:
+                    "tl tl tr"
+                    "n n n"
+                    "w c e"
+                    ". s .";
+                grid-template-rows: auto auto minmax(7.8rem, 1fr) auto;
+            }
+            .cb-ptable.dh .cb-pt-n {
+                min-height: 6.7rem; /* name + tabled row + step room */
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            }
+            .cb-ptable.dh .cb-pt-n .cb-pseat,
+            .cb-ptable.dh .cb-flat-h {
+                width: 100%;
             }
             .cb-pseat {
                 display: flex;
@@ -910,6 +1006,21 @@
                 background: rgba(255, 213, 74, 0.08);
                 animation: cb-pulse 1.6s ease-in-out infinite;
             }
+            /* the final contract fills the empty table center while the
+               opening lead is awaited (e.g. 4♥W) */
+            .cb-leadc {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.8rem;
+                letter-spacing: 0.02em;
+                color: #e8e6e3;
+                pointer-events: none;
+            }
             .cb-ptally {
                 display: flex;
                 flex-direction: column;
@@ -923,12 +1034,17 @@
             }
             .cb-ptally b { font-size: 0.85rem; color: #fff; }
             .cb-pprompt {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.35rem;
+                height: 1.5rem; /* same height spinning or not: no jumps */
                 text-align: center;
                 font-family: Inter, sans-serif;
                 font-size: 0.78rem;
                 color: #e8e6e3;
-                min-height: 1.2rem;
             }
+            .cb-pprompt .material-symbols-outlined { font-size: 15px; }
             /* ---- The single play screen ----
                Table and your hand are ONE view that always fits the screen:
                nothing scrolls. The table floats in the middle, the prompt row
@@ -948,9 +1064,9 @@
                     calc(0.4rem + env(safe-area-inset-bottom));
             }
             .cb-playview .cb-ptable {
-                flex: 0 1 auto;
+                flex: 1 1 auto; /* fill the view: no dead band above the table */
                 min-height: 0;
-                margin: auto 0;
+                margin: 0;
                 overflow: hidden; /* never spill onto the hand below */
             }
             .cb-playview .cb-fan-play { flex-shrink: 0; }
@@ -973,30 +1089,45 @@
                 .cb-ptrick { width: 8.2rem; height: 6.8rem; }
                 .cb-ptrick .tkc,
                 .cb-ptrick .tk-slot { width: 2rem; height: 2.9rem; }
-                .cb-flat .cb-card { width: 2.3rem; height: 3.3rem; }
-                .cb-flat-h .cb-card + .cb-card { margin-left: -1.25rem; }
-                .cb-flat-v .cb-card + .cb-card { margin-top: -2.25rem; }
-                .cb-flat .cb-corner b { font-size: 0.8rem; }
-                .cb-flat .cb-corner i { font-size: 0.68rem; }
+                .cb-fan-play .cb-card,
+                .cb-flat .cb-card { width: 2.9rem; height: 4.2rem; }
+                .cb-fan-play .cb-card { margin-left: -1.4rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.4rem; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -2.95rem; }
+                .cb-flat-v { height: 19.5rem; }
+                .cb-ptable.dv {
+                    grid-template-rows: auto minmax(20.95rem, 1fr) auto;
+                }
+                .cb-ptable.dh .cb-pt-n { min-height: 6.4rem; }
+                .cb-fan-play .cb-corner b,
+                .cb-flat .cb-corner b { font-size: 1rem; }
+                .cb-fan-play .cb-corner i,
+                .cb-flat .cb-corner i { font-size: 0.9rem; }
                 .cb-pback { width: 1.5rem; height: 2.15rem; margin-left: -0.9rem; }
                 .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.5rem; }
-                .cb-fan-play .cb-card { width: 2.9rem; height: 4.2rem; margin-left: -1.4rem; }
             }
             @media (max-height: 540px) {
                 .cb-ptable { padding: 0.3rem 0.2rem; gap: 0.3rem 0.4rem; }
                 .cb-ptrick { width: 7rem; height: 5.8rem; }
                 .cb-ptrick .tkc,
                 .cb-ptrick .tk-slot { width: 1.7rem; height: 2.45rem; }
-                .cb-flat .cb-card { width: 2rem; height: 2.9rem; }
-                .cb-flat-h .cb-card + .cb-card { margin-left: -1.1rem; }
+                .cb-fan-play .cb-card,
+                .cb-flat .cb-card { width: 2.6rem; height: 3.8rem; }
+                .cb-fan-play .cb-card { margin-left: -1.35rem; }
+                .cb-flat-h .cb-card + .cb-card { margin-left: -1.35rem; }
                 .cb-flat-v .cb-corner i { display: none; }
-                .cb-flat-v .cb-card + .cb-card { margin-top: -2.05rem; }
-                .cb-flat .cb-corner b { font-size: 0.68rem; }
+                .cb-flat-v .cb-card + .cb-card { margin-top: -2.7rem; }
+                .cb-flat-v { height: 17.3rem; }
+                .cb-ptable.dv {
+                    grid-template-rows: auto minmax(18.75rem, 1fr) auto;
+                }
+                .cb-ptable.dh .cb-pt-n { min-height: 6rem; }
+                .cb-fan-play .cb-corner b,
+                .cb-flat .cb-corner b { font-size: 0.85rem; }
+                .cb-fan-play .cb-corner i,
+                .cb-flat .cb-corner i { font-size: 0.75rem; }
                 .cb-pback { width: 1.3rem; height: 1.85rem; margin-left: -0.75rem; }
                 .cb-pbacks-v .cb-pback { margin-left: 0; margin-top: -1.3rem; }
-                .cb-fan-play .cb-card { width: 2.6rem; height: 3.8rem; margin-left: -1.35rem; }
-                .cb-fan-play .cb-corner b { font-size: 0.85rem; }
-                .cb-fan-play .cb-corner i { font-size: 0.75rem; }
                 .cb-pprompt { font-size: 0.7rem; }
             }
             /* Laptops and desktops: the play view used to sit in a small
@@ -1253,6 +1384,7 @@
                 border-color: #6f6c68;
             }
 
+
             /* ===================== Drill-specific UI ===================== */
             .dr-wrap {
                 max-width: 46rem;
@@ -1348,6 +1480,37 @@
             .dr-badge.def { background: #2a4a6b; color: #9fd0ff; }
             .dr-stars { color: #ffd54a; font-size: 0.78rem; letter-spacing: 1px; }
             .dr-stars .off { color: #4a4642; }
+            .dr-rate {
+                display: inline-flex;
+                align-items: center;
+                gap: 2px;
+                color: #ffd54a;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.82rem;
+                white-space: nowrap;
+            }
+            .dr-rate .material-symbols-outlined { font-size: 16px; font-variation-settings: 'FILL' 1; }
+            .dr-rate .cnt { color: #908f8d; font-weight: 600; font-size: 0.68rem; }
+            .dr-rate-empty { color: #787572; font-weight: 600; font-size: 0.7rem; }
+            .dr-rate-empty .material-symbols-outlined { font-variation-settings: 'FILL' 0; font-size: 15px; }
+            .dr-rater { display: flex; align-items: center; gap: 2px; }
+            .dr-rater button {
+                background: none; padding: 0 1px; line-height: 1;
+                color: #4a4642; font-size: 1.5rem;
+                font-family: Manrope, sans-serif;
+                transition: transform 0.1s ease, color 0.1s ease;
+            }
+            .dr-rater button:hover { transform: scale(1.15); }
+            .dr-rater button.on { color: #ffd54a; }
+            .dr-rate-row {
+                display: flex;
+                align-items: center;
+                gap: .6rem;
+                flex-wrap: wrap;
+                border-top: 1px solid rgba(255,255,255,.06);
+                padding-top: .6rem;
+            }
             .dr-btn {
                 display: inline-flex;
                 align-items: center;
@@ -1784,7 +1947,9 @@
                 return `<span class="dr-stars">${s}</span>`;
             }
             function spinner(msg) {
-                return `<span class="dr-spin"></span> <span>${escapeHtml(msg || "")}</span>`;
+                return `
+                    <span class="material-symbols-outlined text-[#bababa] animate-spin">progress_activity</span>
+                    <span class="text-sm text-[#908f8d] font-label">${msg}</span>`;
             }
             function timeAgo(ts) {
                 const d = new Date(ts);
@@ -2085,19 +2250,30 @@
                     for (let s = 0; s < 4; s++) {
                         if (played.has(s)) continue;
                         const mine = s === next && playReady();
-                        slots += `<div class="tk ${areaOf[rotOf(s)]}"><div class="tk-slot${mine ? " mine" : s === next ? " now" : ""}"></div></div>`;
+                        // same seat label a played card carries, so slot and
+                        // card occupy exactly the same space: no jump when the
+                        // card lands
+                        slots += `<div class="tk ${areaOf[rotOf(s)]}"><span class="who">${SEAT_NAMES[s][0]}</span><div class="tk-slot${mine ? " mine" : s === next ? " now" : ""}"></div></div>`;
                     }
+                    // before the opening lead the table is empty: the final
+                    // contract sits in the middle until the first card lands
+                    if (!plays.length)
+                        slots += `<div class="cb-leadc">${dcolorSuits(contractTagString())}</div>`;
                 }
                 return trickCrossHtml(td.cards, win, slots);
             }
-            function contractTagHtml() {
+            // Contract tag: level and suit (NT for notrump), X/XX when
+            // doubled, then the declarer's letter -- 4♠XN, 3NTS. Small in the
+            // table corner, big in the empty center before the opening lead.
+            function contractTagString() {
                 const c = state.contract;
                 if (!c) return "";
                 const pen = ["", "X", "XX"][c.penalty] || "";
                 const suit = c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom];
-                const tag = dcolorSuits(`${c.level}${suit}${pen}${"NESW"[c.declarer]}`);
-                if (state.expectTricks === undefined || state.expectTricks === null) return tag;
-                return `${tag}<div class="dr-sub" style="white-space:nowrap">target ${dcolorSuits(resultText(c, state.expectTricks))}</div>`;
+                return `${c.level}${suit}${pen}${"NESW"[c.declarer]}`;
+            }
+            function contractTagHtml() {
+                return dcolorSuits(contractTagString());
             }
             function playTallyHtml() {
                 const plays = revealedPlays();
@@ -2113,12 +2289,11 @@
                 return `<div class="cb-ptally"><span>You <b>${yours}</b></span><span>Them <b>${theirs}</b></span></div>`;
             }
             function playPromptHtml() {
-                if (busy) return spinner("Playing\u2026");
-                if (playReady()) return state.bot ? "Your turn \u2014 any card" : "Your turn";
+                if (busy) return spinner("Playing the hand\u2026");
+                if (playReady()) return state.bot ? "Your turn \u2014 play any card" : "Your turn";
                 const plays = state.plays || [];
                 const nextSeat = revealCount < plays.length ? plays[revealCount].seat : state.nextSeat;
-                if (state.bot && revealCount >= plays.length) return spinner(SEAT_NAMES[nextSeat] + " (bot) thinks\u2026");
-                return spinner(SEAT_NAMES[nextSeat] + " plays\u2026");
+                return spinner(SEAT_NAMES[nextSeat] + " is playing\u2026");
             }
             function lastTrickPlays() {
                 const plays = revealedPlays();
@@ -2165,10 +2340,18 @@
                 return `<div class="dr-msg dr-msg-float"><span class="material-symbols-outlined">tips_and_updates</span><span style="flex:1">${suitify(hintMsg)}</span><button id="drHintClose" class="dr-hintclose" title="Dismiss"><span class="material-symbols-outlined">close</span></button></div>`;
             }
             function playTableView() {
-                return `<div class="cb-ptable">
+                // dh/dv: where the tabled dummy will lie on screen (row at the
+                // top, column at a side) so the table reserves its space up
+                // front, exactly like the play-bridge table
+                const dr = rotOf(state.dummy);
+                const dcls = dr === 0 ? " dh" : (dr === 1 || dr === 3) ? " dv" : "";
+                const target = (state.bot && state.expectTricks !== undefined && state.expectTricks !== null)
+                    ? `<div class="dr-sub" style="text-align:right;white-space:nowrap">target ${dcolorSuits(resultText(state.contract, state.expectTricks))}</div>`
+                    : "";
+                return `<div class="cb-ptable${dcls}">
                     <div class="cb-pt-tl">${contractTagHtml()}</div>
                     <div class="cb-pt-n">${playSeatHtml(seatForArea(0))}</div>
-                    <div class="cb-pt-tr">${playTallyHtml()}</div>
+                    <div class="cb-pt-tr">${playTallyHtml()}${target}</div>
                     <div class="cb-pt-w">${playSeatHtml(seatForArea(3))}</div>
                     <div class="cb-pt-c">${trickCenterHtml()}</div>
                     <div class="cb-pt-e">${playSeatHtml(seatForArea(1))}</div>
@@ -2305,15 +2488,11 @@
                 const heroRole = state.role === "declarer"
                     ? `You are <b>${SEAT_NAMES[state.heroSeat]}</b>, the declarer. Play both your hand and the dummy.`
                     : `You are <b>${SEAT_NAMES[state.heroSeat]}</b>, defending. Find the card the author played at every turn.`;
-                const target = (state.expectTricks !== undefined && state.expectTricks !== null)
-                    ? `<div class="dr-msg" style="margin-bottom:.6rem"><span class="material-symbols-outlined">flag</span><span>Target: <b>${dcolorSuits(resultText(c, state.expectTricks))}</b>. The bots finish the hand \u2014 once the script ends you may play any card, and every other seat is played by a bot. Reach the target and the hand is a success.</span></div>`
-                    : "";
                 return `<div class="dr-overlay" id="drIntro">
                     <div class="dr-modal">
                         <h3>${escapeHtml(state.title || "Card problem")}</h3>
                         <div class="dr-sub" style="margin-bottom:.6rem">${contractText(c)} \u00b7 Dealer ${SEAT_NAMES[state.dealer][0]} \u00b7 Vuln ${VULN_NAMES[state.vuln]} \u00b7 ${stars(state.difficulty)}</div>
                         <div class="dr-hint" style="margin-bottom:.6rem">${heroRole}</div>
-                        ${target}
                         ${state.problemComment ? `<div class="dr-label">Problem / defensive agreements</div><div class="dr-comment" style="margin-bottom:.6rem">${suitify(state.problemComment)}</div>` : ""}
                         <div class="dr-label">Auction</div>
                         ${auctionHtml(state.dealer, state.vuln, state.calls, null, state.heroSeat)}
@@ -2354,6 +2533,35 @@
                 }
                 return `<div class="dr-line">${out}</div>`;
             }
+            function rateWidgetHtml() {
+                const me = (window.currentUser || "").toLowerCase();
+                const isOwner = (state.owner || "").toLowerCase() === me && me !== "";
+                const n = state.ratings || 0;
+                const avg = n ? (state.rating || 0).toFixed(1) : "";
+                const your = state.yourRating || 0;
+                const avgLine = n
+                    ? `<span class="dr-rate"><span class="material-symbols-outlined">star</span>${avg} <span class="cnt">\u00b7 ${n} rating${n === 1 ? "" : "s"}</span></span>`
+                    : `<span class="dr-rate dr-rate-empty"><span class="material-symbols-outlined">star</span>no ratings yet</span>`;
+                if (isOwner)
+                    return `<div class="dr-rate-row"><span class="dr-label" style="margin:0">Rating</span>${avgLine}<span class="dr-hint">(your problem)</span></div>`;
+                const starBtns = [1, 2, 3, 4, 5].map((i) =>
+                    `<button data-rate="${i}" class="${i <= your ? "on" : ""}" title="Rate ${i} star${i === 1 ? "" : "s"}">\u2605</button>`).join("");
+                return `<div class="dr-rate-row">
+                    <div style="flex:1;min-width:8rem">${avgLine}</div>
+                    <div class="dr-rater">${starBtns}</div>
+                    <span class="dr-hint">${your ? "you rated " + your + "\u2605" : "rate this problem"}</span>
+                </div>`;
+            }
+            async function rateProblem(star) {
+                if (!state || !state.problemId) return;
+                try {
+                    const r = await api("POST", `/api/drills/${state.problemId}/rate`, { stars: star, sessionId: state.id });
+                    if (!r.ok) { showToast((r.data && r.data.error) || "Could not rate", true); return; }
+                    state.rating = r.data.rating; state.ratings = r.data.ratings; state.yourRating = r.data.yourRating;
+                    showToast("Thanks for rating!");
+                    render();
+                } catch (e) { /* auth handled */ }
+            }
             function doneViewHtml() {
                 const r = state.result || {};
                 const c = r.contract || state.contract;
@@ -2382,6 +2590,7 @@
                                 ${state.bidComment ? `<div><div class="dr-label">Bidding</div><div class="dr-comment">${suitify(state.bidComment)}</div></div>` : ""}
                             </div>` : ""}
                             <div><div class="dr-label">The author's line</div>${lineReviewHtml()}</div>
+                            ${rateWidgetHtml()}
                             <div class="cb-done-foot" style="gap:.5rem">
                                 <button id="drAgainBtn" class="dr-btn gold"><span class="material-symbols-outlined">restart_alt</span>Practise again</button>
                                 <button id="drLibBtn" class="dr-btn ghost"><span class="material-symbols-outlined">library_books</span>Library</button>
@@ -2429,6 +2638,13 @@
                 const s = new Set((library || []).map((p) => p.owner));
                 return [...s].sort();
             }
+            function ratingBadge(p) {
+                const n = p.ratings || 0;
+                if (!n) return `<span class="dr-rate dr-rate-empty" title="No ratings yet"><span class="material-symbols-outlined">star</span>new</span>`;
+                const r = (p.rating || 0).toFixed(1);
+                const you = p.yourRating ? ` <span style="opacity:.7">(you ${p.yourRating}\u2605)</span>` : "";
+                return `<span class="dr-rate" title="Average rating"><span class="material-symbols-outlined">star</span>${r} <span class="cnt">\u00b7 ${n}</span>${you}</span>`;
+            }
             function problemRow(p, mine) {
                 const title = p.title || contractLabel(p);
                 const badge = p.role === "declarer"
@@ -2438,16 +2654,12 @@
                     ? `<button class="dr-btn ghost" data-edit="${p.id}"><span class="material-symbols-outlined">edit</span>Edit</button>
                        <button class="dr-btn danger" data-del="${p.id}"><span class="material-symbols-outlined">delete</span></button>`
                     : `<button class="dr-btn gold" data-practice="${p.id}"><span class="material-symbols-outlined">playing_cards</span>Practise</button>`;
-                const endBadge = p.bot ? '<span class="dr-badge def">bots finish</span>'
-                    : p.claimed ? '<span class="dr-badge decl">claim</span>'
-                    : '<span class="dr-badge" style="background:#3d3a36;color:#bababa">play out</span>';
-                const linesBadge = (p.lines > 1) ? `<span class="dr-sub" style="display:inline"> \u00b7 ${p.lines} lines</span>` : "";
                 return `<div class="dr-row">
                     <div class="grow">
                         <div class="dr-title">${escapeHtml(title)}</div>
                         <div class="dr-sub">${badge} ${stars(p.difficulty)} \u00b7 ${dcolorSuits(contractLabel(p))} \u00b7 by ${escapeHtml(p.owner)}${p.updated ? " \u00b7 " + timeAgo(p.updated) : ""}</div>
-                        <div class="dr-sub" style="margin-top:3px">${endBadge}${linesBadge}</div>
                     </div>
+                    <div style="text-align:right;flex-shrink:0">${ratingBadge(p)}</div>
                     ${right}
                 </div>`;
             }
@@ -3119,6 +3331,9 @@
                 on("drRestartBtn", () => restartSession());
                 on("drAgainBtn", () => restartSession());
                 on("drLibBtn", () => { view = "lobby"; state = null; localStorage.removeItem(SESSION_KEY); render(); loadLibrary(); });
+                document.querySelectorAll("[data-rate]").forEach((el) => {
+                    el.onclick = () => rateProblem(parseInt(el.dataset.rate));
+                });
                 on("drIntroStart", () => { showIntro = false; render(); });
                 on("drIntroClose", () => leaveSession());
                 on("drAuctionBtn", () => { showAuction = !showAuction; showNotes = false; render(); });

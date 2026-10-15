@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -97,12 +98,28 @@ type DrillProblem struct {
 	BidComment     string      `json:"bidComment,omitempty"`
 	ProblemComment string      `json:"problemComment,omitempty"`
 	Lines          []DrillLine `json:"lines"`
+	// Ratings maps username -> stars (1..5), given after finishing a
+	// practice run; the library shows the average and sorts by it.
+	Ratings map[string]int `json:"ratings,omitempty"`
 	// Legacy single-line shape (before Lines existed); migrated on load and
 	// on every incoming payload, never written back.
 	Plays   []DrillPlay `json:"plays,omitempty"`
 	Claim   *DrillClaim `json:"claim,omitempty"`
 	Created string      `json:"created"`
 	Updated string      `json:"updated"`
+}
+
+// ratingSummary averages a problem's stars. Callers must hold drillsMu.
+func ratingSummaryLocked(p *DrillProblem) (avg float64, count int) {
+	count = len(p.Ratings)
+	if count == 0 {
+		return 0, 0
+	}
+	sum := 0
+	for _, v := range p.Ratings {
+		sum += v
+	}
+	return math.Round(float64(sum)/float64(count)*100) / 100, count
 }
 
 // migrateLines folds the legacy single Plays+Claim shape into Lines.
@@ -964,8 +981,9 @@ func (s *DrillSession) botChooseLocked(seat int) (string, error) {
 // stateLocked renders the client-visible session. During the play the hero
 // sees their own hand only (plus the dummy once tabled); the script's
 // messages stay hidden until the hand is over, except for the hint returned
-// with a wrong pick. A bot-finished problem's target trick count is public
-// (it is the exercise's goal); a claim's trick count stays hidden until done.
+// with a wrong pick. How the hand ends (claim, bots, played out) is never
+// revealed up front: the bot target only travels once the bots have visibly
+// taken over, and a claim's trick count only appears in the final result.
 func (s *DrillSession) stateLocked() map[string]any {
 	p := &s.Problem
 	st := map[string]any{
@@ -993,9 +1011,6 @@ func (s *DrillSession) stateLocked() map[string]any {
 		"bot":            s.Bot,
 		"wrong":          s.Wrong,
 		"done":           s.Done,
-	}
-	if len(p.Lines) == 1 && p.Lines[0].Bot != nil {
-		st["expectTricks"] = p.Lines[0].Bot.Expect
 	}
 	if s.Bot {
 		st["expectTricks"] = s.Expect
@@ -1056,6 +1071,32 @@ func (s *DrillSession) stateLocked() map[string]any {
 		st["legal"] = s.legalCardsLocked(seat)
 	}
 	return st
+}
+
+// enrichDoneRating attaches the problem's live rating summary to a finished
+// session state so the done view can show the average and the user's stars.
+// Called with s.mu held; takes drillsMu (the only nesting order used).
+func enrichDoneRating(st map[string]any, username string) {
+	if st["phase"] != "done" {
+		return
+	}
+	pid, _ := st["problemId"].(string)
+	drillsMu.Lock()
+	if p := drills[pid]; p != nil {
+		avg, count := ratingSummaryLocked(p)
+		st["rating"] = avg
+		st["ratings"] = count
+		st["yourRating"] = p.Ratings[username]
+	}
+	drillsMu.Unlock()
+}
+
+// writeSessionState renders a session (with the live rating summary attached
+// once the hand is done). Called with s.mu held.
+func writeSessionState(w http.ResponseWriter, s *DrillSession, username string) {
+	st := s.stateLocked()
+	enrichDoneRating(st, username)
+	writeJSON(w, st)
 }
 
 func lookupDrillSession(id, username string) *DrillSession {
@@ -1139,21 +1180,23 @@ func handleDrillsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	drillsMu.Lock()
+	me := currentUser(r)
 	type info struct {
-		ID         string `json:"id"`
-		Owner      string `json:"owner"`
-		Title      string `json:"title"`
-		Role       string `json:"role"`
-		HeroSeat   int    `json:"heroSeat"`
-		Difficulty int    `json:"difficulty"`
-		Dealer     int    `json:"dealer"`
-		Vuln       int    `json:"vuln"`
-		Contract   string `json:"contract"`
-		Claimed    bool   `json:"claimed"`
-		Bot        bool   `json:"bot"`
-		Lines      int    `json:"lines"`
-		Created    string `json:"created"`
-		Updated    string `json:"updated"`
+		ID         string  `json:"id"`
+		Owner      string  `json:"owner"`
+		Title      string  `json:"title"`
+		Role       string  `json:"role"`
+		HeroSeat   int     `json:"heroSeat"`
+		Difficulty int     `json:"difficulty"`
+		Dealer     int     `json:"dealer"`
+		Vuln       int     `json:"vuln"`
+		Contract   string  `json:"contract"`
+		Lines      int     `json:"lines"`
+		Rating     float64 `json:"rating"`
+		Ratings    int     `json:"ratings"`
+		YourRating int     `json:"yourRating"`
+		Created    string  `json:"created"`
+		Updated    string  `json:"updated"`
 	}
 	list := make([]info, 0, len(drills))
 	for _, p := range drills {
@@ -1161,24 +1204,27 @@ func handleDrillsList(w http.ResponseWriter, r *http.Request) {
 		if c := contractFromCalls(p.Dealer, p.Calls); c != nil {
 			label = c.String()
 		}
-		claimed, bot := false, false
-		for _, l := range p.Lines {
-			if l.Claim != nil {
-				claimed = true
-			}
-			if l.Bot != nil {
-				bot = true
-			}
-		}
+		avg, count := ratingSummaryLocked(p)
 		list = append(list, info{
 			ID: p.ID, Owner: p.Owner, Title: p.Title, Role: p.Role,
 			HeroSeat: p.HeroSeat, Difficulty: p.Difficulty, Dealer: p.Dealer,
-			Vuln: p.Vuln, Contract: label, Claimed: claimed, Bot: bot,
-			Lines: len(p.Lines), Created: p.Created, Updated: p.Updated,
+			Vuln: p.Vuln, Contract: label, Lines: len(p.Lines),
+			Rating: avg, Ratings: count, YourRating: p.Ratings[me],
+			Created: p.Created, Updated: p.Updated,
 		})
 	}
 	drillsMu.Unlock()
-	sort.Slice(list, func(i, j int) bool { return list[i].Updated > list[j].Updated })
+	// Highest rated first; unrated problems sink below rated ones, then the
+	// most ratings wins ties, then the most recently updated.
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].Rating != list[j].Rating {
+			return list[i].Rating > list[j].Rating
+		}
+		if list[i].Ratings != list[j].Ratings {
+			return list[i].Ratings > list[j].Ratings
+		}
+		return list[i].Updated > list[j].Updated
+	})
 	writeJSON(w, map[string]any{"problems": list})
 }
 
@@ -1278,6 +1324,7 @@ func handleDrillPut(w http.ResponseWriter, r *http.Request) {
 	p.ID = id
 	p.Owner = existing.Owner
 	p.Created = existing.Created
+	p.Ratings = existing.Ratings // ratings are server-side only
 	p.Updated = time.Now().UTC().Format(time.RFC3339)
 	drills[id] = p
 	err := saveDrillLocked(p)
@@ -1321,6 +1368,71 @@ func handleDrillDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
+// POST /api/drills/{id}/rate - rate a problem after finishing a practice run.
+// Body: {stars: 1..5, sessionId}. The session must belong to the caller, be
+// finished, and be a run of this problem; authors cannot rate their own.
+func handleDrillRate(w http.ResponseWriter, r *http.Request) {
+	username := requireLogin(w, r)
+	if username == "" {
+		return
+	}
+	id := r.PathValue("id")
+	if !validID(id) {
+		jsonError(w, http.StatusBadRequest, "invalid problem ID")
+		return
+	}
+	limitBody(w, r, maxBodyAuth)
+	var body struct {
+		Stars     int    `json:"stars"`
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if body.Stars < 1 || body.Stars > 5 {
+		jsonError(w, http.StatusBadRequest, "stars must be between 1 and 5")
+		return
+	}
+	s := lookupDrillSession(body.SessionID, username)
+	if s == nil {
+		jsonError(w, http.StatusForbidden, "play the problem before rating it")
+		return
+	}
+	s.mu.Lock()
+	played := s.Done && s.Problem.ID == id
+	s.mu.Unlock()
+	if !played {
+		jsonError(w, http.StatusForbidden, "finish the problem before rating it")
+		return
+	}
+	drillsMu.Lock()
+	p := drills[id]
+	if p == nil {
+		drillsMu.Unlock()
+		jsonError(w, http.StatusNotFound, "no such problem")
+		return
+	}
+	if p.Owner == username {
+		drillsMu.Unlock()
+		jsonError(w, http.StatusForbidden, "you cannot rate your own problem")
+		return
+	}
+	if p.Ratings == nil {
+		p.Ratings = map[string]int{}
+	}
+	p.Ratings[username] = body.Stars
+	avg, count := ratingSummaryLocked(p)
+	err := saveDrillLocked(p)
+	drillsMu.Unlock()
+	if err != nil {
+		log.Printf("Could not persist drill %s: %v", id, err)
+		jsonError(w, http.StatusInternalServerError, "could not save the rating")
+		return
+	}
+	writeJSON(w, map[string]any{"rating": avg, "ratings": count, "yourRating": body.Stars})
+}
+
 // POST /api/drills/{id}/session - start practicing a problem.
 func handleDrillSessionNew(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
@@ -1356,6 +1468,7 @@ func handleDrillSessionNew(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	st := s.stateLocked()
 	s.mu.Unlock()
+	enrichDoneRating(st, username)
 	writeJSON(w, st)
 }
 
@@ -1385,7 +1498,7 @@ func handleDrillSessionGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, s.stateLocked())
+	writeSessionState(w, s, username)
 }
 
 // POST /api/drill/session/{sid}/card - the hero's pick. While the script is
@@ -1424,7 +1537,7 @@ func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.Done {
-		writeJSON(w, s.stateLocked())
+		writeSessionState(w, s, username)
 		return
 	}
 	seat := s.nextSeatLocked()
@@ -1434,7 +1547,7 @@ func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
 			return
 		}
-		writeJSON(w, s.stateLocked())
+		writeSessionState(w, s, username)
 		return
 	}
 	if !slices.Contains(s.legalCardsLocked(seat), card) {
@@ -1450,7 +1563,7 @@ func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 			// the hero's card stands; the client's polling GET retries the bot
 			log.Printf("drill session %s: bot advance: %v", s.ID, err)
 		}
-		writeJSON(w, s.stateLocked())
+		writeSessionState(w, s, username)
 		return
 	}
 	var matched []int
@@ -1480,7 +1593,7 @@ func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 	if err := s.advanceLocked(); err != nil {
 		log.Printf("drill session %s: bot advance: %v", s.ID, err)
 	}
-	writeJSON(w, s.stateLocked())
+	writeSessionState(w, s, username)
 }
 
 // DELETE /api/drill/session/{sid} - abandon a practice session.

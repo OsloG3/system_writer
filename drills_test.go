@@ -963,3 +963,153 @@ func TestDrillBotFinish(t *testing.T) {
 		t.Fatalf("bot phase state wrong: bot=%v expect=%v", st["bot"], st["expectTricks"])
 	}
 }
+
+func TestDrillRating(t *testing.T) {
+	old := dataDir
+	dataDir = t.TempDir()
+	defer func() { dataDir = old }()
+	if err := os.MkdirAll(drillsDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		drillsMu.Lock()
+		drills = map[string]*DrillProblem{}
+		drillsMu.Unlock()
+		drillSessMu.Lock()
+		drillSess = map[string]*DrillSession{}
+		drillSessMu.Unlock()
+	})
+
+	alice, bob := drillLogin(t, "alice"), drillLogin(t, "bob")
+	body, _ := json.Marshal(drillProblem())
+	rr := httptest.NewRecorder()
+	handleDrillCreate(rr, drillReq(t, "POST", "/api/drills", string(body), alice))
+	var created struct {
+		ID string `json:"id"`
+	}
+	json.Unmarshal(rr.Body.Bytes(), &created)
+	id := created.ID
+
+	rate := func(tok, payload string) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		req := drillReq(t, "POST", "/api/drills/"+id+"/rate", payload, tok)
+		req.SetPathValue("id", id)
+		handleDrillRate(rr, req)
+		return rr
+	}
+
+	// a session that has NOT finished cannot rate yet
+	rr = httptest.NewRecorder()
+	req := drillReq(t, "POST", "/api/drills/"+id+"/session", "", bob)
+	req.SetPathValue("id", id)
+	handleDrillSessionNew(rr, req)
+	var st map[string]any
+	json.Unmarshal(rr.Body.Bytes(), &st)
+	sid := st["id"].(string)
+	t.Cleanup(func() {
+		drillSessMu.Lock()
+		delete(drillSess, sid)
+		drillSessMu.Unlock()
+	})
+	if rr := rate(bob, `{"stars":5,"sessionId":"`+sid+`"}`); rr.Code != http.StatusForbidden {
+		t.Fatalf("rating an unfinished run: %d", rr.Code)
+	}
+	// unknown session
+	if rr := rate(bob, `{"stars":5,"sessionId":"nope"}`); rr.Code != http.StatusForbidden {
+		t.Fatalf("rating with a foreign session: %d", rr.Code)
+	}
+	// bad stars
+	card := func(c string) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		req := drillReq(t, "POST", "/api/drill/session/"+sid+"/card", `{"card":"`+c+`"}`, bob)
+		req.SetPathValue("sid", sid)
+		handleDrillSessionCard(rr, req)
+		return rr
+	}
+	// finish the hand
+	if rr := card("5S"); rr.Code != http.StatusOK {
+		t.Fatalf("finishing play: %d %s", rr.Code, rr.Body.String())
+	}
+	if rr := rate(bob, `{"stars":9,"sessionId":"`+sid+`"}`); rr.Code != http.StatusBadRequest {
+		t.Fatalf("stars out of range: %d", rr.Code)
+	}
+	// the author cannot rate their own problem
+	if rr := rate(alice, `{"stars":5,"sessionId":"`+sid+`"}`); rr.Code != http.StatusForbidden {
+		t.Fatalf("author self-rating: %d", rr.Code)
+	}
+	// bob rates 4 stars
+	rr = rate(bob, `{"stars":4,"sessionId":"`+sid+`"}`)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("rate: %d %s", rr.Code, rr.Body.String())
+	}
+	var out struct {
+		Rating     float64 `json:"rating"`
+		Ratings    int     `json:"ratings"`
+		YourRating int     `json:"yourRating"`
+	}
+	json.Unmarshal(rr.Body.Bytes(), &out)
+	if out.Rating != 4 || out.Ratings != 1 || out.YourRating != 4 {
+		t.Fatalf("bad rating response: %+v", out)
+	}
+	// the done state now carries the live summary
+	rr = httptest.NewRecorder()
+	req = drillReq(t, "GET", "/api/drill/session/"+sid, "", bob)
+	req.SetPathValue("sid", sid)
+	handleDrillSessionGet(rr, req)
+	json.Unmarshal(rr.Body.Bytes(), &st)
+	if st["rating"] != float64(4) || st["ratings"] != float64(1) || st["yourRating"] != float64(4) {
+		t.Fatalf("done state missing rating: %+v", st)
+	}
+	// re-rating replaces, it does not stack
+	rr = rate(bob, `{"stars":2,"sessionId":"`+sid+`"}`)
+	json.Unmarshal(rr.Body.Bytes(), &out)
+	if out.Rating != 2 || out.Ratings != 1 {
+		t.Fatalf("re-rating should replace: %+v", out)
+	}
+	// the library sorts by rating and carries yourRating for the caller
+	p2 := drillProblem()
+	p2.Title = "Second"
+	b2, _ := json.Marshal(p2)
+	rr = httptest.NewRecorder()
+	handleDrillCreate(rr, drillReq(t, "POST", "/api/drills", string(b2), alice))
+	var c2 struct {
+		ID string `json:"id"`
+	}
+	json.Unmarshal(rr.Body.Bytes(), &c2)
+	rr = httptest.NewRecorder()
+	handleDrillsList(rr, drillReq(t, "GET", "/api/drills", "", bob))
+	var listed struct {
+		Problems []map[string]any `json:"problems"`
+	}
+	json.Unmarshal(rr.Body.Bytes(), &listed)
+	if len(listed.Problems) != 2 {
+		t.Fatalf("want 2 problems, got %d", len(listed.Problems))
+	}
+	first := listed.Problems[0]
+	if first["id"] != id || first["rating"] != float64(2) || first["yourRating"] != float64(2) {
+		t.Fatalf("rated problem should sort first: %+v", first)
+	}
+	if listed.Problems[1]["rating"] != float64(0) || listed.Problems[1]["ratings"] != float64(0) {
+		t.Fatalf("unrated problem second: %+v", listed.Problems[1])
+	}
+	// no ending spoilers in the metadata
+	for _, leak := range []string{"claimed", `"bot"`} {
+		if strings.Contains(rr.Body.String(), leak) {
+			t.Fatalf("library metadata leaks %s", leak)
+		}
+	}
+	// editing the problem preserves its ratings
+	edited := drillProblem()
+	edited.Title = "Renamed"
+	eb, _ := json.Marshal(edited)
+	rr = httptest.NewRecorder()
+	req = drillReq(t, "PUT", "/api/drills/"+id, string(eb), alice)
+	req.SetPathValue("id", id)
+	handleDrillPut(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("put: %d", rr.Code)
+	}
+	if p := lookupDrill(id); p.Ratings["bob"] != 2 {
+		t.Fatalf("ratings lost on edit: %+v", p.Ratings)
+	}
+}
