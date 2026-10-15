@@ -561,7 +561,9 @@
             }
             .cb-fan {
                 display: flex;
-                padding: 0.2rem 0.4rem;
+                /* no right padding: the scroll box ends exactly at the last
+                   card, so nothing is clipped and no scrollbar appears */
+                padding: 0.2rem 0 0.2rem 0.4rem;
             }
             .cb-card {
                 position: relative;
@@ -680,7 +682,9 @@
                your own fan at the bottom */
             .cb-flat {
                 display: flex;
-                padding: 0.15rem 0.4rem; /* same inset as the fan below */
+                /* same left inset as the fan below; no right padding so the
+                   scroll box ends at the last card */
+                padding: 0.15rem 0 0.15rem 0.4rem;
             }
             .cb-flat-h {
                 flex-direction: row;
@@ -690,12 +694,16 @@
                 max-width: 100%;
                 overflow-x: auto;
                 overscroll-behavior-x: contain;
+                /* room for the selected card to step down towards the table
+                   without being clipped by (or scrolling) this box */
+                padding-bottom: 0.6rem;
             }
-            /* a column keeps the height of a full 13-card hand, so the table
-               never grows or shrinks (and never re-centers) as dummy plays */
+            /* a column keeps the height of a full 13-card hand (plus its
+               padding), so the table never grows or shrinks (and never
+               re-centers) as dummy plays */
             .cb-flat-v {
                 flex-direction: column;
-                height: 20.1rem;
+                height: 20.4rem;
             }
             .cb-flat .cb-card {
                 width: 3.05rem;
@@ -747,11 +755,11 @@
                 .cb-fan-play .cb-card { margin-left: -1.3rem; }
                 .cb-flat-h .cb-card + .cb-card { margin-left: -1.3rem; }
                 .cb-flat-v .cb-card + .cb-card { margin-top: -2.9rem; }
-                .cb-flat-v { height: 18.5rem; }
+                .cb-flat-v { height: 18.8rem; }
                 .cb-ptable.dv {
-                    grid-template-rows: auto minmax(18.5rem, auto) auto;
+                    grid-template-rows: auto minmax(20.25rem, 1fr) auto;
                 }
-                .cb-ptable.dh .cb-pt-n { min-height: 4.1rem; }
+                .cb-ptable.dh .cb-pt-n { min-height: 6.3rem; }
                 .cb-fan-play .cb-corner b,
                 .cb-flat .cb-corner b { font-size: 0.95rem; }
                 .cb-fan-play .cb-corner i,
@@ -855,7 +863,7 @@
                lead lands, so tabling it -- and every card after -- never
                resizes the table (and never re-centers the view). */
             .cb-ptable.dv {
-                grid-template-rows: auto minmax(20.1rem, 1fr) auto;
+                grid-template-rows: auto minmax(21.85rem, 1fr) auto;
             }
             /* dummy at North: its row spans the whole table, the same width
                as your fan below, so the two hands line up card for card */
@@ -868,7 +876,7 @@
                 grid-template-rows: auto auto minmax(7.8rem, 1fr) auto;
             }
             .cb-ptable.dh .cb-pt-n {
-                min-height: 4.5rem;
+                min-height: 6.7rem; /* name + tabled row + step room */
                 width: 100%;
                 display: flex;
                 flex-direction: column;
@@ -1086,11 +1094,11 @@
                 .cb-fan-play .cb-card { margin-left: -1.4rem; }
                 .cb-flat-h .cb-card + .cb-card { margin-left: -1.4rem; }
                 .cb-flat-v .cb-card + .cb-card { margin-top: -2.95rem; }
-                .cb-flat-v { height: 19.2rem; }
+                .cb-flat-v { height: 19.5rem; }
                 .cb-ptable.dv {
-                    grid-template-rows: auto minmax(19.2rem, 1fr) auto;
+                    grid-template-rows: auto minmax(20.95rem, 1fr) auto;
                 }
-                .cb-ptable.dh .cb-pt-n { min-height: 4.2rem; }
+                .cb-ptable.dh .cb-pt-n { min-height: 6.4rem; }
                 .cb-fan-play .cb-corner b,
                 .cb-flat .cb-corner b { font-size: 1rem; }
                 .cb-fan-play .cb-corner i,
@@ -1109,11 +1117,11 @@
                 .cb-flat-h .cb-card + .cb-card { margin-left: -1.35rem; }
                 .cb-flat-v .cb-corner i { display: none; }
                 .cb-flat-v .cb-card + .cb-card { margin-top: -2.7rem; }
-                .cb-flat-v { height: 17rem; }
+                .cb-flat-v { height: 17.3rem; }
                 .cb-ptable.dv {
-                    grid-template-rows: auto minmax(17rem, 1fr) auto;
+                    grid-template-rows: auto minmax(18.75rem, 1fr) auto;
                 }
-                .cb-ptable.dh .cb-pt-n { min-height: 3.8rem; }
+                .cb-ptable.dh .cb-pt-n { min-height: 6rem; }
                 .cb-fan-play .cb-corner b,
                 .cb-flat .cb-corner b { font-size: 0.85rem; }
                 .cb-fan-play .cb-corner i,
