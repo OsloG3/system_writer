@@ -538,7 +538,8 @@
             }
 
             .cb-handfoot {
-                padding: 0.3rem 0.75rem calc(0.55rem + env(safe-area-inset-bottom));
+                padding: 0.3rem 0.6rem
+                    calc(0.55rem + env(safe-area-inset-bottom));
                 display: flex;
                 flex-direction: column;
                 align-items: center;
@@ -546,6 +547,12 @@
                 max-width: 42rem;
                 margin: 0 auto;
                 width: 100%;
+            }
+            /* the bidding fan starts at the same left edge the play fan and
+               the dummy row use, so nothing jumps when the phase changes */
+            .cb-handfoot .cb-fan {
+                width: 100%;
+                justify-content: flex-start;
             }
             .cb-handlabel {
                 color: #e8e6e3;
@@ -628,10 +635,9 @@
                other card -- they are simply not clickable. */
             .cb-fan-play {
                 flex-wrap: nowrap;
-                /* shrink-wrap and center like the bidding fan; cards stay
-                   pinned at the fan's own left edge so playing a card never
-                   slides the rest, and overflow scrolls from the start */
-                align-self: center;
+                /* full-width like the dummy row above it, cards pinned at the
+                   left edge: the two hands line up and playing a card never
+                   slides the rest; overflow scrolls from the start */
                 justify-content: flex-start;
                 max-width: 100%;
                 overflow-x: auto;
@@ -674,12 +680,13 @@
                your own fan at the bottom */
             .cb-flat {
                 display: flex;
-                padding: 0.15rem 0.1rem;
+                padding: 0.15rem 0.4rem; /* same inset as the fan below */
             }
             .cb-flat-h {
                 flex-direction: row;
                 /* pinned like your fan: playing a card never shifts the rest */
                 justify-content: flex-start;
+                width: 100%;
                 max-width: 100%;
                 overflow-x: auto;
                 overscroll-behavior-x: contain;
@@ -726,7 +733,11 @@
                     0 6px 12px rgba(0, 0, 0, 0.55);
                 z-index: 5;
             }
-            .cb-flat .cb-card.sel { transform: none; }
+            /* a selected dummy card steps out of its row towards the table
+               center (down from North, inwards from the side seats) */
+            .cb-pt-n .cb-flat .cb-card.sel { transform: translateY(0.55rem); }
+            .cb-pt-w .cb-flat .cb-card.sel { transform: translateX(0.55rem); }
+            .cb-pt-e .cb-flat .cb-card.sel { transform: translateX(-0.55rem); }
             @media (max-width: 400px) {
                 .cb-fan-play .cb-card,
                 .cb-flat .cb-card {
@@ -814,10 +825,11 @@
                     "tl n tr"
                     "w c e"
                     ". s .";
+                grid-template-rows: auto minmax(7.8rem, 1fr) auto;
                 gap: 0.5rem 0.6rem;
                 align-items: center;
                 justify-items: center;
-                padding: 0.5rem 0.3rem;
+                padding: 0.5rem 0;
             }
             .cb-pt-n { grid-area: n; }
             .cb-pt-e { grid-area: e; }
@@ -843,13 +855,28 @@
                lead lands, so tabling it -- and every card after -- never
                resizes the table (and never re-centers the view). */
             .cb-ptable.dv {
-                grid-template-rows: auto minmax(20.1rem, auto) auto;
+                grid-template-rows: auto minmax(20.1rem, 1fr) auto;
+            }
+            /* dummy at North: its row spans the whole table, the same width
+               as your fan below, so the two hands line up card for card */
+            .cb-ptable.dh {
+                grid-template-areas:
+                    "tl tl tr"
+                    "n n n"
+                    "w c e"
+                    ". s .";
+                grid-template-rows: auto auto minmax(7.8rem, 1fr) auto;
             }
             .cb-ptable.dh .cb-pt-n {
                 min-height: 4.5rem;
+                width: 100%;
                 display: flex;
                 flex-direction: column;
                 justify-content: center;
+            }
+            .cb-ptable.dh .cb-pt-n .cb-pseat,
+            .cb-ptable.dh .cb-flat-h {
+                width: 100%;
             }
             .cb-pseat {
                 display: flex;
@@ -1029,9 +1056,9 @@
                     calc(0.4rem + env(safe-area-inset-bottom));
             }
             .cb-playview .cb-ptable {
-                flex: 0 1 auto;
+                flex: 1 1 auto; /* fill the view: no dead band above the table */
                 min-height: 0;
-                margin: auto 0;
+                margin: 0;
                 overflow: hidden; /* never spill onto the hand below */
             }
             .cb-playview .cb-fan-play { flex-shrink: 0; }
@@ -1061,7 +1088,7 @@
                 .cb-flat-v .cb-card + .cb-card { margin-top: -2.95rem; }
                 .cb-flat-v { height: 19.2rem; }
                 .cb-ptable.dv {
-                    grid-template-rows: auto minmax(19.2rem, auto) auto;
+                    grid-template-rows: auto minmax(19.2rem, 1fr) auto;
                 }
                 .cb-ptable.dh .cb-pt-n { min-height: 4.2rem; }
                 .cb-fan-play .cb-corner b,
@@ -1084,7 +1111,7 @@
                 .cb-flat-v .cb-card + .cb-card { margin-top: -2.7rem; }
                 .cb-flat-v { height: 17rem; }
                 .cb-ptable.dv {
-                    grid-template-rows: auto minmax(17rem, auto) auto;
+                    grid-template-rows: auto minmax(17rem, 1fr) auto;
                 }
                 .cb-ptable.dh .cb-pt-n { min-height: 3.8rem; }
                 .cb-fan-play .cb-corner b,
@@ -4112,6 +4139,11 @@
 
             document.addEventListener("click", (e) => {
                 if (!e.target.closest(".cb-menuwrap")) closeMenu();
+                // tapping anywhere outside the hands drops a lifted card
+                if (selectedCard && !e.target.closest(".cb-fan-play, .cb-flat")) {
+                    selectedCard = null;
+                    render();
+                }
             });
 
             document.addEventListener("authchange", () => {
