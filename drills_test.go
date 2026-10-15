@@ -7,7 +7,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -73,13 +75,15 @@ func drillProblem() DrillProblem {
 		Calls:          []string{"1H", "P", "4H", "P", "P", "P"},
 		BidComment:     "Standard opening.",
 		ProblemComment: "Udca signals.",
-		Plays: []DrillPlay{
-			{Seat: 1, Card: "5S", Msg: "the obvious lead"},
-			{Seat: 2, Card: "2S"},
-			{Seat: 3, Card: "QS"},
-			{Seat: 0, Card: "7S"},
-		},
-		Claim: &DrillClaim{Tricks: 10},
+		Lines: []DrillLine{{
+			Plays: []DrillPlay{
+				{Seat: 1, Card: "5S", Msg: "the obvious lead"},
+				{Seat: 2, Card: "2S"},
+				{Seat: 3, Card: "QS"},
+				{Seat: 0, Card: "7S"},
+			},
+			Claim: &DrillClaim{Tricks: 10},
+		}},
 	}
 }
 
@@ -160,7 +164,7 @@ func TestValidateDrill(t *testing.T) {
 	if _, err := validateDrill(&p); err != nil {
 		t.Fatalf("valid problem rejected: %v", err)
 	}
-	if p.Plays[0].Card != "5S" {
+	if p.Lines[0].Plays[0].Card != "5S" {
 		t.Fatal("scripted card not normalized in place")
 	}
 
@@ -181,42 +185,267 @@ func TestValidateDrill(t *testing.T) {
 		q.Role, q.HeroSeat = "declarer", 2 // S is a defender here
 	})
 	mutate("defense hero declares", func(q *DrillProblem) { q.HeroSeat = 0 })
-	mutate("no plays", func(q *DrillProblem) { q.Plays = nil })
+	mutate("no plays", func(q *DrillProblem) { q.Lines[0].Plays = nil })
 	mutate("out of turn", func(q *DrillProblem) {
-		q.Plays[0], q.Plays[1] = q.Plays[1], q.Plays[0]
+		l := q.Lines[0].Plays
+		l[0], l[1] = l[1], l[0]
 	})
-	mutate("card not held", func(q *DrillProblem) { q.Plays[1].Card = "AS" })
-	mutate("revoke", func(q *DrillProblem) { q.Plays[1].Card = "AH" }) // S holds 2S and spades were led
-	mutate("msg on non-hero seat", func(q *DrillProblem) { q.Plays[2].Msg = "why" })
+	mutate("card not held", func(q *DrillProblem) { q.Lines[0].Plays[1].Card = "AS" })
+	mutate("revoke", func(q *DrillProblem) { q.Lines[0].Plays[1].Card = "AH" }) // S holds 2S and spades were led
+	mutate("msg on non-hero seat", func(q *DrillProblem) { q.Lines[0].Plays[2].Msg = "why" })
+	mutate("alts on non-hero seat", func(q *DrillProblem) { q.Lines[0].Plays[2].Alts = []string{"QC"} })
+	mutate("alt not held", func(q *DrillProblem) { q.Lines[0].Plays[0].Alts = []string{"2S"} })
+	mutate("alt is the card itself", func(q *DrillProblem) { q.Lines[0].Plays[0].Alts = []string{"5S"} })
 	mutate("claim off trick boundary", func(q *DrillProblem) {
-		q.Plays = q.Plays[:3]
+		q.Lines[0].Plays = q.Lines[0].Plays[:3]
 	})
-	mutate("claim tricks impossible", func(q *DrillProblem) { q.Claim.Tricks = 14 })
+	mutate("claim tricks impossible", func(q *DrillProblem) { q.Lines[0].Claim.Tricks = 14 })
 	mutate("claim tricks below won", func(q *DrillProblem) {
-		q.Plays = naivePlayLine(drillHands, 1, 'H')[:8]
-		q.Claim.Tricks = 0
+		q.Lines[0].Plays = naivePlayLine(drillHands, 1, 'H')[:8]
+		q.Lines[0].Claim.Tricks = 0
 	})
 	mutate("no claim short line", func(q *DrillProblem) {
-		q.Claim = nil
-		q.Plays = naivePlayLine(drillHands, 1, 'H')[:8]
+		q.Lines[0].Claim = nil
+		q.Lines[0].Plays = naivePlayLine(drillHands, 1, 'H')[:8]
+	})
+	mutate("claim and bots together", func(q *DrillProblem) {
+		q.Lines[0].Bot = &DrillBotEnd{Expect: 10}
+	})
+	mutate("bot line already 52", func(q *DrillProblem) {
+		q.Lines[0].Claim = nil
+		q.Lines[0].Plays = naivePlayLine(drillHands, 1, 'H')
+		q.Lines[0].Bot = &DrillBotEnd{Expect: 1}
+	})
+	mutate("bot expect impossible", func(q *DrillProblem) {
+		q.Lines[0].Claim = nil
+		q.Lines[0].Bot = &DrillBotEnd{Expect: 13} // only 12 tricks remain after one
+	})
+	mutate("duplicate lines", func(q *DrillProblem) {
+		q.Lines = append(q.Lines, q.Lines[0])
+	})
+	mutate("lines diverge on an auto seat", func(q *DrillProblem) {
+		other := q.Lines[0]
+		other.Plays = append([]DrillPlay(nil), q.Lines[0].Plays...)
+		other.Plays[1] = DrillPlay{Seat: 2, Card: "8S"} // South is not the hero
+		q.Lines = append(q.Lines, other)
 	})
 
-	// A declarer problem played out to the end needs no claim.
+	// A bot-ended line: the script stops after one trick and the sidecar
+	// plays the rest, graded against the expected trick count.
+	bot := drillProblem()
+	bot.Lines[0].Claim = nil
+	bot.Lines[0].Bot = &DrillBotEnd{Expect: 10}
+	if _, err := validateDrill(&bot); err != nil {
+		t.Fatalf("bot-ended problem rejected: %v", err)
+	}
+
+	// A declarer problem played out to the end needs no ending.
 	full := drillProblem()
-	full.Role, full.HeroSeat, full.Claim = "declarer", 0, nil
-	full.Plays = naivePlayLine(drillHands, 1, 'H')
+	full.Role, full.HeroSeat = "declarer", 0
+	full.Lines = []DrillLine{{Plays: naivePlayLine(drillHands, 1, 'H')}}
 	if _, err := validateDrill(&full); err != nil {
 		t.Fatalf("played-out declarer problem rejected: %v", err)
 	}
-	if len(full.Plays) != 52 {
-		t.Fatalf("naive line has %d plays", len(full.Plays))
+	if len(full.Lines[0].Plays) != 52 {
+		t.Fatalf("naive line has %d plays", len(full.Lines[0].Plays))
+	}
+
+	// The legacy single Plays+Claim shape still validates and migrates.
+	legacy := drillProblem()
+	legacy.Plays, legacy.Claim = legacy.Lines[0].Plays, legacy.Lines[0].Claim
+	legacy.Lines = nil
+	if _, err := validateDrill(&legacy); err != nil {
+		t.Fatalf("legacy problem rejected: %v", err)
+	}
+	if len(legacy.Lines) != 1 || legacy.Lines[0].Claim == nil || legacy.Plays != nil {
+		t.Fatalf("legacy shape not migrated: %+v", legacy)
+	}
+}
+
+// twoTrickEquivProblem: trick 1 E leads a spade (any of J6543 -- West's queen
+// wins regardless), North takes it... no: West's QS wins trick 1; trick 2 has
+// West on lead. Used by the equivalence tests.
+func twoTrickEquivProblem() DrillProblem {
+	p := drillProblem()
+	p.Lines = []DrillLine{{
+		Plays: []DrillPlay{
+			{Seat: 1, Card: "3S", Msg: "fourth best", Alts: []string{"JS", "6S", "5S", "4S"}},
+			{Seat: 2, Card: "2S"},
+			{Seat: 3, Card: "QS"},
+			{Seat: 0, Card: "7S"},
+			// West won; a diamond trick where East's 8D loses to South's TD
+			{Seat: 3, Card: "5D"},
+			{Seat: 0, Card: "2D"},
+			{Seat: 1, Card: "8D", Msg: "keep the king"},
+			{Seat: 2, Card: "TD"},
+		},
+		Claim: &DrillClaim{Tricks: 10},
+	}}
+	return p
+}
+
+func TestDrillEquivalence(t *testing.T) {
+	p := twoTrickEquivProblem()
+	if _, err := validateDrill(&p); err != nil {
+		t.Fatalf("equivalent leads rejected: %v", err)
+	}
+	// The 8D/4S class stays sound: swapping the diamond order keeps South's
+	// ten winning trick 2. But declaring the KING of diamonds equivalent to
+	// the eight moves the trick-2 winner from South to East -- rejected.
+	bad := twoTrickEquivProblem()
+	bad.Lines[0].Plays[6].Alts = []string{"KD"}
+	if _, err := validateDrill(&bad); err == nil {
+		t.Fatal("a trick-winning swap accepted as equivalent")
+	} else if !strings.Contains(err.Error(), "interchangeable") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// A cross-suit "alternative" breaks follow-suit: rejected.
+	bad2 := twoTrickEquivProblem()
+	bad2.Lines[0].Plays[6].Alts = []string{"5H"}
+	if _, err := validateDrill(&bad2); err == nil {
+		t.Fatal("a revoke-by-swap accepted as equivalent")
+	}
+
+	// Session: the hero swaps within the class on the lead, and the class
+	// keeps covering the LATER spade play with the members still held.
+	s, err := newDrillSession(&p, "alice")
+	if err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	if !s.lineAccepts(s.Live[0], 1, "6S") || !s.lineAccepts(s.Live[0], 1, "JS") ||
+		s.lineAccepts(s.Live[0], 1, "7H") || s.lineAccepts(s.Live[0], 1, "2S") {
+		t.Fatal("class acceptance wrong at the lead")
+	}
+	// hero plays the 6S instead of the scripted 3S
+	s.applyLocked(DrillPlay{Seat: 1, Card: "6S"})
+	s.advanceLocked() // S 2S, W QS, N 7S -- West wins and leads the diamond
+	if len(s.Plays) != 6 || s.Done {
+		t.Fatalf("expected 6 plays up to East's diamond, got %d (done=%v)", len(s.Plays), s.Done)
+	}
+	// East's scripted 8D has no alts of its own, but it never entered a class:
+	// only the spades are interchangeable.
+	if s.lineAccepts(s.Live[0], 1, "KD") {
+		t.Fatal("an undeclared equivalent was accepted")
+	}
+	if !s.lineAccepts(s.Live[0], 1, "8D") {
+		t.Fatal("the scripted card must be accepted")
+	}
+	s.applyLocked(DrillPlay{Seat: 1, Card: "8D"})
+	s.advanceLocked() // S TD wins; the script is over -> the claim ends it
+	if !s.Done || s.Result == nil || !s.Result.Claimed || s.Result.Tricks != 10 {
+		t.Fatalf("claim did not end the hand: done=%v result=%+v", s.Done, s.Result)
+	}
+
+	// The user's exact scenario: after swapping the lead, the LATER spade
+	// play accepts every class member still held. Trick 1: E 3S, S 2S, W QS,
+	// N AS (North wins). Trick 2: N TS, E 4S, S 8S, W 3D. The class
+	// {3S,6S,5S,4S} survives both positions; the jack may NOT join it --
+	// played at trick 2 it would beat the ten and move the winner.
+	p2 := drillProblem()
+	p2.Lines = []DrillLine{{
+		Plays: []DrillPlay{
+			{Seat: 1, Card: "3S", Msg: "lead", Alts: []string{"6S", "5S", "4S"}},
+			{Seat: 2, Card: "2S"},
+			{Seat: 3, Card: "QS"},
+			{Seat: 0, Card: "AS"},
+			{Seat: 0, Card: "TS"},
+			{Seat: 1, Card: "4S", Msg: "second spade"},
+			{Seat: 2, Card: "8S"},
+			{Seat: 3, Card: "6D"},
+		},
+		Claim: &DrillClaim{Tricks: 10},
+	}}
+	if _, err := validateDrill(&p2); err != nil {
+		t.Fatalf("second-spade line rejected: %v", err)
+	}
+	// Adding the jack to the class must be rejected: (5S at trick 1, JS at
+	// trick 2) is a legal combination that moves the trick-2 winner to East.
+	badP2 := drillProblem()
+	badP2.Lines = []DrillLine{{Plays: append([]DrillPlay(nil), p2.Lines[0].Plays...), Claim: &DrillClaim{Tricks: 10}}}
+	badP2.Lines[0].Plays[0].Alts = []string{"JS", "6S", "5S", "4S"}
+	if _, err := validateDrill(&badP2); err == nil {
+		t.Fatal("a class whose later swap moves a trick winner was accepted")
+	}
+
+	s2, err := newDrillSession(&p2, "alice")
+	if err != nil {
+		t.Fatalf("session 2: %v", err)
+	}
+	s2.applyLocked(DrillPlay{Seat: 1, Card: "5S"}) // swap the lead
+	s2.advanceLocked()                             // S 2S, W QS, N AS; N leads TS
+	if len(s2.Plays) != 5 || s2.nextSeatLocked() != 1 {
+		t.Fatalf("bad position: %d plays, next %d", len(s2.Plays), s2.nextSeatLocked())
+	}
+	// East holds J,6,4,3 of spades now: every remaining class member is
+	// accepted for the scripted 4S; the out-of-class jack is not.
+	for _, c := range []string{"6S", "4S", "3S"} {
+		if !s2.lineAccepts(s2.Live[0], 1, c) {
+			t.Fatalf("%s should still be an acceptable spade", c)
+		}
+	}
+	if s2.lineAccepts(s2.Live[0], 1, "JS") {
+		t.Fatal("the jack was never declared equivalent")
+	}
+	s2.applyLocked(DrillPlay{Seat: 1, Card: "6S"})
+	s2.advanceLocked()
+	if !s2.Done || s2.Result.Tricks != 10 || !s2.Result.Claimed {
+		t.Fatalf("hand should end on the claim: %+v", s2.Result)
+	}
+}
+
+func TestDrillMultipleLines(t *testing.T) {
+	// Line 1: spade lead (West wins the trick). Line 2: club lead, East's ace
+	// wins -- a genuinely different continuation, so two lines are required.
+	p := drillProblem()
+	p.Lines = []DrillLine{
+		{Plays: []DrillPlay{
+			{Seat: 1, Card: "3S", Msg: "attack spades"},
+			{Seat: 2, Card: "2S"}, {Seat: 3, Card: "QS"}, {Seat: 0, Card: "7S"},
+		}, Claim: &DrillClaim{Tricks: 9}},
+		{Plays: []DrillPlay{
+			{Seat: 1, Card: "AC", Msg: "cash the ace"},
+			{Seat: 2, Card: "2C"}, {Seat: 3, Card: "3C"}, {Seat: 0, Card: "8C"},
+		}, Claim: &DrillClaim{Tricks: 11}},
+	}
+	if _, err := validateDrill(&p); err != nil {
+		t.Fatalf("two-line problem rejected: %v", err)
+	}
+	s, err := newDrillSession(&p, "alice")
+	if err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	if len(s.Live) != 2 || s.Problem.Lines[0].Plays[0].Card != "3S" {
+		t.Fatalf("both lines should start alive: %+v", s.Live)
+	}
+	// Neither line's card: refused, hint from the first live line.
+	if s.lineAccepts(s.Live[0], 1, "7H") || s.lineAccepts(s.Live[1], 1, "7H") {
+		t.Fatal("7H must not be accepted by either line")
+	}
+	// The club lead matches line 2 only.
+	if s.lineAccepts(0, 1, "AC") {
+		t.Fatal("line 1 must not accept the club lead")
+	}
+	if !s.lineAccepts(1, 1, "AC") {
+		t.Fatal("line 2 must accept the club lead")
+	}
+	s.Live = []int{1}
+	s.applyLocked(DrillPlay{Seat: 1, Card: "AC"})
+	s.advanceLocked()
+	if !s.Done || s.Result == nil || s.Result.Tricks != 11 || !s.Result.Claimed {
+		t.Fatalf("line 2's claim should decide the result: %+v", s.Result)
+	}
+	// The review follows the applied cards with the FOLLOWED line's message.
+	st := s.stateLocked()
+	line := st["line"].([]map[string]any)
+	if line[0]["card"] != "AC" || line[0]["msg"] != "cash the ace" {
+		t.Fatalf("bad review line: %+v", line[0])
 	}
 }
 
 func TestDrillSessionPlayedOut(t *testing.T) {
 	p := drillProblem()
-	p.Role, p.HeroSeat, p.Claim = "declarer", 0, nil
-	p.Plays = naivePlayLine(drillHands, 1, 'H')
+	p.Role, p.HeroSeat = "declarer", 0
+	p.Lines = []DrillLine{{Plays: naivePlayLine(drillHands, 1, 'H')}}
 	s, err := newDrillSession(&p, "alice")
 	if err != nil {
 		t.Fatalf("session: %v", err)
@@ -233,11 +462,13 @@ func TestDrillSessionPlayedOut(t *testing.T) {
 	}
 	for !s.Done {
 		if s.heroControls(s.nextSeatLocked()) {
-			s.applyLocked(s.Problem.Plays[len(s.Plays)])
+			s.applyLocked(s.Problem.Lines[0].Plays[len(s.Plays)])
 		}
-		s.advanceLocked()
+		if err := s.advanceLocked(); err != nil {
+			t.Fatalf("advance: %v", err)
+		}
 	}
-	if s.Result == nil || s.Result.Claimed {
+	if s.Result == nil || s.Result.Claimed || s.Result.Botted {
 		t.Fatalf("bad result: %+v", s.Result)
 	}
 	if s.Result.Tricks != s.DeclTricks {
@@ -482,13 +713,13 @@ func TestDrillHandlersCRUDAndSession(t *testing.T) {
 
 	// default message fallback for unannotated hero cards
 	def := drillProblem()
-	def.Plays[0].Msg = ""
+	def.Lines[0].Plays[0].Msg = ""
 	s, err := newDrillSession(&def, "alice")
 	if err != nil {
 		t.Fatalf("default-msg session: %v", err)
 	}
 	s.Wrong = 0
-	scripted := s.Problem.Plays[0]
+	scripted := s.Problem.Lines[0].Plays[0]
 	if msg := defaultHeroMsg(scripted.Card); msg != "I just decided to play the 5♠ instead." {
 		t.Fatalf("bad default message: %s", msg)
 	}
@@ -543,5 +774,192 @@ func TestDrillLoadFromDisk(t *testing.T) {
 	loaded := lookupDrill("abc123")
 	if loaded == nil || loaded.Owner != "alice" || loaded.Role != "defense" {
 		t.Fatalf("reload failed: %+v", loaded)
+	}
+}
+
+// ---- Bot-finished lines ----
+
+type fakePlayBot struct {
+	calls int32
+	drops int32
+}
+
+// newFakePlayServer mimics the bidding-dt sidecar's /play/choose with a
+// deterministic legal-card picker (highest card of the led suit, else the
+// first holding) and counts /play/drop calls.
+func newFakePlayServer(t *testing.T) (*httptest.Server, *fakePlayBot) {
+	t.Helper()
+	fb := &fakePlayBot{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/play/choose":
+			atomic.AddInt32(&fb.calls, 1)
+			var body struct {
+				Known map[string]string `json:"known"`
+				Plays [][]any           `json:"plays"`
+				ToAct int               `json:"to_act"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+			played := map[string]bool{}
+			for _, pl := range body.Plays {
+				if len(pl) == 2 {
+					if seat, ok := pl[0].(float64); ok && int(seat) == body.ToAct {
+						if c, ok := pl[1].(string); ok {
+							played[c] = true
+						}
+					}
+				}
+			}
+			var rem []string
+			for _, c := range handCards(body.Known[strconv.Itoa(body.ToAct)]) {
+				if !played[c] {
+					rem = append(rem, c)
+				}
+			}
+			if len(rem) == 0 {
+				http.Error(w, "no cards left", 500)
+				return
+			}
+			card := rem[0]
+			if len(body.Plays)%4 != 0 && len(body.Plays) > 0 {
+				if lead, ok := body.Plays[(len(body.Plays)/4)*4][1].(string); ok && len(lead) == 2 {
+					for _, c := range rem {
+						if cardSuit(c) == cardSuit(lead) {
+							card = c
+							break
+						}
+					}
+				}
+			}
+			writeJSON(w, map[string]any{"seat": body.ToAct, "card": card})
+		case "/play/drop":
+			atomic.AddInt32(&fb.drops, 1)
+			writeJSON(w, map[string]any{})
+		default:
+			http.Error(w, "unexpected path "+r.URL.Path, 404)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, fb
+}
+
+// botProblem scripts one trick (West's queen wins) and hands the rest to the
+// bots, graded against Expect tricks.
+func botProblem(expect int) DrillProblem {
+	p := drillProblem()
+	p.Lines = []DrillLine{{
+		Plays: []DrillPlay{
+			{Seat: 1, Card: "5S", Msg: "the obvious lead"},
+			{Seat: 2, Card: "2S"},
+			{Seat: 3, Card: "QS"},
+			{Seat: 0, Card: "7S"},
+		},
+		Bot: &DrillBotEnd{Expect: expect},
+	}}
+	return p
+}
+
+func TestDrillBotFinish(t *testing.T) {
+	srv, fb := newFakePlayServer(t)
+	oldURL := botURL
+	botURL = srv.URL
+	defer func() { botURL = oldURL }()
+
+	p := botProblem(10)
+	s, err := newDrillSession(&p, "alice")
+	if err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	if s.Bot || len(s.Plays) != 0 || !s.heroControls(s.nextSeatLocked()) {
+		t.Fatalf("session should start at the hero's lead: bot=%v plays=%d", s.Bot, len(s.Plays))
+	}
+	// The hero plays the scripted lead; the remaining scripted cards play
+	// themselves and the bots take over -- one bot card per advance call.
+	s.applyLocked(DrillPlay{Seat: 1, Card: "5S"})
+	if err := s.advanceLocked(); err != nil {
+		t.Fatalf("advance into the bot phase: %v", err)
+	}
+	if !s.Bot || s.Done {
+		t.Fatalf("bots should have taken over: bot=%v done=%v plays=%d", s.Bot, s.Done, len(s.Plays))
+	}
+	if atomic.LoadInt32(&fb.calls) == 0 {
+		t.Fatal("the sidecar was never consulted")
+	}
+	if len(s.Plays) != 5 {
+		t.Fatalf("expected the scripted trick plus exactly ONE bot card, got %d plays", len(s.Plays))
+	}
+	before := len(s.Plays)
+	if err := s.advanceLocked(); err != nil {
+		t.Fatalf("second bot advance: %v", err)
+	}
+	if len(s.Plays) != before+1 {
+		t.Fatalf("bot phase must advance one card per call: %d -> %d", before, len(s.Plays))
+	}
+	// the hero may play ANY legal card from here; drive the hand out
+	for !s.Done {
+		seat := s.nextSeatLocked()
+		if s.heroControls(seat) {
+			legal := s.legalCardsLocked(seat)
+			if len(legal) == 0 {
+				t.Fatal("hero has no legal card")
+			}
+			s.applyLocked(DrillPlay{Seat: seat, Card: legal[len(legal)-1]})
+			if len(s.Plays) == 52 {
+				s.finishBotLocked()
+				break
+			}
+			continue
+		}
+		if err := s.advanceLocked(); err != nil {
+			t.Fatalf("bot advance: %v", err)
+		}
+	}
+	if len(s.Plays) != 52 {
+		t.Fatalf("hand played %d cards", len(s.Plays))
+	}
+	r := s.Result
+	if r == nil || !r.Botted || r.Claimed {
+		t.Fatalf("bad bot result: %+v", r)
+	}
+	if r.Tricks != s.DeclTricks || *r.Expected != 10 || *r.Success != (s.DeclTricks == 10) {
+		t.Fatalf("bad grading: %+v (decl %d)", r, s.DeclTricks)
+	}
+	if atomic.LoadInt32(&fb.drops) == 0 {
+		t.Fatal("the sidecar sessions were never dropped")
+	}
+
+	// the same deterministic bots replayed with the true expectation grade
+	// the hand a success
+	p2 := botProblem(s.DeclTricks)
+	s2, err := newDrillSession(&p2, "alice")
+	if err != nil {
+		t.Fatalf("session 2: %v", err)
+	}
+	s2.applyLocked(DrillPlay{Seat: 1, Card: "5S"})
+	for !s2.Done {
+		seat := s2.nextSeatLocked()
+		if s2.heroControls(seat) {
+			legal := s2.legalCardsLocked(seat)
+			s2.applyLocked(DrillPlay{Seat: seat, Card: legal[len(legal)-1]})
+			if len(s2.Plays) == 52 {
+				s2.finishBotLocked()
+				break
+			}
+			continue
+		}
+		if err := s2.advanceLocked(); err != nil {
+			t.Fatalf("bot advance 2: %v", err)
+		}
+	}
+	if s2.DeclTricks != s.DeclTricks || s2.Result == nil || !*s2.Result.Success {
+		t.Fatalf("replay should succeed deterministically: decl %d vs %d, result %+v", s2.DeclTricks, s.DeclTricks, s2.Result)
+	}
+	// the target is public information in the session state
+	st := s2.stateLocked()
+	if st["bot"] != true || st["expectTricks"] != s.DeclTricks {
+		t.Fatalf("bot phase state wrong: bot=%v expect=%v", st["bot"], st["expectTricks"])
 	}
 }

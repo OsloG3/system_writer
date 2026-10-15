@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,7 @@ import (
 
 const (
 	drillMaxCalls   = 40 // authored auctions are not bound by the model's cap
+	drillMaxLines   = 8  // alternative lines per problem
 	drillSessionTTL = 6 * time.Hour
 )
 
@@ -42,19 +44,43 @@ var (
 	drillSess   = map[string]*DrillSession{}
 )
 
-// DrillPlay is one scripted card. Msg is the author's explanation and is only
-// allowed on the seats the hero controls.
+// DrillPlay is one scripted card. Msg and Alts are only allowed on the seats
+// the hero controls. Alts lists equivalent cards: interchangeable with Card
+// (and with each other) for the rest of the line, as long as swapping them
+// never changes who wins a trick -- validated on save. When the swap WOULD
+// change a trick winner the author must give separate lines instead.
 type DrillPlay struct {
-	Seat int    `json:"seat"`
-	Card string `json:"card"`
-	Msg  string `json:"msg,omitempty"`
+	Seat int      `json:"seat"`
+	Card string   `json:"card"`
+	Msg  string   `json:"msg,omitempty"`
+	Alts []string `json:"alts,omitempty"`
 }
 
-// DrillClaim ends the hand early: the declarer's final trick count. The result
+// DrillClaim ends a line early: the declarer's final trick count. The result
 // is shown as the contract and its margin (e.g. "4S-1") -- no score, no IMPs.
-// nil = all 52 cards are played out.
 type DrillClaim struct {
 	Tricks int `json:"tricks"`
+}
+
+// DrillBotEnd hands the rest of the hand to the card-play bots: from the end
+// of the script the hero may play ANY legal card and every other seat is
+// played by the bidding-dt sidecar. The hand is then graded: the counted
+// result matching Expect tricks is a success, anything else means a mistake
+// was made somewhere during the hand.
+type DrillBotEnd struct {
+	Expect int `json:"expect"` // declarer's expected final trick count
+}
+
+// DrillLine is one full scripted play with its ending. A problem carries one
+// line, or several when a hero choice changes who wins a trick -- each such
+// choice starts its own line and practice follows whichever one matches the
+// cards the hero actually plays.
+type DrillLine struct {
+	Plays []DrillPlay  `json:"plays"`
+	Claim *DrillClaim  `json:"claim,omitempty"` // nil Claim + nil Bot = all 52 played out
+	Bot   *DrillBotEnd `json:"bot,omitempty"`
+
+	classes map[int]map[string]string // seat -> card -> union-find parent (built by validate)
 }
 
 type DrillProblem struct {
@@ -70,10 +96,21 @@ type DrillProblem struct {
 	Calls          []string    `json:"calls"`
 	BidComment     string      `json:"bidComment,omitempty"`
 	ProblemComment string      `json:"problemComment,omitempty"`
-	Plays          []DrillPlay `json:"plays"`
-	Claim          *DrillClaim `json:"claim,omitempty"`
-	Created        string      `json:"created"`
-	Updated        string      `json:"updated"`
+	Lines          []DrillLine `json:"lines"`
+	// Legacy single-line shape (before Lines existed); migrated on load and
+	// on every incoming payload, never written back.
+	Plays   []DrillPlay `json:"plays,omitempty"`
+	Claim   *DrillClaim `json:"claim,omitempty"`
+	Created string      `json:"created"`
+	Updated string      `json:"updated"`
+}
+
+// migrateLines folds the legacy single Plays+Claim shape into Lines.
+func (p *DrillProblem) migrateLines() {
+	if len(p.Lines) == 0 && len(p.Plays) > 0 {
+		p.Lines = []DrillLine{{Plays: p.Plays, Claim: p.Claim}}
+	}
+	p.Plays, p.Claim = nil, nil
 }
 
 type DrillResult struct {
@@ -81,6 +118,9 @@ type DrillResult struct {
 	Tricks   int           `json:"tricks"`
 	Claimed  bool          `json:"claimed"`
 	Wrong    int           `json:"wrong"`
+	Botted   bool          `json:"botted,omitempty"`   // the bots finished the hand
+	Expected *int          `json:"expected,omitempty"` // bot-end target tricks
+	Success  *bool         `json:"success,omitempty"`  // bot-end grade
 }
 
 // DrillSession is one practice run. The problem is snapshotted at the start
@@ -93,7 +133,10 @@ type DrillSession struct {
 	Problem    DrillProblem
 	contract   *PlayContract
 	trump      byte
-	Plays      []DrillPlay // applied prefix of the script
+	Plays      []DrillPlay // applied prefix of the script (hero cards as actually played)
+	Live       []int       // indices of the lines still matching the play so far
+	Bot        bool        // the scripted part is over; bots play every non-hero seat
+	Expect     int         // bot-end target (decl tricks), valid when Bot
 	DeclTricks int
 	Wrong      int
 	Done       bool
@@ -130,6 +173,7 @@ func initDrills() {
 		if !validID(p.ID) {
 			continue
 		}
+		p.migrateLines()
 		drills[p.ID] = &p
 		n++
 	}
@@ -255,12 +299,13 @@ func (p *DrillProblem) heroSeats() []int {
 	return []int{p.HeroSeat}
 }
 
-// simulateDrillPlays walks the scripted play, enforcing turn order, card
-// ownership and follow-suit, and that only hero seats carry messages. It
-// returns the declarer side's tricks won by the end of the line.
-func simulateDrillPlays(p *DrillProblem, contract *PlayContract) (int, error) {
+func seatName(seat int) string { return string("NESW"[seat : seat+1]) }
+
+// simulateLine walks one scripted line, enforcing turn order, card ownership
+// and follow-suit. It returns the winner of every completed trick (in trick
+// order) and the declarer side's trick count.
+func simulateLine(p *DrillProblem, contract *PlayContract, plays []DrillPlay) ([]int, int, error) {
 	dummy := (contract.Declarer + 2) % 4
-	hero := p.heroSeats()
 	remaining := map[int]map[string]bool{}
 	for seat := 0; seat < 4; seat++ {
 		remaining[seat] = map[string]bool{}
@@ -268,29 +313,26 @@ func simulateDrillPlays(p *DrillProblem, contract *PlayContract) (int, error) {
 			remaining[seat][c] = true
 		}
 	}
+	var winners []int
 	declTricks := 0
 	next := (contract.Declarer + 1) % 4
-	for i, dp := range p.Plays {
+	for i, dp := range plays {
 		card := normalizeCard(dp.Card)
 		if card == "" {
-			return 0, fmt.Errorf("play %d: bad card %q", i+1, dp.Card)
+			return nil, 0, fmt.Errorf("play %d: bad card %q", i+1, dp.Card)
 		}
 		if !validSeat(dp.Seat) {
-			return 0, fmt.Errorf("play %d: bad seat", i+1)
+			return nil, 0, fmt.Errorf("play %d: bad seat", i+1)
 		}
 		if dp.Seat != next {
-			return 0, fmt.Errorf("play %d: %s plays out of turn (expected %s)",
-				i+1, "NESW"[dp.Seat:dp.Seat+1], "NESW"[next:next+1])
-		}
-		isHero := slices.Contains(hero, dp.Seat)
-		if strings.TrimSpace(dp.Msg) != "" && !isHero {
-			return 0, fmt.Errorf("play %d: only the hero's cards may carry a message", i+1)
+			return nil, 0, fmt.Errorf("play %d: %s plays out of turn (expected %s)",
+				i+1, seatName(dp.Seat), seatName(next))
 		}
 		if !remaining[dp.Seat][card] {
-			return 0, fmt.Errorf("play %d: %s does not hold %s", i+1, "NESW"[dp.Seat:dp.Seat+1], card)
+			return nil, 0, fmt.Errorf("play %d: %s does not hold %s", i+1, seatName(dp.Seat), card)
 		}
 		if i%4 > 0 {
-			lead := cardSuit(p.Plays[(i/4)*4].Card)
+			lead := cardSuit(plays[(i/4)*4].Card)
 			if cardSuit(card) != lead {
 				hasLead := false
 				for c := range remaining[dp.Seat] {
@@ -300,30 +342,312 @@ func simulateDrillPlays(p *DrillProblem, contract *PlayContract) (int, error) {
 					}
 				}
 				if hasLead {
-					return 0, fmt.Errorf("play %d: %s must follow suit", i+1, "NESW"[dp.Seat:dp.Seat+1])
+					return nil, 0, fmt.Errorf("play %d: %s must follow suit", i+1, seatName(dp.Seat))
 				}
 			}
 		}
 		delete(remaining[dp.Seat], card)
-		p.Plays[i].Card = card
 		if (i+1)%4 == 0 {
 			trick := make([]PlayCard, 4)
 			for j := 0; j < 4; j++ {
-				trick[j] = PlayCard{Seat: p.Plays[i-3+j].Seat, Card: p.Plays[i-3+j].Card}
+				trick[j] = PlayCard{Seat: plays[i-3+j].Seat, Card: plays[i-3+j].Card}
 			}
-			if w := trickWinner(trick, contract.Denom[0]); w == contract.Declarer || w == dummy {
+			w := trickWinner(trick, contract.Denom[0])
+			winners = append(winners, w)
+			if w == contract.Declarer || w == dummy {
 				declTricks++
 			}
-			next = trickWinner(trick, contract.Denom[0])
+			next = w
 		} else {
 			next = (dp.Seat + 1) % 4
+		}
+	}
+	return winners, declTricks, nil
+}
+
+// buildClasses unions each hero play's card with its declared alternatives,
+// per seat. Two plays sharing a card merge their classes, so declaring the
+// alternatives once anywhere in the line covers the whole line: after the
+// hero swaps within a class, every later class member they still hold stays
+// acceptable.
+func (l *DrillLine) buildClasses(hero []int) {
+	parent := map[int]map[string]string{}
+	find := func(seat int, c string) string {
+		m := parent[seat]
+		if m == nil {
+			m = map[string]string{}
+			parent[seat] = m
+		}
+		if _, ok := m[c]; !ok {
+			m[c] = c
+		}
+		for m[c] != c {
+			c = m[c]
+		}
+		return c
+	}
+	for _, dp := range l.Plays {
+		if !slices.Contains(hero, dp.Seat) || len(dp.Alts) == 0 {
+			continue
+		}
+		root := find(dp.Seat, dp.Card)
+		for _, a := range dp.Alts {
+			ra := find(dp.Seat, a)
+			if ra != root {
+				parent[dp.Seat][ra] = root
+			}
+		}
+	}
+	l.classes = parent
+}
+
+// classRoot returns the equivalence-class representative of a card for a
+// seat; a card in no declared class is its own root.
+func (l *DrillLine) classRoot(seat int, card string) string {
+	m := l.classes[seat]
+	c := card
+	if _, ok := m[c]; !ok {
+		return card
+	}
+	for m[c] != c {
+		c = m[c]
+	}
+	return c
+}
+
+// classMembers lists every card equivalent to `card` for `seat` (including
+// the card itself), sorted; a card in no class returns just itself.
+func (l *DrillLine) classMembers(seat int, card string) []string {
+	if l.classes == nil || l.classes[seat] == nil {
+		return []string{card}
+	}
+	root := l.classRoot(seat, card)
+	var out []string
+	for c := range l.classes[seat] {
+		if l.classRoot(seat, c) == root {
+			out = append(out, c)
+		}
+	}
+	if out == nil {
+		out = []string{card}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// validateEquivalence checks every declared equivalence class really is
+// interchangeable: ANY assignment of the class members to the line's scripted
+// plays of that class (the hero may swap once and keep swapping later) must
+// stay legal and leave EVERY trick winner unchanged. A class whose members
+// can move a trick winner means the choice matters -- the author has to give
+// separate lines for it instead.
+func validateEquivalence(p *DrillProblem, contract *PlayContract, l *DrillLine, baseWinners []int) error {
+	hero := p.heroSeats()
+	type classKey struct {
+		seat int
+		root string
+	}
+	checked := map[classKey]bool{}
+	for _, dp := range l.Plays {
+		if !slices.Contains(hero, dp.Seat) {
+			continue
+		}
+		k := classKey{dp.Seat, l.classRoot(dp.Seat, dp.Card)}
+		if checked[k] {
+			continue
+		}
+		members := l.classMembers(dp.Seat, dp.Card)
+		if len(members) < 2 {
+			continue // no equivalence declared for this card
+		}
+		checked[k] = true
+		var positions []int
+		for j, q := range l.Plays {
+			if q.Seat == dp.Seat && l.classRoot(dp.Seat, q.Card) == k.root {
+				positions = append(positions, j)
+			}
+		}
+		if err := validateClassAssignments(p, contract, l, baseWinners, positions, members); err != nil {
+			return fmt.Errorf("%s's equivalent cards (%s) are not interchangeable: %v -- give separate lines for that choice",
+				seatName(dp.Seat), strings.Join(cardNames(members), ", "), err)
+		}
+	}
+	return nil
+}
+
+func cardNames(cards []string) []string {
+	out := make([]string, len(cards))
+	for i, c := range cards {
+		out[i] = drillCardName(c)
+	}
+	return out
+}
+
+// validateClassAssignments tries every injective assignment of class members
+// onto the class's scripted positions and re-simulates the line, requiring
+// identical trick winners. Bounded: an impractically large class is rejected
+// rather than exploded.
+func validateClassAssignments(p *DrillProblem, contract *PlayContract, l *DrillLine, baseWinners []int, positions []int, members []string) error {
+	perms := 1
+	for k := 0; k < len(positions); k++ {
+		if len(members)-k <= 0 {
+			break
+		}
+		perms *= len(members) - k
+		if perms > 5000 {
+			return errors.New("the group is too large to verify -- narrow the alternatives")
+		}
+	}
+	used := make([]bool, len(members))
+	pick := make([]string, len(positions))
+	var rec func(k int) error
+	rec = func(k int) error {
+		if k == len(positions) {
+			swapped := make([]DrillPlay, len(l.Plays))
+			copy(swapped, l.Plays)
+			for idx, pos := range positions {
+				swapped[pos].Card = pick[idx]
+			}
+			winners, _, err := simulateLine(p, contract, swapped)
+			if err != nil {
+				return err
+			}
+			for t, w := range winners {
+				if t < len(baseWinners) && w != baseWinners[t] {
+					return fmt.Errorf("the winner of trick %d would change", t+1)
+				}
+			}
+			return nil
+		}
+		for mi, m := range members {
+			if used[mi] {
+				continue
+			}
+			used[mi] = true
+			pick[k] = m
+			if err := rec(k + 1); err != nil {
+				used[mi] = false
+				return err
+			}
+			used[mi] = false
+		}
+		return nil
+	}
+	return rec(0)
+}
+
+// validateLine checks one line: its plays, the declared equivalences and its
+// ending (played out / claim / bots). Returns the declarer tricks the script
+// itself won.
+func validateLine(p *DrillProblem, contract *PlayContract, l *DrillLine, idx int) (int, error) {
+	hero := p.heroSeats()
+	if len(l.Plays) == 0 && l.Bot == nil {
+		return 0, fmt.Errorf("line %d: record the card play first", idx+1)
+	}
+	if len(l.Plays) > 52 {
+		return 0, fmt.Errorf("line %d: a line cannot have more than 52 plays", idx+1)
+	}
+	held := [4][]string{}
+	for seat := 0; seat < 4; seat++ {
+		held[seat] = handCards(p.Hands[seat])
+	}
+	for i := range l.Plays {
+		dp := &l.Plays[i]
+		if c := normalizeCard(dp.Card); c != "" {
+			dp.Card = c
+		}
+		isHero := slices.Contains(hero, dp.Seat)
+		if strings.TrimSpace(dp.Msg) != "" && !isHero {
+			return 0, fmt.Errorf("line %d play %d: only the hero's cards may carry a message", idx+1, i+1)
+		}
+		for j, a := range dp.Alts {
+			an := normalizeCard(a)
+			if an == "" {
+				return 0, fmt.Errorf("line %d play %d: bad alternative card %q", idx+1, i+1, a)
+			}
+			dp.Alts[j] = an
+			switch {
+			case !isHero:
+				return 0, fmt.Errorf("line %d play %d: only the hero's cards may have alternatives", idx+1, i+1)
+			case an == dp.Card:
+				return 0, fmt.Errorf("line %d play %d: %s is the played card itself", idx+1, i+1, an)
+			case slices.Contains(dp.Alts[:j], an):
+				return 0, fmt.Errorf("line %d play %d: duplicate alternative %s", idx+1, i+1, an)
+			case !validSeat(dp.Seat) || !slices.Contains(held[dp.Seat], an):
+				return 0, fmt.Errorf("line %d play %d: %s does not hold %s", idx+1, i+1, seatName(dp.Seat), an)
+			}
+		}
+		if len(dp.Alts) == 0 {
+			dp.Alts = nil
+		}
+	}
+	winners, declTricks, err := simulateLine(p, contract, l.Plays)
+	if err != nil {
+		return 0, fmt.Errorf("line %d: %v", idx+1, err)
+	}
+	l.buildClasses(hero)
+	if err := validateEquivalence(p, contract, l, winners); err != nil {
+		return 0, fmt.Errorf("line %d: %v", idx+1, err)
+	}
+	switch {
+	case l.Claim != nil && l.Bot != nil:
+		return 0, fmt.Errorf("line %d: a line ends with a claim OR with the bots, not both", idx+1)
+	case l.Claim != nil:
+		if len(l.Plays)%4 != 0 || len(l.Plays) < 4 {
+			return 0, fmt.Errorf("line %d: a claim must come at the end of a complete trick", idx+1)
+		}
+		remaining := (52 - len(l.Plays)) / 4
+		if l.Claim.Tricks < declTricks || l.Claim.Tricks > declTricks+remaining {
+			return 0, fmt.Errorf("line %d: the claimed %d tricks are impossible (%d already won, %d still to play)",
+				idx+1, l.Claim.Tricks, declTricks, remaining)
+		}
+	case l.Bot != nil:
+		if len(l.Plays) >= 52 {
+			return 0, fmt.Errorf("line %d: there is nothing left for the bots to play", idx+1)
+		}
+		remaining := (52 - len(l.Plays) + 3) / 4
+		if l.Bot.Expect < 0 || l.Bot.Expect > 13 || l.Bot.Expect < declTricks || l.Bot.Expect > declTricks+remaining {
+			return 0, fmt.Errorf("line %d: expecting %d tricks is impossible (%d already won, at most %d more can be played)",
+				idx+1, l.Bot.Expect, declTricks, remaining)
+		}
+	default:
+		if len(l.Plays) != 52 {
+			return 0, fmt.Errorf("line %d: the play must cover all 52 cards, or end with a claim or with the bots", idx+1)
 		}
 	}
 	return declTricks, nil
 }
 
+// validateLineDivergence keeps two lines unambiguous: while both are still
+// in play they must agree on every auto-seat card, and they must part ways
+// on a genuinely different hero card (not two interchangeable ones -- those
+// belong in one line as alternatives).
+func validateLineDivergence(p *DrillProblem, l1, l2 *DrillLine, i, j int) error {
+	hero := p.heroSeats()
+	n := min(len(l1.Plays), len(l2.Plays))
+	for k := 0; k < n; k++ {
+		a, b := l1.Plays[k], l2.Plays[k]
+		if a.Seat != b.Seat {
+			return fmt.Errorf("lines %d and %d: the turn order differs at play %d before any hero choice -- the seats must match until the hero's cards do", i+1, j+1, k+1)
+		}
+		if a.Card == b.Card && slices.Equal(l1.classMembers(a.Seat, a.Card), l2.classMembers(b.Seat, b.Card)) {
+			continue
+		}
+		if !slices.Contains(hero, a.Seat) {
+			return fmt.Errorf("lines %d and %d: they differ at play %d on %s's card, but only the hero's choices may branch a line", i+1, j+1, k+1, seatName(a.Seat))
+		}
+		if l1.classRoot(a.Seat, a.Card) == l1.classRoot(a.Seat, b.Card) ||
+			l2.classRoot(a.Seat, a.Card) == l2.classRoot(a.Seat, b.Card) {
+			return fmt.Errorf("lines %d and %d: %s and %s at play %d are interchangeable -- keep one line and mark them as alternatives instead",
+				i+1, j+1, drillCardName(a.Card), drillCardName(b.Card), k+1)
+		}
+		return nil // a real divergence: from here the lines may differ freely
+	}
+	return fmt.Errorf("lines %d and %d never diverge on a hero card -- merge them, or extend the shorter one", i+1, j+1)
+}
+
 // validateDrill checks a problem as authored: the deal, the auction, the hero
-// setup and the whole scripted play, including the claim bounds.
+// setup and every line of the scripted play with its ending.
 func validateDrill(p *DrillProblem) (*PlayContract, error) {
 	if p.Role != "declarer" && p.Role != "defense" {
 		return nil, errors.New(`role must be "declarer" or "defense"`)
@@ -356,25 +680,23 @@ func validateDrill(p *DrillProblem) (*PlayContract, error) {
 	} else if !slices.Contains(defenders, p.HeroSeat) {
 		return nil, errors.New("a defense problem's hero must be one of the defenders")
 	}
-	if len(p.Plays) == 0 {
+	p.migrateLines()
+	if len(p.Lines) == 0 {
 		return nil, errors.New("record the card play first")
 	}
-	declTricks, err := simulateDrillPlays(p, contract)
-	if err != nil {
-		return nil, err
+	if len(p.Lines) > drillMaxLines {
+		return nil, fmt.Errorf("a problem may have at most %d lines", drillMaxLines)
 	}
-	if p.Claim == nil {
-		if len(p.Plays) != 52 {
-			return nil, errors.New("the play must cover all 52 cards, or end with a claim")
+	for i := range p.Lines {
+		if _, err := validateLine(p, contract, &p.Lines[i], i); err != nil {
+			return nil, err
 		}
-	} else {
-		if len(p.Plays)%4 != 0 || len(p.Plays) < 4 {
-			return nil, errors.New("a claim must come at the end of a complete trick")
-		}
-		remaining := (52 - len(p.Plays)) / 4
-		if p.Claim.Tricks < declTricks || p.Claim.Tricks > declTricks+remaining {
-			return nil, fmt.Errorf("the claimed %d tricks are impossible (%d already won, %d still to play)",
-				p.Claim.Tricks, declTricks, remaining)
+	}
+	for i := 0; i < len(p.Lines); i++ {
+		for j := i + 1; j < len(p.Lines); j++ {
+			if err := validateLineDivergence(p, &p.Lines[i], &p.Lines[j], i, j); err != nil {
+				return nil, err
+			}
 		}
 	}
 	p.Title = strings.TrimSpace(p.Title)
@@ -473,48 +795,177 @@ func (s *DrillSession) applyLocked(dp DrillPlay) {
 			s.DeclTricks++
 		}
 	}
-	if len(s.Plays) == len(s.Problem.Plays) {
-		s.finishLocked()
-	}
 }
 
-func (s *DrillSession) finishLocked() {
-	if s.Done {
-		return
+// liveLine returns the line the session currently follows (the first one
+// still alive). While several are alive they all prescribe the same card for
+// every auto seat -- lines may only diverge on a hero choice.
+func (s *DrillSession) liveLine() *DrillLine {
+	return &s.Problem.Lines[s.Live[0]]
+}
+
+// lineAccepts reports whether `line` takes `card` from the hero at the
+// current position: the scripted card itself, or an equivalent one (same
+// union-find class -- the hero holds it, since legality was checked first).
+func (s *DrillSession) lineAccepts(line int, seat int, card string) bool {
+	l := &s.Problem.Lines[line]
+	n := len(s.Plays)
+	if n >= len(l.Plays) || l.Plays[n].Seat != seat {
+		return false
 	}
+	dp := l.Plays[n]
+	if dp.Card == card {
+		return true
+	}
+	return l.classRoot(seat, card) == l.classRoot(seat, dp.Card)
+}
+
+func (s *DrillSession) finishClaimLocked(tricks int) {
 	s.Done = true
-	if c := s.Problem.Claim; c != nil {
-		s.Result = &DrillResult{
-			Contract: s.contract, Tricks: c.Tricks,
-			Claimed: true, Wrong: s.Wrong,
-		}
-		return
-	}
 	s.Result = &DrillResult{
-		Contract: s.contract, Tricks: s.DeclTricks,
-		Wrong: s.Wrong,
+		Contract: s.contract, Tricks: tricks,
+		Claimed: true, Wrong: s.Wrong,
 	}
 }
 
-// advanceLocked plays every scripted card until it is the hero's turn again
-// or the hand ends. No simulation anywhere: the author's line is the truth.
-func (s *DrillSession) advanceLocked() {
-	for !s.Done && len(s.Plays) < len(s.Problem.Plays) {
+func (s *DrillSession) finishCountedLocked() {
+	s.Done = true
+	s.Result = &DrillResult{Contract: s.contract, Tricks: s.DeclTricks, Wrong: s.Wrong}
+}
+
+// finishBotLocked grades a hand the bots finished: matching the author's
+// expected trick count is a success; anything else means a mistake was made
+// somewhere during the hand.
+func (s *DrillSession) finishBotLocked() {
+	s.Done = true
+	exp := s.Expect
+	succ := s.DeclTricks == exp
+	s.Result = &DrillResult{
+		Contract: s.contract, Tricks: s.DeclTricks, Wrong: s.Wrong,
+		Botted: true, Expected: &exp, Success: &succ,
+	}
+	s.dropBotSessionsLocked()
+}
+
+// dropBotSessionsLocked tells the sidecar to forget this session's bot
+// card-play sessions.
+func (s *DrillSession) dropBotSessionsLocked() {
+	var out struct{}
+	_ = botPost("/play/drop", map[string]any{"prefix": s.ID + ":"}, &out, botTimeout)
+}
+
+// endScriptLocked applies the ending of the line the script ran out on.
+func (s *DrillSession) endScriptLocked() {
+	l := s.liveLine()
+	switch {
+	case l.Bot != nil:
+		s.Bot = true
+		s.Expect = l.Bot.Expect
+	case l.Claim != nil:
+		s.finishClaimLocked(l.Claim.Tricks)
+	default:
+		s.finishCountedLocked() // all 52 scripted cards were played
+	}
+}
+
+// advanceLocked runs the session until the hero must act or the hand ends.
+// During the scripted phase every non-hero seat plays the author's card
+// instantly. Once the bots take over, exactly ONE bot card is played per
+// call -- the sidecar's double-dummy choice is slow, so the client paces the
+// bot cards one per request, like the play-a-hand table does.
+func (s *DrillSession) advanceLocked() error {
+	if s.Done {
+		return nil
+	}
+	for !s.Bot {
+		n := len(s.Plays)
+		var active []int
+		for _, li := range s.Live {
+			if n < len(s.Problem.Lines[li].Plays) {
+				active = append(active, li)
+			}
+		}
+		if len(active) == 0 {
+			s.endScriptLocked()
+			break
+		}
+		s.Live = active
 		seat := s.nextSeatLocked()
 		if s.heroControls(seat) {
-			return
+			return nil // wait for the hero
 		}
-		s.applyLocked(s.Problem.Plays[len(s.Plays)])
+		s.applyLocked(DrillPlay{Seat: seat, Card: s.Problem.Lines[active[0]].Plays[n].Card})
 	}
-	if len(s.Plays) == len(s.Problem.Plays) {
-		s.finishLocked()
+	if s.Done || !s.Bot || len(s.Plays) == 52 {
+		if s.Bot && len(s.Plays) == 52 {
+			s.finishBotLocked()
+		}
+		return nil
 	}
+	seat := s.nextSeatLocked()
+	if s.heroControls(seat) {
+		return nil // the hero plays any legal card in the bot phase
+	}
+	card, err := s.botChooseLocked(seat)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(s.legalCardsLocked(seat), card) {
+		return errors.New("sidecar returned an illegal card")
+	}
+	s.applyLocked(DrillPlay{Seat: seat, Card: card})
+	if len(s.Plays) == 52 {
+		s.finishBotLocked()
+	}
+	return nil
+}
+
+// botChooseLocked asks the sidecar for the card a bot seat should play, with
+// the same request shape as the play-a-hand table (see play.go botChoose).
+func (s *DrillSession) botChooseLocked(seat int) (string, error) {
+	p := &s.Problem
+	dummy := (s.contract.Declarer + 2) % 4
+	var session string
+	known := map[string]string{strconv.Itoa(dummy): p.Hands[dummy]}
+	if seat == s.contract.Declarer || seat == dummy {
+		session = s.ID + ":decl"
+		known[strconv.Itoa(s.contract.Declarer)] = p.Hands[s.contract.Declarer]
+	} else {
+		session = s.ID + ":def" + strconv.Itoa(seat)
+		known[strconv.Itoa(seat)] = p.Hands[seat]
+	}
+	plays := make([][2]any, 0, len(s.Plays))
+	for _, dp := range s.Plays {
+		plays = append(plays, [2]any{dp.Seat, dp.Card})
+	}
+	body := map[string]any{
+		"session": session,
+		"dealer":  p.Dealer,
+		"vuln":    p.Vuln,
+		"calls":   callsOrEmpty(p.Calls),
+		"known":   known,
+		"plays":   plays,
+		"to_act":  seat,
+	}
+	var out struct {
+		Seat int    `json:"seat"`
+		Card string `json:"card"`
+	}
+	if err := botPost("/play/choose", body, &out, botPlayTimeout); err != nil {
+		return "", err
+	}
+	card := normalizeCard(out.Card)
+	if card == "" {
+		return "", errors.New("sidecar returned an invalid card")
+	}
+	return card, nil
 }
 
 // stateLocked renders the client-visible session. During the play the hero
 // sees their own hand only (plus the dummy once tabled); the script's
 // messages stay hidden until the hand is over, except for the hint returned
-// with a wrong pick.
+// with a wrong pick. A bot-finished problem's target trick count is public
+// (it is the exercise's goal); a claim's trick count stays hidden until done.
 func (s *DrillSession) stateLocked() map[string]any {
 	p := &s.Problem
 	st := map[string]any{
@@ -538,9 +989,16 @@ func (s *DrillSession) stateLocked() map[string]any {
 		"trump":          string(s.trump),
 		"hand":           p.Hands[p.HeroSeat],
 		"heroSeats":      p.heroSeats(),
-		"claimed":        p.Claim != nil,
+		"lines":          len(p.Lines),
+		"bot":            s.Bot,
 		"wrong":          s.Wrong,
 		"done":           s.Done,
+	}
+	if len(p.Lines) == 1 && p.Lines[0].Bot != nil {
+		st["expectTricks"] = p.Lines[0].Bot.Expect
+	}
+	if s.Bot {
+		st["expectTricks"] = s.Expect
 	}
 	plays := make([]map[string]any, 0, len(s.Plays))
 	for _, dp := range s.Plays {
@@ -554,11 +1012,10 @@ func (s *DrillSession) stateLocked() map[string]any {
 	if len(s.Plays) > 0 {
 		dummyHand = p.Hands[(s.contract.Declarer+2)%4]
 	}
-	declTricks := s.DeclTricks
-	done := len(s.Plays) / 4
+	tricksDone := len(s.Plays) / 4
 	st["plays"] = plays
-	st["declTricks"] = declTricks
-	st["defTricks"] = done - declTricks
+	st["declTricks"] = s.DeclTricks
+	st["defTricks"] = tricksDone - s.DeclTricks
 	st["counts"] = counts
 	st["dummyHand"] = dummyHand
 	if s.Done {
@@ -567,19 +1024,27 @@ func (s *DrillSession) stateLocked() map[string]any {
 		st["nextSeat"] = -1
 		st["hands"] = p.Hands
 		st["result"] = s.Result
-		line := make([]map[string]any, 0, len(p.Plays))
-		for _, dp := range p.Plays {
+		// The review follows what ACTUALLY happened: the applied plays, with
+		// the followed line's messages and equivalents on the scripted hero
+		// cards (the bot-phase tail has no script).
+		l := s.liveLine()
+		line := make([]map[string]any, 0, len(s.Plays))
+		for i, dp := range s.Plays {
 			m := map[string]any{"seat": dp.Seat, "card": dp.Card}
-			if s.heroControls(dp.Seat) {
-				msg := strings.TrimSpace(dp.Msg)
+			if i < len(l.Plays) && s.heroControls(dp.Seat) {
+				msg := strings.TrimSpace(l.Plays[i].Msg)
 				if msg == "" {
 					msg = defaultHeroMsg(dp.Card)
 				}
 				m["msg"] = msg
+				if alt := l.Plays[i].Alts; len(alt) > 0 {
+					m["alts"] = alt
+				}
 			}
 			line = append(line, m)
 		}
 		st["line"] = line
+		st["scriptLen"] = len(l.Plays)
 		return st
 	}
 	st["phase"] = "play"
@@ -612,18 +1077,56 @@ func gcDrillSessionsLocked() {
 	}
 }
 
+// errDrillBots marks a failure of the bot sidecar (502), as opposed to a
+// problem-validation failure (400).
+var errDrillBots = errors.New("bot service")
+
+// deepCopy duplicates everything mutable so a session fully owns its
+// snapshot; validation rebuilds the equivalence classes on the copy.
+func (p *DrillProblem) deepCopy() DrillProblem {
+	q := *p
+	q.Calls = append([]string(nil), p.Calls...)
+	q.Lines = make([]DrillLine, len(p.Lines))
+	for i, l := range p.Lines {
+		q.Lines[i].Plays = make([]DrillPlay, len(l.Plays))
+		copy(q.Lines[i].Plays, l.Plays)
+		for j := range q.Lines[i].Plays {
+			if l.Plays[j].Alts != nil {
+				q.Lines[i].Plays[j].Alts = append([]string(nil), l.Plays[j].Alts...)
+			}
+		}
+		if l.Claim != nil {
+			c := *l.Claim
+			q.Lines[i].Claim = &c
+		}
+		if l.Bot != nil {
+			b := *l.Bot
+			q.Lines[i].Bot = &b
+		}
+	}
+	return q
+}
+
 // newDrillSession snapshots a problem and runs the script up to the hero's
-// first turn.
+// first turn (which, for a bot line with no script left, may already mean a
+// first sidecar call).
 func newDrillSession(p *DrillProblem, username string) (*DrillSession, error) {
-	contract, err := validateDrill(p)
+	snapshot := p.deepCopy()
+	contract, err := validateDrill(&snapshot)
 	if err != nil {
 		return nil, err
 	}
 	s := &DrillSession{
-		ID: generateID(), User: username, Problem: *p,
+		ID: generateID(), User: username, Problem: snapshot,
 		contract: contract, trump: contract.Denom[0], Created: time.Now(),
 	}
-	s.advanceLocked()
+	s.Live = make([]int, len(snapshot.Lines))
+	for i := range s.Live {
+		s.Live[i] = i
+	}
+	if err := s.advanceLocked(); err != nil {
+		return nil, fmt.Errorf("%w: %v", errDrillBots, err)
+	}
 	return s, nil
 }
 
@@ -647,6 +1150,8 @@ func handleDrillsList(w http.ResponseWriter, r *http.Request) {
 		Vuln       int    `json:"vuln"`
 		Contract   string `json:"contract"`
 		Claimed    bool   `json:"claimed"`
+		Bot        bool   `json:"bot"`
+		Lines      int    `json:"lines"`
 		Created    string `json:"created"`
 		Updated    string `json:"updated"`
 	}
@@ -656,11 +1161,20 @@ func handleDrillsList(w http.ResponseWriter, r *http.Request) {
 		if c := contractFromCalls(p.Dealer, p.Calls); c != nil {
 			label = c.String()
 		}
+		claimed, bot := false, false
+		for _, l := range p.Lines {
+			if l.Claim != nil {
+				claimed = true
+			}
+			if l.Bot != nil {
+				bot = true
+			}
+		}
 		list = append(list, info{
 			ID: p.ID, Owner: p.Owner, Title: p.Title, Role: p.Role,
 			HeroSeat: p.HeroSeat, Difficulty: p.Difficulty, Dealer: p.Dealer,
-			Vuln: p.Vuln, Contract: label, Claimed: p.Claim != nil,
-			Created: p.Created, Updated: p.Updated,
+			Vuln: p.Vuln, Contract: label, Claimed: claimed, Bot: bot,
+			Lines: len(p.Lines), Created: p.Created, Updated: p.Updated,
 		})
 	}
 	drillsMu.Unlock()
@@ -824,11 +1338,15 @@ func handleDrillSessionNew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	drillsMu.Lock()
-	snapshot := *p
+	snapshot := p.deepCopy()
 	drillsMu.Unlock()
 	s, err := newDrillSession(&snapshot, username)
 	if err != nil {
-		jsonError(w, http.StatusBadRequest, err.Error())
+		if errors.Is(err, errDrillBots) {
+			jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
+		} else {
+			jsonError(w, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
 	drillSessMu.Lock()
@@ -841,7 +1359,9 @@ func handleDrillSessionNew(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, st)
 }
 
-// GET /api/drill/session/{sid} - resume a practice session.
+// GET /api/drill/session/{sid} - resume a practice session, and in the bot
+// phase fetch the next single bot card (one per request, so the client can
+// pace the reveals like at the play-a-hand table).
 func handleDrillSessionGet(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
 	if username == "" {
@@ -858,14 +1378,21 @@ func handleDrillSessionGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	st := s.stateLocked()
-	s.mu.Unlock()
-	writeJSON(w, st)
+	defer s.mu.Unlock()
+	if !s.Done && !s.heroControls(s.nextSeatLocked()) {
+		if err := s.advanceLocked(); err != nil {
+			jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
+			return
+		}
+	}
+	writeJSON(w, s.stateLocked())
 }
 
-// POST /api/drill/session/{sid}/card - the hero's pick. Only the authored
-// card is accepted; anything else answers 409 with the author's message for
-// the correct card and plays nothing.
+// POST /api/drill/session/{sid}/card - the hero's pick. While the script is
+// in charge only the authored card (or one of its declared equivalents) is
+// accepted; anything else answers 409 with the author's message for the
+// correct card and plays nothing. Once the bots finish the hand, ANY legal
+// card is accepted and the result is graded at the end.
 func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
 	if username == "" {
@@ -902,8 +1429,11 @@ func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 	}
 	seat := s.nextSeatLocked()
 	if !s.heroControls(seat) {
-		// a scripted seat should never be waiting; recover anyway
-		s.advanceLocked()
+		// a bot turn that stalled on a sidecar failure: advance one card
+		if err := s.advanceLocked(); err != nil {
+			jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
+			return
+		}
 		writeJSON(w, s.stateLocked())
 		return
 	}
@@ -911,9 +1441,27 @@ func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusBadRequest, "illegal card: "+card)
 		return
 	}
-	scripted := s.Problem.Plays[len(s.Plays)]
-	if scripted.Card != card {
+	if s.Bot {
+		// the bots finish the hand: the hero may play anything legal
+		s.applyLocked(DrillPlay{Seat: seat, Card: card})
+		if len(s.Plays) == 52 {
+			s.finishBotLocked()
+		} else if err := s.advanceLocked(); err != nil {
+			// the hero's card stands; the client's polling GET retries the bot
+			log.Printf("drill session %s: bot advance: %v", s.ID, err)
+		}
+		writeJSON(w, s.stateLocked())
+		return
+	}
+	var matched []int
+	for _, li := range s.Live {
+		if s.lineAccepts(li, seat, card) {
+			matched = append(matched, li)
+		}
+	}
+	if len(matched) == 0 {
 		s.Wrong++
+		scripted := s.liveLine().Plays[len(s.Plays)]
 		msg := strings.TrimSpace(scripted.Msg)
 		if msg == "" {
 			msg = defaultHeroMsg(scripted.Card)
@@ -927,10 +1475,12 @@ func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	s.applyLocked(scripted)
-	s.advanceLocked()
-	st := s.stateLocked()
-	writeJSON(w, st)
+	s.Live = matched
+	s.applyLocked(DrillPlay{Seat: seat, Card: card})
+	if err := s.advanceLocked(); err != nil {
+		log.Printf("drill session %s: bot advance: %v", s.ID, err)
+	}
+	writeJSON(w, s.stateLocked())
 }
 
 // DELETE /api/drill/session/{sid} - abandon a practice session.

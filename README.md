@@ -40,10 +40,11 @@ board keeps that mode for its whole life.
 ## Card problems (`/drills`)
 
 Author fully-scripted **card-play problems** and practise the community library.
-This section is self-contained: it never calls the bidding-dt sidecar — every
-rule (auction legality, follow-suit, trick winners, claim bounds) is checked
-locally in `drills.go`, and problems persist to `data/drills/<id>.json`. Two
-tabs:
+Every rule (auction legality, follow-suit, trick winners, claim bounds,
+equivalent-card soundness) is checked locally in `drills.go`, and problems
+persist to `data/drills/<id>.json`. Only the optional **bots-finish** ending
+calls the bidding-dt sidecar (`BIDDING_DT_URL`), reusing the same `/play/choose`
+card-play bot as Play bridge. Two tabs:
 
 - **Create** — build a problem in a five-step wizard: setup (optional title,
   difficulty 1–5 ★, dealer, vulnerability, and whether it tests **Declarer** or
@@ -55,21 +56,41 @@ tabs:
   chosen defender) asks for the author's reasoning, pre-filled with
   *"I just decided to play the [card] instead."* Every comment and reasoning box
   expands the suit shorthand `!s !h !d !c` into ♠ ♥ ♦ ♣ live, exactly like the
-  system collections. End the hand by playing all 52 cards or by **claiming** at
-  a trick boundary — a claim just records the declarer's total tricks, and the
-  result is shown as the contract and its margin (e.g. **4♠−1**, **3NT=**,
-  **4♥+2**). Authors can edit or delete their own problems.
+  system collections.
+  - **Equivalent cards** — while scripting a hero card the author may tick any
+    of that seat's remaining cards as *also correct*. They stay interchangeable
+    for the **whole line**: after the hero swaps one, every equivalent they
+    still hold is accepted at each later play of that group. The server proves
+    this safe by re-simulating the line under every reordering of the group and
+    rejecting it if any trick's winner could move (e.g. cashing a honour that
+    was ducked before) — such a choice is not an equivalence.
+  - **Multiple lines** — when a hero choice genuinely changes who wins a trick
+    (so the play must differ afterwards), the author records separate lines:
+    **Branch here** forks the script at the current point and each line then
+    runs its own way. Lines may only diverge on a hero card (never on an
+    auto-played seat, never on two interchangeable cards), and practice follows
+    whichever line matches the cards the hero actually plays.
+  - **Endings** — a line ends by playing all 52 cards, by **claiming** at a
+    trick boundary (just the declarer's total tricks), or by letting the **bots
+    finish**: from the end of the script the hero may play *any* legal card and
+    every other seat is played by the card-play bot, one slow card per request
+    (paced like the play-a-hand table). The result is always shown as the
+    contract and its margin (e.g. **4♠−1**, **3NT=**, **4♥+2**) — no score, no
+    IMPs, no par. Authors can edit or delete their own problems.
 - **Practice** — filter the library of everyone's problems by role, author and
-  difficulty, then play one. The bidding is shown up front with the problem
-  comment, then the hand runs like a play-a-hand table (hero rotated to the
-  bottom, dummy tabled after the opening lead). Non-hero seats play themselves
-  from the author's script. If the hero picks a card **other** than the authored
-  one, it is **not** played: the server answers `409` with the author's message
-  for the correct card (a wrong pick is counted) and the hero chooses again.
-  Messages stay hidden while you play correctly and are all revealed in the
-  end-of-hand review. The result is the contract and its margin (e.g. **4♠−1**)
-  — **no score, no IMPs, no par** — so drills never touch the rankings or
-  `play_stats.json`.
+  difficulty, then play one (each row shows its ending: play-out / claim / bots,
+  and how many lines). The bidding is shown up front with the problem comment
+  (and, for a bot-ended problem, the **target** result to reach), then the hand
+  runs like a play-a-hand table (hero rotated to the bottom, dummy tabled after
+  the opening lead). Non-hero seats play themselves from the author's script.
+  If the hero picks a card that is neither the authored one nor one of its
+  declared equivalents, it is **not** played: the server answers `409` with the
+  author's message for the correct card (a wrong pick is counted) and the hero
+  chooses again. Messages stay hidden while you play correctly and are all
+  revealed in the end-of-hand review. In the bot phase every legal card is
+  accepted and the hand is **graded**: finishing at the target result is a
+  success, anything else means a mistake was made somewhere during the hand.
+  Drills never touch the rankings or `play_stats.json`.
 
 Practice runs are in-memory sessions (`DrillSession`, 6 h TTL, one per user, the
 problem snapshotted at the start so an edit cannot desync a run in flight); the
