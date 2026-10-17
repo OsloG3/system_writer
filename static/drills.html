@@ -1442,13 +1442,22 @@
             }
             .dr-row {
                 display: flex;
+                flex-wrap: wrap;
                 align-items: center;
-                gap: 0.6rem;
+                gap: 0.15rem 0.6rem;
                 padding: 0.6rem 0.2rem;
                 border-bottom: 1px solid rgba(255, 255, 255, 0.05);
             }
             .dr-row:last-child { border-bottom: none; }
-            .dr-row .grow { flex: 1; min-width: 0; }
+            .dr-row .dr-title { flex: 1 1 auto; min-width: 0; }
+            .dr-row .dr-sub { flex: 1 1 100%; }
+            .dr-actions { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; margin-left: auto; }
+            .dr-row.played {
+                border: 1px solid rgba(159, 224, 172, 0.35);
+                border-radius: 12px;
+                background: rgba(47, 82, 57, 0.12);
+                margin: 3px 0;
+            }
             .dr-title {
                 font-family: Manrope, sans-serif;
                 font-weight: 700;
@@ -1478,7 +1487,15 @@
             }
             .dr-badge.decl { background: #6b4f1d; color: #ffd98a; }
             .dr-badge.def { background: #2a4a6b; color: #9fd0ff; }
-            .dr-badge.played { background: #2f5239; color: #9fe0ac; }
+            .dr-lbl {
+                color: #787572;
+                font-weight: 700;
+                font-size: 0.6rem;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                font-family: Inter, sans-serif;
+                margin-right: 3px;
+            }
             .dr-badge.arch { background: #4a3a6b; color: #cbb3ff; }
             .dr-stars { color: #ffd54a; font-size: 0.78rem; letter-spacing: 1px; }
             .dr-stars .off { color: #4a4642; }
@@ -1496,6 +1513,8 @@
             .dr-rate .cnt { color: #908f8d; font-weight: 600; font-size: 0.68rem; }
             .dr-rate-empty { color: #787572; font-weight: 600; font-size: 0.7rem; }
             .dr-rate-empty .material-symbols-outlined { font-variation-settings: 'FILL' 0; font-size: 15px; }
+            .dr-sub .dr-rate { font-size: 0.72rem; }
+            .dr-sub .dr-rate .material-symbols-outlined { font-size: 13px; }
             .dr-rater { display: flex; align-items: center; gap: 2px; }
             .dr-rater button {
                 background: none; padding: 0 1px; line-height: 1;
@@ -2668,15 +2687,13 @@
                 const n = p.ratings || 0;
                 if (!n) return `<span class="dr-rate dr-rate-empty" title="No ratings yet"><span class="material-symbols-outlined">star</span>new</span>`;
                 const r = (p.rating || 0).toFixed(1);
-                const you = p.yourRating ? ` <span style="opacity:.7">(you ${p.yourRating}\u2605)</span>` : "";
-                return `<span class="dr-rate" title="Average rating"><span class="material-symbols-outlined">star</span>${r} <span class="cnt">\u00b7 ${n}</span>${you}</span>`;
+                return `<span class="dr-rate" title="Average rating"><span class="material-symbols-outlined">star</span>${r} <span class="cnt">\u00b7 ${n}</span></span>`;
             }
             function problemRow(p, mine) {
                 const title = p.title || contractLabel(p);
                 const badge = p.role === "declarer"
                     ? `<span class="dr-badge decl">declarer</span>`
                     : `<span class="dr-badge def">defense</span>`;
-                const played = p.played ? `<span class="dr-badge played" title="You finished this problem">\u2713 played</span>` : "";
                 const arch = selectedArchive();
                 const bm = arch
                     ? `<button class="dr-btn ghost" data-arch-toggle="${p.id}" title="${inSelectedArchive(p.id) ? "Remove from" : "Add to"} ${escapeHtml(arch.name)}"><span class="material-symbols-outlined" style="${inSelectedArchive(p.id) ? "font-variation-settings:'FILL' 1;color:#cbb3ff" : ""}">${inSelectedArchive(p.id) ? "bookmark" : "bookmark_border"}</span></button>`
@@ -2685,14 +2702,10 @@
                     ? `<button class="dr-btn ghost" data-edit="${p.id}"><span class="material-symbols-outlined">edit</span>Edit</button>
                        <button class="dr-btn danger" data-del="${p.id}"><span class="material-symbols-outlined">delete</span></button>`
                     : `<button class="dr-btn gold" data-practice="${p.id}"><span class="material-symbols-outlined">playing_cards</span>Practise</button>`;
-                return `<div class="dr-row">
-                    <div class="grow">
-                        <div class="dr-title">${escapeHtml(title)}</div>
-                        <div class="dr-sub">${badge} ${played} ${stars(p.difficulty)} \u00b7 ${dcolorSuits(contractLabel(p))} \u00b7 by ${escapeHtml(p.owner)}${p.updated ? " \u00b7 " + timeAgo(p.updated) : ""}</div>
-                    </div>
-                    <div style="text-align:right;flex-shrink:0">${ratingBadge(p)}</div>
-                    ${bm}
-                    ${right}
+                return `<div class="dr-row${p.played ? " played" : ""}"${p.played ? ` title="You finished this problem"` : ""}>
+                    <div class="dr-title">${escapeHtml(title)}</div>
+                    <div class="dr-actions">${bm}${right}</div>
+                    <div class="dr-sub">${badge} <span class="dr-lbl">diff</span>${stars(p.difficulty)} <span class="dr-lbl">rating</span>${ratingBadge(p)} \u00b7 ${dcolorSuits(contractLabel(p))} \u00b7 ${escapeHtml(p.owner)}${p.updated ? " \u00b7 " + timeAgo(p.updated) : ""}</div>
                 </div>`;
             }
             function contractLabel(p) { return p.contract || "auction"; }
