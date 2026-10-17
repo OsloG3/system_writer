@@ -97,6 +97,16 @@ card-play bot as Play bridge. Two tabs:
   problem 1–5 ★ (authors cannot rate their own). Each problem carries its
   average rating and count, and the library is ordered **highest rated first**
   (ties: more ratings, then most recently updated).
+- **Played flag** — the first time you finish a problem it is stamped as played
+  (`played` map on the problem file, server-side only like ratings), and the
+  lobby can filter **Played / Unplayed**.
+- **Archives** — your own named collections of problems
+  (`data/drill_archives/<id>.json`, managed via `/api/drill-archives*`). A
+  problem can sit in any number of archives and always stays a normal library
+  problem; selecting an archive narrows the library (and the other filters and
+  the search box then search inside it). Members are added/removed with
+  `POST /api/drill-archives/{id}/drills` (`{drillId, action: add|remove}`);
+  deleting a problem sweeps it from every archive.
 
 Practice runs are in-memory sessions (`DrillSession`, 6 h TTL, one per user, the
 problem snapshotted at the start so an edit cannot desync a run in flight); the

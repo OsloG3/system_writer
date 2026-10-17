@@ -1478,6 +1478,8 @@
             }
             .dr-badge.decl { background: #6b4f1d; color: #ffd98a; }
             .dr-badge.def { background: #2a4a6b; color: #9fd0ff; }
+            .dr-badge.played { background: #2f5239; color: #9fe0ac; }
+            .dr-badge.arch { background: #4a3a6b; color: #cbb3ff; }
             .dr-stars { color: #ffd54a; font-size: 0.78rem; letter-spacing: 1px; }
             .dr-stars .off { color: #4a4642; }
             .dr-rate {
@@ -1888,8 +1890,10 @@
             // ---- app state ----
             let view = "lobby"; // "lobby" | "session"
             let lobbyTab = "practice"; // "practice" | "create"
-            let library = null; // [{id,owner,title,role,...}]
-            let filters = { role: "all", author: "all", difficulty: 0 }; // 0 = any
+            let library = null; // [{id,owner,title,role,played,...}]
+            let archives = null; // my archives: [{id,name,drillIds,...}]
+            let selArchive = "all"; // "all" | archive id
+            let filters = { role: "all", author: "all", difficulty: 0, played: "all", search: "" }; // difficulty 0 = any
             let busy = false;
 
             // live practice session
@@ -2621,18 +2625,40 @@
             }
 
             // ===================== Lobby =====================
+            async function loadArchives() {
+                try {
+                    const r = await api("GET", "/api/drill-archives");
+                    archives = (r.ok && r.data && r.data.archives) ? r.data.archives : [];
+                } catch (e) { archives = archives || []; }
+                if (selArchive !== "all" && !selectedArchive()) selArchive = "all";
+            }
             async function loadLibrary() {
                 try {
                     const r = await api("GET", "/api/drills");
                     library = (r.ok && r.data && r.data.problems) ? r.data.problems : [];
                 } catch (e) { library = library || []; }
+                await loadArchives();
                 render();
             }
+            function selectedArchive() {
+                return selArchive === "all" ? null : (archives || []).find((a) => a.id === selArchive) || null;
+            }
+            function inSelectedArchive(id) {
+                const a = selectedArchive();
+                return !!a && (a.drillIds || []).includes(id);
+            }
             function filteredLibrary() {
+                const arch = selectedArchive();
+                const q = filters.search || "";
                 return (library || []).filter((p) =>
                     (filters.role === "all" || p.role === filters.role) &&
                     (filters.difficulty === 0 || p.difficulty === filters.difficulty) &&
-                    (filters.author === "all" || p.owner === filters.author));
+                    (filters.author === "all" || p.owner === filters.author) &&
+                    (filters.played === "all" || !!p.played === (filters.played === "played")) &&
+                    (!arch || (arch.drillIds || []).includes(p.id)) &&
+                    (!q || (p.title || "").toLowerCase().includes(q) ||
+                        (p.owner || "").toLowerCase().includes(q) ||
+                        contractLabel(p).toLowerCase().includes(q)));
             }
             function authors() {
                 const s = new Set((library || []).map((p) => p.owner));
@@ -2650,6 +2676,11 @@
                 const badge = p.role === "declarer"
                     ? `<span class="dr-badge decl">declarer</span>`
                     : `<span class="dr-badge def">defense</span>`;
+                const played = p.played ? `<span class="dr-badge played" title="You finished this problem">\u2713 played</span>` : "";
+                const arch = selectedArchive();
+                const bm = arch
+                    ? `<button class="dr-btn ghost" data-arch-toggle="${p.id}" title="${inSelectedArchive(p.id) ? "Remove from" : "Add to"} ${escapeHtml(arch.name)}"><span class="material-symbols-outlined" style="${inSelectedArchive(p.id) ? "font-variation-settings:'FILL' 1;color:#cbb3ff" : ""}">${inSelectedArchive(p.id) ? "bookmark" : "bookmark_border"}</span></button>`
+                    : "";
                 const right = mine
                     ? `<button class="dr-btn ghost" data-edit="${p.id}"><span class="material-symbols-outlined">edit</span>Edit</button>
                        <button class="dr-btn danger" data-del="${p.id}"><span class="material-symbols-outlined">delete</span></button>`
@@ -2657,9 +2688,10 @@
                 return `<div class="dr-row">
                     <div class="grow">
                         <div class="dr-title">${escapeHtml(title)}</div>
-                        <div class="dr-sub">${badge} ${stars(p.difficulty)} \u00b7 ${dcolorSuits(contractLabel(p))} \u00b7 by ${escapeHtml(p.owner)}${p.updated ? " \u00b7 " + timeAgo(p.updated) : ""}</div>
+                        <div class="dr-sub">${badge} ${played} ${stars(p.difficulty)} \u00b7 ${dcolorSuits(contractLabel(p))} \u00b7 by ${escapeHtml(p.owner)}${p.updated ? " \u00b7 " + timeAgo(p.updated) : ""}</div>
                     </div>
                     <div style="text-align:right;flex-shrink:0">${ratingBadge(p)}</div>
+                    ${bm}
                     ${right}
                 </div>`;
             }
@@ -2667,11 +2699,31 @@
             function filterChip(label, on, attr, val) {
                 return `<button class="dr-chip${on ? " on" : ""}" data-filter="${attr}" data-val="${val}">${label}</button>`;
             }
+            function archiveOptions() {
+                return ['<option value="all">All problems</option>']
+                    .concat((archives || []).map((a) =>
+                        `<option value="${a.id}"${selArchive === a.id ? " selected" : ""}>${escapeHtml(a.name)} (${(a.drillIds || []).length})</option>`)).join("");
+            }
+            function libraryListHtml(list) {
+                if (list === undefined) list = filteredLibrary();
+                return list.length ? list.map((p) => problemRow(p, false)).join("")
+                    : `<div class="dr-empty">No problems match. ${library && library.length ? "Try loosening the filters." : "Be the first to author one in the Create tab."}</div>`;
+            }
             function practiceTabHtml() {
                 const list = filteredLibrary();
+                const arch = selectedArchive();
                 const authOpts = ['<option value="all">Everyone</option>']
                     .concat(authors().map((a) => `<option value="${escapeHtml(a)}"${filters.author === a ? " selected" : ""}>${escapeHtml(a)}</option>`)).join("");
                 return `<div class="dr-panel">
+                    <h3><span class="material-symbols-outlined" style="font-size:18px">inventory_2</span>Archives</h3>
+                    <div class="dr-filters" style="align-items:center">
+                        <select class="dr-input" id="drArchive" style="max-width:16rem;padding:.4rem .6rem">${archiveOptions()}</select>
+                        <button class="dr-btn ghost" id="drArchNew"><span class="material-symbols-outlined">create_new_folder</span>New</button>
+                        ${arch ? `<button class="dr-btn danger" id="drArchDel" title="Delete this archive"><span class="material-symbols-outlined">delete</span></button>` : ""}
+                    </div>
+                    ${arch ? `<div class="dr-hint">Viewing the archive <b>${escapeHtml(arch.name)}</b> \u2014 the filters below search inside it; use the bookmark buttons to add or remove problems.</div>` : `<div class="dr-hint">Pick an archive to search just its problems; every problem also stays in the full library, and can be in several archives.</div>`}
+                </div>
+                <div class="dr-panel">
                     <h3><span class="material-symbols-outlined" style="font-size:18px">tune</span>Filters</h3>
                     <div class="dr-filters">
                         ${filterChip("All", filters.role === "all", "role", "all")}
@@ -2683,12 +2735,18 @@
                         ${[1, 2, 3, 4, 5].map((d) => filterChip("\u2605".repeat(d), filters.difficulty === d, "difficulty", String(d))).join("")}
                     </div>
                     <div class="dr-filters">
+                        ${filterChip("Played + unplayed", filters.played === "all", "played", "all")}
+                        ${filterChip("\u2713 Played", filters.played === "played", "played", "played")}
+                        ${filterChip("Unplayed", filters.played === "unplayed", "played", "unplayed")}
+                    </div>
+                    <div class="dr-filters" style="align-items:center">
                         <select class="dr-input" id="drAuthor" style="max-width:14rem;padding:.4rem .6rem">${authOpts}</select>
+                        <input class="dr-input" id="drSearch" style="max-width:16rem;padding:.4rem .6rem" placeholder="Search title, author, contract\u2026" value="${escapeHtml(filters.search)}">
                     </div>
                 </div>
                 <div class="dr-panel">
-                    <h3><span class="material-symbols-outlined" style="font-size:18px">library_books</span>Library <span class="dr-sub">(${list.length})</span></h3>
-                    ${list.length ? list.map((p) => problemRow(p, false)).join("") : `<div class="dr-empty">No problems match. ${library && library.length ? "Try loosening the filters." : "Be the first to author one in the Create tab."}</div>`}
+                    <h3><span class="material-symbols-outlined" style="font-size:18px">library_books</span>${arch ? escapeHtml(arch.name) : "Library"} <span class="dr-sub" id="drLibCount">(${list.length})</span></h3>
+                    <div id="drLibList">${libraryListHtml(list)}</div>
                 </div>`;
             }
             function createTabHtml() {
@@ -3146,6 +3204,21 @@
                         <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn danger" id="delOk"><span class="material-symbols-outlined">delete</span>Delete</button></div>
                     </div></div>`;
                 }
+                if (modal.kind === "archive") {
+                    return `<div class="dr-overlay"><div class="dr-modal">
+                        <h3>New archive</h3>
+                        <div class="dr-hint" style="margin-bottom:.5rem">An archive is a collection of problems you can search on its own. A problem can be in several archives and always stays in the normal library.</div>
+                        <input class="dr-input" id="archName" maxlength="80" placeholder="Archive name">
+                        <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn gold" id="archOk"><span class="material-symbols-outlined">create_new_folder</span>Create</button></div>
+                    </div></div>`;
+                }
+                if (modal.kind === "archiveDel") {
+                    return `<div class="dr-overlay"><div class="dr-modal">
+                        <h3>Delete this archive?</h3>
+                        <div class="dr-hint">Only the collection is removed \u2014 every problem stays in the library and in its other archives.</div>
+                        <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn danger" id="archDelOk"><span class="material-symbols-outlined">delete</span>Delete</button></div>
+                    </div></div>`;
+                }
                 return "";
             }
 
@@ -3269,6 +3342,68 @@
                 } catch (e) { busy = false; render(); }
             }
 
+            // ---- archives ----
+            async function createArchive(name) {
+                busy = true; render();
+                try {
+                    const r = await api("POST", "/api/drill-archives", { name });
+                    busy = false;
+                    if (!r.ok) { showToast((r.data && r.data.error) || "Could not create the archive", true); render(); return; }
+                    modal = null;
+                    await loadArchives();
+                    if (r.data && r.data.id) selArchive = r.data.id;
+                    showToast("Archive created");
+                    render();
+                } catch (e) { busy = false; render(); }
+            }
+            async function deleteArchive(id) {
+                busy = true; render();
+                try {
+                    const r = await api("DELETE", `/api/drill-archives/${id}`);
+                    busy = false;
+                    if (!r.ok) { showToast((r.data && r.data.error) || "Delete failed", true); render(); return; }
+                    modal = null; selArchive = "all";
+                    await loadArchives();
+                    showToast("Archive deleted");
+                    render();
+                } catch (e) { busy = false; render(); }
+            }
+            async function toggleArchiveDrill(drillId) {
+                const arch = selectedArchive();
+                if (!arch) return;
+                const remove = (arch.drillIds || []).includes(drillId);
+                try {
+                    const r = await api("POST", `/api/drill-archives/${arch.id}/drills`, { drillId, action: remove ? "remove" : "add" });
+                    if (!r.ok) { showToast((r.data && r.data.error) || "Could not update the archive", true); return; }
+                    if (r.data && r.data.drillIds) arch.drillIds = r.data.drillIds;
+                    render();
+                } catch (e) { /* auth handled */ }
+            }
+            // live search: only the library list is rebuilt so the input keeps focus
+            function refreshLibraryList() {
+                const host = document.getElementById("drLibList");
+                if (!host) return;
+                const list = filteredLibrary();
+                host.innerHTML = libraryListHtml(list);
+                const cnt = document.getElementById("drLibCount");
+                if (cnt) cnt.textContent = `(${list.length})`;
+                wireRowEvents();
+            }
+            function wireRowEvents() {
+                document.querySelectorAll("[data-practice]").forEach((el) => {
+                    el.onclick = () => startSession(el.getAttribute("data-practice"));
+                });
+                document.querySelectorAll("[data-edit]").forEach((el) => {
+                    el.onclick = () => editProblem(el.getAttribute("data-edit"));
+                });
+                document.querySelectorAll("[data-del]").forEach((el) => {
+                    el.onclick = () => { modal = { kind: "delete", id: el.getAttribute("data-del") }; render(); };
+                });
+                document.querySelectorAll("[data-arch-toggle]").forEach((el) => {
+                    el.onclick = () => toggleArchiveDrill(el.getAttribute("data-arch-toggle"));
+                });
+            }
+
             // ===================== Master render =====================
             function render() {
                 const content = document.getElementById("main-content");
@@ -3358,15 +3493,18 @@
                 });
                 const auth = $("drAuthor");
                 if (auth) auth.onchange = () => { filters.author = auth.value; render(); };
-                document.querySelectorAll("[data-practice]").forEach((el) => {
-                    el.onclick = () => startSession(el.getAttribute("data-practice"));
-                });
-                document.querySelectorAll("[data-edit]").forEach((el) => {
-                    el.onclick = () => editProblem(el.getAttribute("data-edit"));
-                });
-                document.querySelectorAll("[data-del]").forEach((el) => {
-                    el.onclick = () => { modal = { kind: "delete", id: el.getAttribute("data-del") }; render(); };
-                });
+                const archSel = $("drArchive");
+                if (archSel) archSel.onchange = () => { selArchive = archSel.value; render(); };
+                on("drArchNew", () => { modal = { kind: "archive" }; render(); });
+                on("drArchDel", () => { modal = { kind: "archiveDel", id: selArchive }; render(); });
+                const archName = $("archName");
+                if (archName) {
+                    archName.onkeydown = (e) => { if (e.key === "Enter") { const ok = $("archOk"); if (ok) ok.click(); } };
+                    setTimeout(() => archName.focus(), 0);
+                }
+                const se = $("drSearch");
+                if (se) se.oninput = () => { filters.search = se.value.trim().toLowerCase(); refreshLibraryList(); };
+                wireRowEvents();
                 on("drNewBtn", () => startWiz(null));
                 // wizard nav
                 on("wizCancel", () => { wiz = null; modal = null; view = "lobby"; render(); });
@@ -3458,6 +3596,13 @@
                     modal = null; render();
                 });
                 on("delOk", () => { if (modal && modal.id) deleteProblem(modal.id); });
+                on("archOk", () => {
+                    const el = $("archName");
+                    const name = (el ? el.value : "").trim();
+                    if (!name) { showToast("Give the archive a name", true); return; }
+                    createArchive(name);
+                });
+                on("archDelOk", () => { if (modal && modal.id) deleteArchive(modal.id); });
                 const ct = $("claimTricks");
                 if (ct) ct.oninput = () => refreshClaimPreview();
             }
@@ -3470,6 +3615,7 @@
                     if (sid) resumeSession(sid);
                 } else {
                     view = "lobby"; state = null; wiz = null; modal = null;
+                    archives = null; selArchive = "all";
                     localStorage.removeItem(SESSION_KEY);
                     render();
                 }

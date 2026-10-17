@@ -1,0 +1,2117 @@
+{
+  "id": "9c89f04931444980",
+  "name": "Kang-Roh System",
+  "roots": [
+    {
+      "id": "root-3d274a1b2f54479f",
+      "name": "1♣",
+      "description": "a) 11–14 balanced without 5-card M (can be 5♦332); b) 11+, 5+♣ unbalanced or any 4441 (with 4♣); c) 11+ 4414 or 1444",
+      "children": [
+        {
+          "id": "node-kpxr27stt",
+          "name": "1♦/♥",
+          "description": "4+♥/4+♠ (transfer)",
+          "children": [
+            {
+              "id": "node-lg7stdzfl",
+              "name": "1♠",
+              "description": "Nat unbal (over 1♦)",
+              "children": []
+            },
+            {
+              "id": "node-quza92t2l",
+              "name": "1NT",
+              "description": "Short in the major and 12-14 (15)",
+              "children": []
+            },
+            {
+              "id": "node-sr81ilolk",
+              "name": "2♣",
+              "description": "a) 6+♣ (4X) 12-14 no 3M; b) 5♣-4x 15-16 no 3M",
+              "children": []
+            },
+            {
+              "id": "node-c1u4z7onk",
+              "name": "2♦",
+              "description": "a) 16+ 5+♣-4♦; b) 16 5+♣-4OM; c) 16+ 6+♣",
+              "children": []
+            },
+            {
+              "id": "node-kf7pyqfpk",
+              "name": "2M",
+              "description": "4 Bal",
+              "children": []
+            },
+            {
+              "id": "node-169e1nmx4",
+              "name": "2OM",
+              "description": "5+♣-3M 16+",
+              "children": []
+            },
+            {
+              "id": "node-cw78bctcg",
+              "name": "2NT",
+              "description": "4+♣-4M 16+",
+              "children": []
+            },
+            {
+              "id": "node-yse15ks65",
+              "name": "3♣",
+              "description": "6+♣ 14-15 good cards",
+              "children": []
+            },
+            {
+              "id": "node-wha6s7qim",
+              "name": "3♦/OM",
+              "description": "65",
+              "children": []
+            },
+            {
+              "id": "node-noprovxar",
+              "name": "3M",
+              "description": "4+♣-4M 13-15",
+              "children": []
+            },
+            {
+              "id": "node-ifuq1avb1",
+              "name": "3NT",
+              "description": "6511",
+              "children": []
+            },
+            {
+              "id": "node-vza0oafnt",
+              "name": "4m",
+              "description": "Void splinter",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-rihs1mspu",
+          "name": "1♠",
+          "description": "a) 5–13 balanced without 4-card M; b) weak/INV with one or both minors; c) FG with 5+♦",
+          "children": [
+            {
+              "id": "node-nr58vssqa",
+              "name": "1NT",
+              "description": "Bal 11-14 or semibal with short ♦",
+              "children": []
+            },
+            {
+              "id": "node-sxa1rk02s",
+              "name": "2♣",
+              "description": "6♣-(4X) 11-14 or 5♣-4M no 3♦ (15-16)",
+              "children": []
+            },
+            {
+              "id": "node-u0n665gse",
+              "name": "2♦",
+              "description": "3+♦ unbal 11-16",
+              "children": []
+            },
+            {
+              "id": "node-2pgjquvqy",
+              "name": "2♥",
+              "description": "a) 17+ ♣+♥; b) 17+ 6+♣",
+              "children": []
+            },
+            {
+              "id": "node-8oor3ppem",
+              "name": "2♠",
+              "description": "16+ Nat",
+              "children": []
+            },
+            {
+              "id": "node-vtq7u24oy",
+              "name": "2NT",
+              "description": "4414 15-17, 18+",
+              "children": []
+            },
+            {
+              "id": "node-1k5oo0int",
+              "name": "3NT",
+              "description": "4414 18+",
+              "children": []
+            },
+            {
+              "id": "node-p75q6nqiw",
+              "name": "3♦",
+              "description": "Natural 4+♦ unbal 17+",
+              "children": []
+            },
+            {
+              "id": "node-sq3aqmi2a",
+              "name": "3♥/♠",
+              "description": "65 Natural 4+♦ unbal 17+",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-t46dsg33y",
+          "name": "1NT",
+          "description": "FG balanced",
+          "children": []
+        },
+        {
+          "id": "node-qcgplerr2",
+          "name": "2♣",
+          "description": "FG with 5+♣ and 4+other",
+          "children": [
+            {
+              "id": "node-4wxbsv7mi",
+              "name": "2♦",
+              "description": "Ask",
+              "children": [
+                {
+                  "id": "node-t231hez54",
+                  "name": "2♥/♠",
+                  "description": "Inverted",
+                  "children": []
+                },
+                {
+                  "id": "node-oe38l08kg",
+                  "name": "2NT",
+                  "description": "544 >> Ask >> L/M/H/H",
+                  "children": []
+                },
+                {
+                  "id": "node-1jtcphh3o",
+                  "name": "3♣+",
+                  "description": "DEV A with ♦",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "node-6t7py46cd",
+          "name": "2♦",
+          "description": "INV with 6+♥/♠",
+          "children": [
+            {
+              "id": "node-arpn3u5sl",
+              "name": "2♥",
+              "description": "P/C",
+              "children": []
+            },
+            {
+              "id": "node-2kfr8mz6f",
+              "name": "2♠",
+              "description": "P/C",
+              "children": []
+            },
+            {
+              "id": "node-a8dyq2ghk",
+              "name": "2NT",
+              "description": "Relay GF",
+              "children": []
+            },
+            {
+              "id": "node-te3zmd6er",
+              "name": "3♣",
+              "description": "NF",
+              "children": []
+            },
+            {
+              "id": "node-5kv1nfi0q",
+              "name": "3♥/♠",
+              "description": "P/C",
+              "children": []
+            },
+            {
+              "id": "node-p6q9ezb3m",
+              "name": "4♣/♦",
+              "description": "Ask in trsf/direct",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-2m6e16byd",
+          "name": "2♥",
+          "description": "9-11 with 5+♠ and 4+♥",
+          "children": [
+            {
+              "id": "node-hsz424xnq",
+              "name": "2NT",
+              "description": "Ask >> DEV A",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-3xk9qf44o",
+          "name": "2♠",
+          "description": "INV+ with 6+♣ one suited",
+          "children": [
+            {
+              "id": "node-uxxxqooki",
+              "name": "2NT",
+              "description": "Ask >> Limit, No Sh/L/M/H",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-strgtphpi",
+          "name": "2NT",
+          "description": "a) Weak with 6+♣; b) GF with a solid suit of 7+ cards",
+          "children": [
+            {
+              "id": "node-07aa0hkj8",
+              "name": "3♣",
+              "description": "Ask",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-y4iii5rab",
+          "name": "3♣",
+          "description": "Mixed raise with (5)6♣",
+          "children": []
+        },
+        {
+          "id": "node-h3sbeq1go",
+          "name": "3X",
+          "description": "PRE",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "root-98b03bc2d25c4d66",
+      "name": "1♦",
+      "description": "a) (10)11+ with 5+♦, unbalanced; b) 4441 or 4144",
+      "children": [
+        {
+          "id": "node-k3op0w2n1",
+          "name": "1M",
+          "description": "Natural",
+          "children": [
+            {
+              "id": "node-64c5htegm",
+              "name": "1NT",
+              "description": "Gazzilli: a) min with 5♦-4♠-3♥ over 1♥, 5♦-4♥ over 1♠; b) 15+ 6♦ or ♦+♣ or ♦+OM no 3M",
+              "children": [
+                {
+                  "id": "node-wwpu8it7u",
+                  "name": "2♣",
+                  "description": "Ask 8+",
+                  "children": [
+                    {
+                      "id": "node-376fc5l58",
+                      "name": "2♦",
+                      "description": "Min hand",
+                      "children": []
+                    },
+                    {
+                      "id": "node-p9ntc8004",
+                      "name": "2♥",
+                      "description": "15-17",
+                      "children": []
+                    },
+                    {
+                      "id": "node-31md1mcjo",
+                      "name": "2♠",
+                      "description": "4+♦-4OM 18+ (with ♥ is 15+)",
+                      "children": []
+                    },
+                    {
+                      "id": "node-8mbucj9wm",
+                      "name": "2NT",
+                      "description": "6+♦ 18+",
+                      "children": []
+                    },
+                    {
+                      "id": "node-4s1sx0w72",
+                      "name": "3♣",
+                      "description": "55 18+ (EXCEPTION)",
+                      "children": []
+                    },
+                    {
+                      "id": "node-9vxzvx9nn",
+                      "name": "3♦+",
+                      "description": "Other DEV REVERSE ♦+♣ 18+",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "node-ij6204ptk",
+              "name": "2M",
+              "description": "3/4",
+              "children": [
+                {
+                  "id": "node-t2pc19ewj",
+                  "name": "2NT",
+                  "description": "Ask, GF",
+                  "children": []
+                },
+                {
+                  "id": "node-n4yicnayn",
+                  "name": "3m",
+                  "description": "Invite, NF",
+                  "children": []
+                },
+                {
+                  "id": "node-tzor8nslx",
+                  "name": "3M",
+                  "description": "Invite with 5",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "node-8epp5huj2",
+          "name": "1NT",
+          "description": "Natural",
+          "children": []
+        },
+        {
+          "id": "node-acsvkpav5",
+          "name": "2♣",
+          "description": "FG, 2+",
+          "children": [
+            {
+              "id": "node-b2dja61sx",
+              "name": "2♦",
+              "description": "♦+♣ or ♦",
+              "children": []
+            },
+            {
+              "id": "node-q1ivdp5p9",
+              "name": "2♥",
+              "description": "♠",
+              "children": []
+            },
+            {
+              "id": "node-r711nduoc",
+              "name": "2♠",
+              "description": "♥",
+              "children": []
+            },
+            {
+              "id": "node-vki8v7758",
+              "name": "2NT",
+              "description": "544 >> Ask >> L/M/H/H",
+              "children": []
+            },
+            {
+              "id": "node-2bwypusmf",
+              "name": "3♣",
+              "description": "55 ♣-♦",
+              "children": []
+            },
+            {
+              "id": "node-8ru4di4tf",
+              "name": "3♦",
+              "description": "4441 >> Ask range",
+              "children": []
+            },
+            {
+              "id": "node-x8m7hyon0",
+              "name": "3♥",
+              "description": "4144 Min/Max",
+              "children": []
+            },
+            {
+              "id": "node-jubw88uxc",
+              "name": "3♠",
+              "description": "4144 Med",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-jhfonhw65",
+          "name": "2♦",
+          "description": "INV with 6+♥/♠",
+          "children": []
+        },
+        {
+          "id": "node-x06fexbut",
+          "name": "2♥",
+          "description": "9-11 with 5♠-4♥",
+          "children": []
+        },
+        {
+          "id": "node-osdldxwjg",
+          "name": "2♠",
+          "description": "8–11 with 4+♦",
+          "children": []
+        },
+        {
+          "id": "node-ahji080se",
+          "name": "2NT",
+          "description": "Weak with ♦",
+          "children": []
+        },
+        {
+          "id": "node-2unblbg4c",
+          "name": "3♣",
+          "description": "INV with 6♣",
+          "children": []
+        },
+        {
+          "id": "node-pueve8x86",
+          "name": "3♦",
+          "description": "5–7 with 4+♦",
+          "children": []
+        },
+        {
+          "id": "node-26pzsu2x0",
+          "name": "3M",
+          "description": "PRE",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "root-ee1905085c8c49b6",
+      "name": "1M",
+      "description": "5+M",
+      "children": [
+        {
+          "id": "node-wpva87vkq",
+          "name": "1♠ (over 1♥)",
+          "description": "F1",
+          "children": [
+            {
+              "id": "node-e5jfjlexo",
+              "name": "1NT",
+              "description": "NF",
+              "children": []
+            },
+            {
+              "id": "node-gk30ja2xn",
+              "name": "2♣",
+              "description": "Trf to 2♦",
+              "children": []
+            },
+            {
+              "id": "node-kj4wyvwk7",
+              "name": "2♦",
+              "description": "GF",
+              "children": []
+            },
+            {
+              "id": "node-b4znuo0u8",
+              "name": "2NT",
+              "description": "a) Weak ♣; b) 5♠-5♣/♦ GF",
+              "children": []
+            },
+            {
+              "id": "node-3xnwkt8ax",
+              "name": "3♣/♦/♥",
+              "description": "5♠-5/♦/♥ Limit",
+              "children": []
+            },
+            {
+              "id": "node-a5kynmns1",
+              "name": "3♠",
+              "description": "7♠ GF",
+              "children": []
+            },
+            {
+              "id": "node-zeyfngsck",
+              "name": "4♣/♦",
+              "description": "Void with 7♠",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-gut2dlc3q",
+          "name": "1NT",
+          "description": "Natural (can have fit very weak or some 8-10 fit)",
+          "children": [
+            {
+              "id": "node-dq7llahjs",
+              "name": "2♣",
+              "description": "Gazzilli",
+              "children": [
+                {
+                  "id": "node-7t0tcx4yy",
+                  "name": "2♦",
+                  "description": "8+ >> Natural development",
+                  "children": []
+                },
+                {
+                  "id": "node-dnuvq79q5",
+                  "name": "2M",
+                  "description": "7-",
+                  "children": []
+                },
+                {
+                  "id": "node-8t09o5ba3",
+                  "name": "2NT",
+                  "description": "444OM1M or 5m44OM or 55 minors over 1♥-1NT",
+                  "children": []
+                },
+                {
+                  "id": "node-z4iqjhfzh",
+                  "name": "3♠/NT",
+                  "description": "55 minor L/H 8-11 P.O.",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-a55b98xu7",
+              "name": "2m",
+              "description": "Nat",
+              "children": []
+            },
+            {
+              "id": "node-jft3v80nw",
+              "name": "2M",
+              "description": "Nat",
+              "children": []
+            },
+            {
+              "id": "node-hrwjsvhu9",
+              "name": "2♠ (over 1♥)",
+              "description": "6♥-4♠ 14-16",
+              "children": []
+            },
+            {
+              "id": "node-o1hi7h2gp",
+              "name": "2NT",
+              "description": "6M-4m 14+",
+              "children": []
+            },
+            {
+              "id": "node-pn3nuk8x4",
+              "name": "3Y",
+              "description": "55 14-16",
+              "children": []
+            },
+            {
+              "id": "node-sgwvvpvvy",
+              "name": "3M",
+              "description": "7M 12-14",
+              "children": []
+            },
+            {
+              "id": "node-16mjga6uk",
+              "name": "3♠ (over 1♥)",
+              "description": "6♥-5♠ 10-13",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-ik5ii3mqp",
+          "name": "2M",
+          "description": "5-8",
+          "children": [
+            {
+              "id": "node-sfqeggi9v",
+              "name": "2NT",
+              "description": "Relay",
+              "children": [
+                {
+                  "id": "node-7kmbxecl1",
+                  "name": "3♣",
+                  "description": "Bal Med+",
+                  "children": []
+                },
+                {
+                  "id": "node-dvu781086",
+                  "name": "3♦",
+                  "description": "5+°m >> R",
+                  "children": []
+                },
+                {
+                  "id": "node-32e38smzn",
+                  "name": "3M",
+                  "description": "Min",
+                  "children": []
+                },
+                {
+                  "id": "node-jc28wa1tq",
+                  "name": "3OM",
+                  "description": "Nat 5+ good suit",
+                  "children": []
+                },
+                {
+                  "id": "node-acvs1qjhr",
+                  "name": "3NT/4♣/♦",
+                  "description": "Sh L/M/H/H",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-5z19jf33n",
+              "name": "3m",
+              "description": "Nat >> 3NT = To play",
+              "children": []
+            },
+            {
+              "id": "node-sql8en3m1",
+              "name": "Jump",
+              "description": "Sh with logic",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-ggts9u0ac",
+          "name": "2♠",
+          "description": "a) 7♣/♦/♠ GF very good suit; b) 6+♠-3♥ GF or 5+♠-4♥ GF (over 1♥)",
+          "children": []
+        },
+        {
+          "id": "node-in3shnz0b",
+          "name": "2NT",
+          "description": "3/4M 9-11",
+          "children": [
+            {
+              "id": "node-m7c62yt3d",
+              "name": "3♣",
+              "description": "Relay",
+              "children": [
+                {
+                  "id": "node-o9upigg5f",
+                  "name": "3♦",
+                  "description": "a) 3M and 5/6 in a minor; b) 3M Bal",
+                  "children": []
+                },
+                {
+                  "id": "node-ap2oorq9l",
+                  "name": "3M",
+                  "description": "4M >> Shortness/No shortness",
+                  "children": []
+                },
+                {
+                  "id": "node-fvf9w2jjt",
+                  "name": "3OM",
+                  "description": "5/6 OM",
+                  "children": []
+                },
+                {
+                  "id": "node-5lqot26ut",
+                  "name": "3NT/4♣/♦/♥",
+                  "description": "Shortness with 3M",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-49f1f46xc",
+              "name": "3♦",
+              "description": "a) Last train; b) to propose 3NT; c) 54 major looking for the best game",
+              "children": []
+            },
+            {
+              "id": "node-14t9rol4a",
+              "name": "3/4M",
+              "description": "To play",
+              "children": []
+            },
+            {
+              "id": "node-0o1ejtg1p",
+              "name": "3OM/3NT/4♣",
+              "description": "Void",
+              "children": []
+            },
+            {
+              "id": "node-234g4j1it",
+              "name": "4♥",
+              "description": "55 Propose",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-i48rq2l5a",
+          "name": "3♣",
+          "description": "6♥ inviting (over 1♥)",
+          "children": []
+        },
+        {
+          "id": "node-nwpqmvd4b",
+          "name": "3M-2",
+          "description": "4M 6-8",
+          "children": [
+            {
+              "id": "node-2wjlgob6s",
+              "name": "3M-1",
+              "description": "Last train or fit ISL no shortness",
+              "children": []
+            },
+            {
+              "id": "node-kdemwcrgg",
+              "name": "Other",
+              "description": "Shortness/Void",
+              "children": []
+            },
+            {
+              "id": "node-9w1f5bruv",
+              "name": "3/4M",
+              "description": "To play",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-khkxxg8d5",
+          "name": "3M-1",
+          "description": "Fit 4° with a shortness (8) 9-12 (13)",
+          "children": [
+            {
+              "id": "node-a4j8y048x",
+              "name": "3M",
+              "description": "ASK",
+              "children": [
+                {
+                  "id": "node-xnxbluczv",
+                  "name": "3M+1",
+                  "description": "Min",
+                  "children": []
+                },
+                {
+                  "id": "node-o392l3sw7",
+                  "name": "Other",
+                  "description": "Sh L/M/H and Max",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-xfj6c0gbt",
+              "name": "3♠/NT/4♣/♦",
+              "description": "Shorts",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-mkfzlp9wz",
+          "name": "3M",
+          "description": "0-5",
+          "children": []
+        },
+        {
+          "id": "node-s22t2t5k9",
+          "name": "4NT",
+          "description": "Asking for keycards, RKC 1430",
+          "children": []
+        },
+        {
+          "id": "node-8on37syj2",
+          "name": "2♣",
+          "description": "Response",
+          "children": [
+            {
+              "id": "node-z71omd9tl",
+              "name": "2♦",
+              "description": "a) Nat 12+; b) 5+M 11-14; c) 544",
+              "children": []
+            },
+            {
+              "id": "node-ydw52jq7s",
+              "name": "2♥",
+              "description": "5+4+M",
+              "children": []
+            },
+            {
+              "id": "node-ljtcm401b",
+              "name": "2♠",
+              "description": "5+M-4+♣",
+              "children": []
+            },
+            {
+              "id": "node-xr8tdn8ko",
+              "name": "2NT",
+              "description": "5+M 15+ P.O.",
+              "children": []
+            },
+            {
+              "id": "node-czqu7yj1e",
+              "name": "3♣",
+              "description": "5M-5♦",
+              "children": []
+            },
+            {
+              "id": "node-4qhzryt26",
+              "name": "3♦/♥/♠",
+              "description": "5M-5♣ Sh L/H/H",
+              "children": []
+            },
+            {
+              "id": "node-ff4dasagz",
+              "name": "3NT/4♣/♦/♥",
+              "description": "Sh L/M/H/H with 7M and good suit 13+",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-fnv2w5o2o",
+          "name": "2♦",
+          "description": "Response",
+          "children": [
+            {
+              "id": "node-pcbx9geva",
+              "name": "2♥",
+              "description": "54M",
+              "children": []
+            },
+            {
+              "id": "node-jjbm51sfr",
+              "name": "2♠",
+              "description": "5M min or 5M-4♦",
+              "children": []
+            },
+            {
+              "id": "node-xj7kogcmi",
+              "name": "2NT",
+              "description": "5+M 15+ P.O.",
+              "children": []
+            },
+            {
+              "id": "node-uxjs1qchm",
+              "name": "4♣/4♦",
+              "description": "6M-4♦ 12-14 / 5M-5♦ 12-14",
+              "children": []
+            },
+            {
+              "id": "node-r8vkbnwim",
+              "name": "Other",
+              "description": "DEV A with ♣",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-s3r8zfuik",
+          "name": "2♣ (passed hand)",
+          "description": "Drury",
+          "children": [
+            {
+              "id": "node-619sxdsow",
+              "name": "2♦",
+              "description": "Ask",
+              "children": []
+            },
+            {
+              "id": "node-gdlzvz9di",
+              "name": "2OM",
+              "description": "Nat",
+              "children": []
+            },
+            {
+              "id": "node-3osidf5kv",
+              "name": "2NT",
+              "description": "6M-4x",
+              "children": []
+            },
+            {
+              "id": "node-m9hmxdkkn",
+              "name": "3♣/♦",
+              "description": "5M-5♣/♦",
+              "children": []
+            },
+            {
+              "id": "node-qk5qkp87o",
+              "name": "3♠/NT/4♣/♦/♥",
+              "description": "Sh with logic",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "root-6d55e14639b74a29",
+      "name": "1NT",
+      "description": "(14)15–17 balanced",
+      "children": [
+        {
+          "id": "node-sv62pmn89",
+          "name": "2♣",
+          "description": "Asking for majors: a) weak stayman; b) limit/slam hands; c) any 4441 (except 1-4-4-4); d) both Ms",
+          "children": [
+            {
+              "id": "node-095hkt6f9",
+              "name": "2♦",
+              "description": "No 4 or 5-card M",
+              "children": [
+                {
+                  "id": "node-4v2y4q16u",
+                  "name": "2♥",
+                  "description": "To play with both Ms",
+                  "children": []
+                },
+                {
+                  "id": "node-5bmht4jm3",
+                  "name": "2♠",
+                  "description": "INV+ ask",
+                  "children": []
+                },
+                {
+                  "id": "node-2m34lq9xc",
+                  "name": "2NT",
+                  "description": "54+ Ms",
+                  "children": []
+                },
+                {
+                  "id": "node-s9guqzswz",
+                  "name": "3♣",
+                  "description": "INV with 5♠ and 4♣",
+                  "children": []
+                },
+                {
+                  "id": "node-4j3q5chub",
+                  "name": "3♦",
+                  "description": "INV with 5♠ and 4♦",
+                  "children": []
+                },
+                {
+                  "id": "node-9hu5gkzuu",
+                  "name": "3♥",
+                  "description": "4-4-4-1",
+                  "children": []
+                },
+                {
+                  "id": "node-tbnubcc5r",
+                  "name": "3♠",
+                  "description": "4-4-1-4",
+                  "children": []
+                },
+                {
+                  "id": "node-o501vo796",
+                  "name": "4♦/♥",
+                  "description": "6-4 in Ms (delayed Texas)",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-k5gg516yg",
+              "name": "2♥/♠",
+              "description": "4+♥/♠",
+              "children": []
+            },
+            {
+              "id": "node-lz78tbj6g",
+              "name": "2NT",
+              "description": "4-4 Ms minimum",
+              "children": []
+            },
+            {
+              "id": "node-ab452l925",
+              "name": "3♣",
+              "description": "4-4 Ms maximum",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-vstt7h97e",
+          "name": "2♦",
+          "description": "Transfer, 4+♥ (only 4 if FG with 5+m)",
+          "children": [
+            {
+              "id": "node-d967dk4j4",
+              "name": "2♥",
+              "description": "2–3♥",
+              "children": [
+                {
+                  "id": "node-czepgsn5t",
+                  "name": "2♠",
+                  "description": "R",
+                  "children": []
+                },
+                {
+                  "id": "node-2sv7ink12",
+                  "name": "2NT",
+                  "description": "4+♥ and 4+♣",
+                  "children": []
+                },
+                {
+                  "id": "node-9tx0wi5ix",
+                  "name": "3♣",
+                  "description": "5+♥ and 4+♦",
+                  "children": []
+                },
+                {
+                  "id": "node-hgk6000mj",
+                  "name": "3♦",
+                  "description": "4♥-5+♦",
+                  "children": []
+                },
+                {
+                  "id": "node-7x9pb805r",
+                  "name": "3♥",
+                  "description": "6+♥ slam try with a shortness",
+                  "children": []
+                },
+                {
+                  "id": "node-8xn96dxd6",
+                  "name": "3♠/4m",
+                  "description": "6+♥ and void",
+                  "children": []
+                },
+                {
+                  "id": "node-r91tfx1vz",
+                  "name": "4♥",
+                  "description": "6♥ and small slam try no shortness",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-8cqqf2n88",
+              "name": "2♠",
+              "description": "4+♥",
+              "children": [
+                {
+                  "id": "node-i0bu920lk",
+                  "name": "2NT",
+                  "description": "Game try with ♣",
+                  "children": []
+                },
+                {
+                  "id": "node-64560s1yr",
+                  "name": "3♣",
+                  "description": "Game try with ♦",
+                  "children": []
+                },
+                {
+                  "id": "node-qwzjafeto",
+                  "name": "3♦",
+                  "description": "Puppet to 3♥",
+                  "children": []
+                },
+                {
+                  "id": "node-pfbozwqhu",
+                  "name": "3♥",
+                  "description": "FG",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "node-8cnuc9rpq",
+          "name": "2♥",
+          "description": "Transfer, 4+♠ (only 4 if FG with 5+m)",
+          "children": [
+            {
+              "id": "node-t3ysria5g",
+              "name": "2♠",
+              "description": "2–3♠ (see 1NT-2♦; 2♥)",
+              "children": []
+            },
+            {
+              "id": "node-ojqcmqz9v",
+              "name": "2NT",
+              "description": "4♠",
+              "children": [
+                {
+                  "id": "node-r16vbwj8q",
+                  "name": "3m",
+                  "description": "INV with ♣/♦",
+                  "children": []
+                },
+                {
+                  "id": "node-fm316990t",
+                  "name": "3♥",
+                  "description": "Puppet to 3♠",
+                  "children": []
+                },
+                {
+                  "id": "node-pbpnypczp",
+                  "name": "3♠",
+                  "description": "Forcing",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "node-45wy6zvgz",
+          "name": "2♠",
+          "description": "a) 5+♣; b) range ask; c) INV with 6♦",
+          "children": [
+            {
+              "id": "node-7525ug31b",
+              "name": "2NT",
+              "description": "Minimum",
+              "children": [
+                {
+                  "id": "node-m8jb6zb9x",
+                  "name": "3♣",
+                  "description": "To play",
+                  "children": []
+                },
+                {
+                  "id": "node-7w3et9fqi",
+                  "name": "3♦",
+                  "description": "INV with 6♦",
+                  "children": []
+                },
+                {
+                  "id": "node-xz9ripy2b",
+                  "name": "3♥",
+                  "description": "FG with 6+♣ with L ShS or No ShS",
+                  "children": []
+                },
+                {
+                  "id": "node-ow2b0ow6t",
+                  "name": "3♠/NT",
+                  "description": "FG with 6+♣ and M/H ShS",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-80xsqd5o6",
+              "name": "3♣",
+              "description": "Maximum",
+              "children": [
+                {
+                  "id": "node-0cdzzdao0",
+                  "name": "3♦",
+                  "description": "FG with 6+♣ with L ShS or No ShS",
+                  "children": []
+                },
+                {
+                  "id": "node-93hmrlw3p",
+                  "name": "3M",
+                  "description": "FG with 6+♣ and M/H ShS",
+                  "children": []
+                },
+                {
+                  "id": "node-f97exfkz5",
+                  "name": "3NT",
+                  "description": "To play (INV balanced or 6♦)",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "node-sbo9qsivw",
+          "name": "2NT",
+          "description": "Puppet stayman, can have a slam try with 5M332",
+          "children": [
+            {
+              "id": "node-kt4k5ikmv",
+              "name": "3♣",
+              "description": "No 5-card M",
+              "children": [
+                {
+                  "id": "node-xs5dj3ska",
+                  "name": "3M",
+                  "description": "4-card oM or 5332 isl",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-o021jxf5j",
+              "name": "3♥",
+              "description": "5♥",
+              "children": [
+                {
+                  "id": "node-je780va70",
+                  "name": "3♠",
+                  "description": "5♠(332), slam try",
+                  "children": []
+                },
+                {
+                  "id": "node-yvk7oo220",
+                  "name": "4♣",
+                  "description": "Sets ♥",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-vrqi4byyu",
+              "name": "3♠",
+              "description": "5♠",
+              "children": [
+                {
+                  "id": "node-bff6539hb",
+                  "name": "4♣",
+                  "description": "5♥(332), slam try",
+                  "children": []
+                },
+                {
+                  "id": "node-f8xghtzbc",
+                  "name": "4♦",
+                  "description": "Sets ♠",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "node-06a5q7v90",
+          "name": "3♣",
+          "description": "6+♦, weak or FG",
+          "children": [
+            {
+              "id": "node-qi4kzkta1",
+              "name": "Pass",
+              "description": "To play",
+              "children": []
+            },
+            {
+              "id": "node-rzao23lzh",
+              "name": "3♥",
+              "description": "6♦, no ShS or ♣ ShS",
+              "children": []
+            },
+            {
+              "id": "node-snbqkxz5z",
+              "name": "3♠/NT",
+              "description": "♦, M/H ShS",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-rv0dvwq7x",
+          "name": "3♦",
+          "description": "4-1-4-4 or 1-4-4-4",
+          "children": [
+            {
+              "id": "node-582y802k0",
+              "name": "3♥",
+              "description": "Ask >> 3♠ = 4♥, 3NT = 4♠",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-oofk06vch",
+          "name": "3♥/♠",
+          "description": "Shortness with minors",
+          "children": []
+        },
+        {
+          "id": "node-kfjrh48kb",
+          "name": "4♣",
+          "description": "Slam try with 55+ minors",
+          "children": []
+        },
+        {
+          "id": "node-5r0u0dh27",
+          "name": "4♦/♥",
+          "description": "6+♥/♠, to play or will ask for keycards",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "root-a5c4738754a14d54",
+      "name": "2♣",
+      "description": "a) 18–19 balanced; b) 24+ balanced; c) any FG hand",
+      "children": [
+        {
+          "id": "node-6y4v12qg8",
+          "name": "2♦",
+          "description": "Relay",
+          "children": [
+            {
+              "id": "node-oponw92i0",
+              "name": "2♥",
+              "description": "4+♥ or 24+ balanced",
+              "children": []
+            },
+            {
+              "id": "node-jo3qbbltn",
+              "name": "2♠",
+              "description": "4+♠",
+              "children": []
+            },
+            {
+              "id": "node-dvm55n8cs",
+              "name": "2NT",
+              "description": "18–19 balanced",
+              "children": []
+            },
+            {
+              "id": "node-pgi1mtdch",
+              "name": "3♣",
+              "description": "6+♣",
+              "children": []
+            },
+            {
+              "id": "node-55glbwnvn",
+              "name": "3♦",
+              "description": "6+♦",
+              "children": []
+            },
+            {
+              "id": "node-haq1af7dj",
+              "name": "3M",
+              "description": "5+♣-4♦/5+♦-4♣",
+              "children": []
+            },
+            {
+              "id": "node-tqdukyizs",
+              "name": "3NT",
+              "description": "5-5 ms",
+              "children": []
+            },
+            {
+              "id": "node-6ywlim0gm",
+              "name": "4m",
+              "description": "6m–5om",
+              "children": []
+            },
+            {
+              "id": "node-mfy18h4t7",
+              "name": "4M",
+              "description": "7+M, 9,5–10 tricks",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-j96b1ypda",
+          "name": "2M",
+          "description": "To play against 18–19 balanced",
+          "children": []
+        },
+        {
+          "id": "node-bhf34vy9m",
+          "name": "2NT",
+          "description": "Transfer, 6+ suit with 2H (out of 3)",
+          "children": [
+            {
+              "id": "node-na89yxgl5",
+              "name": "1st step",
+              "description": "A or K with 7-card suit",
+              "children": []
+            },
+            {
+              "id": "node-d4lpwc81m",
+              "name": "2nd step",
+              "description": "6-card suit with 2H",
+              "children": []
+            },
+            {
+              "id": "node-qjhpdvl24",
+              "name": "3rd step",
+              "description": "7-card suit with 2H",
+              "children": []
+            },
+            {
+              "id": "node-c2gtphq6r",
+              "name": "4th step",
+              "description": "6+ suit with 3 out of 4 honors",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-okztmofae",
+          "name": "3♠",
+          "description": "5-5 ms",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "root-4b8364d543cb407a",
+      "name": "2♦",
+      "description": "a) Weak with 6M 4–7 VUL, 7-10 NV; b) 22–23 balanced",
+      "children": [
+        {
+          "id": "node-z7dzgw29y",
+          "name": "2♥",
+          "description": "Pass or correct",
+          "children": [
+            {
+              "id": "node-d5ye87xq3",
+              "name": "2♠",
+              "description": "6♠",
+              "children": []
+            },
+            {
+              "id": "node-7dd6e65ou",
+              "name": "2NT",
+              "description": "22–23 balanced",
+              "children": []
+            },
+            {
+              "id": "node-b1i6gpou9",
+              "name": "3M",
+              "description": "7M weak",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-nvckl9eem",
+          "name": "2♠",
+          "description": "Pass or correct",
+          "children": [
+            {
+              "id": "node-spelt9ojr",
+              "name": "2NT",
+              "description": "22–23 balanced",
+              "children": []
+            },
+            {
+              "id": "node-dwwfa8ocm",
+              "name": "3♣",
+              "description": "6♥",
+              "children": []
+            },
+            {
+              "id": "node-emoshlkyl",
+              "name": "3♠",
+              "description": "7♠",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-55n4mb2ra",
+          "name": "2NT",
+          "description": "Asking (>> re-bid of 3M is INV)",
+          "children": [
+            {
+              "id": "node-1g7sr5qhd",
+              "name": "3♣",
+              "description": "6♥",
+              "children": []
+            },
+            {
+              "id": "node-anh8arl6b",
+              "name": "3♦",
+              "description": "6♠",
+              "children": []
+            },
+            {
+              "id": "node-fsf82ruqn",
+              "name": "3♥",
+              "description": "Bal No 5M",
+              "children": []
+            },
+            {
+              "id": "node-we4xrafdv",
+              "name": "3♠",
+              "description": "22–23 balanced with 5♠",
+              "children": []
+            },
+            {
+              "id": "node-wp7gwr8j1",
+              "name": "3NT",
+              "description": "22–23 balanced with 5♥",
+              "children": []
+            },
+            {
+              "id": "node-14pl5ilnt",
+              "name": "4♣/♦",
+              "description": "7♥/♠",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-t0vf8djid",
+          "name": "3m",
+          "description": "Natural and forcing",
+          "children": []
+        },
+        {
+          "id": "node-avn63l1dc",
+          "name": "3M",
+          "description": "Pass or correct",
+          "children": []
+        },
+        {
+          "id": "node-slsdhn7t8",
+          "name": "3NT",
+          "description": "To play",
+          "children": []
+        },
+        {
+          "id": "node-beeze24cg",
+          "name": "4♣",
+          "description": "Transfer to your suit",
+          "children": []
+        },
+        {
+          "id": "node-vdei83ph6",
+          "name": "4♦",
+          "description": "Bid your suit",
+          "children": []
+        },
+        {
+          "id": "node-wtci5m3i5",
+          "name": "4M",
+          "description": "To play",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "root-64408d7466684d13",
+      "name": "2M",
+      "description": "8–11, 6M VUL, 5M-4m NV",
+      "children": [
+        {
+          "id": "node-mopsmj4x3",
+          "name": "2M+1",
+          "description": "Relay, can have oM (VUL)",
+          "children": [
+            {
+              "id": "node-3z95qcvc0",
+              "name": "1st step",
+              "description": "6-4(+)",
+              "children": []
+            },
+            {
+              "id": "node-ifj4ooog3",
+              "name": "2nd step",
+              "description": "Sh in a minor",
+              "children": []
+            },
+            {
+              "id": "node-alevj9re5",
+              "name": "3rd step",
+              "description": "Sh oM",
+              "children": []
+            },
+            {
+              "id": "node-jlq26vp0l",
+              "name": "4th step",
+              "description": "MIN, no Sh",
+              "children": []
+            },
+            {
+              "id": "node-u41i6iw8y",
+              "name": "5th step",
+              "description": "MAX, no Sh",
+              "children": []
+            },
+            {
+              "id": "node-j6c6nai42",
+              "name": "6th+",
+              "description": "7M and shortness according to principles",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-v9lweqm8g",
+          "name": "2NT",
+          "description": "Asking (NV)",
+          "children": [
+            {
+              "id": "node-0u5lt4iiq",
+              "name": "3♣",
+              "description": "MIN with 5-4 or 5(332)",
+              "children": []
+            },
+            {
+              "id": "node-48rxlfdny",
+              "name": "3♦",
+              "description": "6M",
+              "children": []
+            },
+            {
+              "id": "node-0ebetfp7q",
+              "name": "3♥",
+              "description": "MAX, 5M-4+♣",
+              "children": []
+            },
+            {
+              "id": "node-cj0i4o22a",
+              "name": "3♠/NT",
+              "description": "MAX, 5M-4/5♦",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-2xc8ed0zl",
+          "name": "2NT (over 2♥ VUL)",
+          "description": "♠ F",
+          "children": [
+            {
+              "id": "node-clu4f0oem",
+              "name": "3♦",
+              "description": "5+♦, F1R",
+              "children": []
+            },
+            {
+              "id": "node-c73587mhi",
+              "name": "3♠",
+              "description": "Invite with ♠",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-8qn9n1e01",
+          "name": "3♣ (over 2♠ VUL)",
+          "description": "5+♥ Limit+",
+          "children": []
+        },
+        {
+          "id": "node-jyyi7rz5r",
+          "name": "3♥ (over 2♠ VUL)",
+          "description": "5+♣, F1R",
+          "children": []
+        },
+        {
+          "id": "node-exed031f0",
+          "name": "3NT+",
+          "description": "L/M/H Sh",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "root-700f0a0f734b4d8f",
+      "name": "2NT",
+      "description": "20–21 balanced",
+      "children": [
+        {
+          "id": "node-3gfttlvs9",
+          "name": "3♣",
+          "description": "Muppet stayman, can have 5♠ and 4♥",
+          "children": [
+            {
+              "id": "node-r9w2n7m62",
+              "name": "3♦",
+              "description": "One or both 4-card Ms",
+              "children": [
+                {
+                  "id": "node-c79xlor7b",
+                  "name": "3♥",
+                  "description": "4♠ or transfer to 3NT",
+                  "children": []
+                },
+                {
+                  "id": "node-etugvfpw1",
+                  "name": "3♠",
+                  "description": "4♥",
+                  "children": []
+                },
+                {
+                  "id": "node-7qsevgjfs",
+                  "name": "3NT",
+                  "description": "44Ms",
+                  "children": []
+                },
+                {
+                  "id": "node-rdrf2d6q6",
+                  "name": "4m",
+                  "description": "5m-4om-(3-1/2-2)",
+                  "children": []
+                },
+                {
+                  "id": "node-aomr5vhik",
+                  "name": "4M",
+                  "description": "5♣/♦",
+                  "children": []
+                },
+                {
+                  "id": "node-a4435kkfv",
+                  "name": "4/5NT",
+                  "description": "4-4 ms",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-d87xvzo4e",
+              "name": "3♥",
+              "description": "No 4-card M",
+              "children": [
+                {
+                  "id": "node-g95ea5cak",
+                  "name": "3♠",
+                  "description": "Puppet to 3NT",
+                  "children": []
+                },
+                {
+                  "id": "node-9ue3okb39",
+                  "name": "3NT",
+                  "description": "5♠ and 4♥, NF",
+                  "children": []
+                },
+                {
+                  "id": "node-ufp2odngh",
+                  "name": "4♣",
+                  "description": "6♠ and 4♥, weak or strong",
+                  "children": []
+                },
+                {
+                  "id": "node-3c0kxhh99",
+                  "name": "4♦",
+                  "description": "5♠ and 5♥, slam try",
+                  "children": []
+                },
+                {
+                  "id": "node-x7n4q9ln1",
+                  "name": "4♥",
+                  "description": "5♠ and 5♥, NF",
+                  "children": []
+                },
+                {
+                  "id": "node-9g3jzmi47",
+                  "name": "4NT",
+                  "description": "Quantitative with 5♠ and 4♥",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "node-za4rwg6xj",
+              "name": "3♠",
+              "description": "5♠",
+              "children": []
+            },
+            {
+              "id": "node-wtov21qu9",
+              "name": "3NT",
+              "description": "5♥",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-bd2p7qdrl",
+          "name": "3♦",
+          "description": "5+♥",
+          "children": [
+            {
+              "id": "node-srtt9g63t",
+              "name": "3♥",
+              "description": "Denies 4♥",
+              "children": []
+            },
+            {
+              "id": "node-35i03paa2",
+              "name": "3♠",
+              "description": "5♠ and 2♥",
+              "children": []
+            },
+            {
+              "id": "node-ow14f2q74",
+              "name": "3NT",
+              "description": "Max with 3♥",
+              "children": []
+            },
+            {
+              "id": "node-oh5kra32i",
+              "name": "4♣",
+              "description": "Max with 4♥",
+              "children": []
+            },
+            {
+              "id": "node-thqkbf17x",
+              "name": "4♥",
+              "description": "Min with 4♥",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-jsdxpfoqa",
+          "name": "3♥",
+          "description": "5+♠",
+          "children": [
+            {
+              "id": "node-vbmzxaq95",
+              "name": "3♠",
+              "description": "Not 4♠",
+              "children": []
+            },
+            {
+              "id": "node-py0u9e0t2",
+              "name": "3NT",
+              "description": "5♥ and 2♠",
+              "children": []
+            },
+            {
+              "id": "node-nn6qfci6j",
+              "name": "4♣",
+              "description": "Max with 3♠",
+              "children": []
+            },
+            {
+              "id": "node-wjwcr3gza",
+              "name": "4♦",
+              "description": "Max with 4♠, cue",
+              "children": []
+            },
+            {
+              "id": "node-2s94231sc",
+              "name": "4♠",
+              "description": "Min with 4♠",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-ebh04yeec",
+          "name": "3♠",
+          "description": "Both minors",
+          "children": [
+            {
+              "id": "node-w8oz93dl4",
+              "name": "3NT",
+              "description": "4♣ = 55+ ms",
+              "children": []
+            },
+            {
+              "id": "node-r5s3hkzz5",
+              "name": "4m",
+              "description": "4-card minor (setting the minor as trumps)",
+              "children": []
+            },
+            {
+              "id": "node-p0okvjwis",
+              "name": "4♥",
+              "description": "Both minors, maximum",
+              "children": []
+            },
+            {
+              "id": "node-whruvtkpy",
+              "name": "4♠",
+              "description": "Both minors, minimum",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-esmgt6tz8",
+          "name": "3NT",
+          "description": "To play",
+          "children": []
+        },
+        {
+          "id": "node-6r6d764d7",
+          "name": "4♣/♦",
+          "description": "Slam try with 6+♥/♠",
+          "children": []
+        },
+        {
+          "id": "node-nsqqlrrf3",
+          "name": "4♥/♠",
+          "description": "Slam try with 6+♣/♦",
+          "children": []
+        },
+        {
+          "id": "node-rsqk7s5pc",
+          "name": "4NT",
+          "description": "Quantitative",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "root-820b06eacc9a4dcb",
+      "name": "3X",
+      "description": "Preemptive",
+      "children": [
+        {
+          "id": "node-b01mgj6fz",
+          "name": "3♦ (over 3♣)",
+          "description": "Trf to 3♥",
+          "children": [
+            {
+              "id": "node-9ge7diagl",
+              "name": "Pass",
+              "description": "5+♥ to play",
+              "children": []
+            },
+            {
+              "id": "node-6qdg214lv",
+              "name": "3♠",
+              "description": "5+♠ to play",
+              "children": []
+            },
+            {
+              "id": "node-eg9yemeq7",
+              "name": "3NT",
+              "description": "Propose it (can pass if you have good ♣)",
+              "children": []
+            },
+            {
+              "id": "node-nw5rcmj8h",
+              "name": "4♣",
+              "description": "Game try",
+              "children": []
+            },
+            {
+              "id": "node-7ueehphin",
+              "name": "4♦",
+              "description": "♦ ISL",
+              "children": []
+            },
+            {
+              "id": "node-ust9c73ml",
+              "name": "4♥/♠",
+              "description": "Propose",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-f2je7db8p",
+          "name": "3♥ (over 3♦)",
+          "description": "Trf to 3♠",
+          "children": [
+            {
+              "id": "node-bnaevzsdd",
+              "name": "Pass/3NT",
+              "description": "As above",
+              "children": []
+            },
+            {
+              "id": "node-ol6p8g2cx",
+              "name": "4♣",
+              "description": "♥ ISL",
+              "children": []
+            },
+            {
+              "id": "node-9k0rh9pjn",
+              "name": "4♦",
+              "description": "♣ ISL >> OPKC",
+              "children": []
+            },
+            {
+              "id": "node-t6p83hua4",
+              "name": "4♥/♠",
+              "description": "Propose",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "root-db34b90773ae4334",
+      "name": "3NT",
+      "description": "Very good 7+M, can have one outside H",
+      "children": [
+        {
+          "id": "node-susge6m0u",
+          "name": "4♣",
+          "description": "Ask in Trf ISL (or to try to play 4♥)",
+          "children": [
+            {
+              "id": "node-0mhq3ekjf",
+              "name": "4♦/♥",
+              "description": "♥/♠ >> Kc or Cue = Ask",
+              "children": []
+            },
+            {
+              "id": "node-szzcu8sa1",
+              "name": "4♠",
+              "description": "♠ + 1 void >> 4NT Ask",
+              "children": []
+            },
+            {
+              "id": "node-zgz2dlyua",
+              "name": "4NT/5♣/♦/♥",
+              "description": "♥ + Void L/M/H/H",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-vvw4r3alh",
+          "name": "4♦",
+          "description": "Ask (the opener will play, but 4♠ = To play)",
+          "children": [
+            {
+              "id": "node-nxbqbekqp",
+              "name": "Cue",
+              "description": "Ask",
+              "children": []
+            },
+            {
+              "id": "node-7eoksq5tp",
+              "name": "5M",
+              "description": "2 losers",
+              "children": []
+            },
+            {
+              "id": "node-hjccmdy6n",
+              "name": "1° step",
+              "description": "Cue",
+              "children": []
+            },
+            {
+              "id": "node-113wdn8al",
+              "name": "2° step",
+              "description": "Ace",
+              "children": []
+            },
+            {
+              "id": "node-9xxcupyck",
+              "name": "3° step",
+              "description": "Void",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "node-426npzj3k",
+          "name": "4♥/♠",
+          "description": "P/C",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "root-fecbc5b7b86b4b71",
+      "name": "4X",
+      "description": "Preemptive",
+      "children": [
+        {
+          "id": "node-nahmt878o",
+          "name": "4♦ (over 4♣)",
+          "description": "ISL in ♣, 4NT = To play",
+          "children": []
+        },
+        {
+          "id": "node-f1jc1gyt3",
+          "name": "5♣ (over 4♦)",
+          "description": "ISL in ♦, 4NT = To play",
+          "children": []
+        },
+        {
+          "id": "node-l3wb1m8al",
+          "name": "4♠ (over 4♥)",
+          "description": "To play",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "root-7c68a5646adf47ef",
+      "name": "4NT",
+      "description": "Asking KC",
+      "children": []
+    }
+  ]
+}

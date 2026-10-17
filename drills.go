@@ -101,6 +101,10 @@ type DrillProblem struct {
 	// Ratings maps username -> stars (1..5), given after finishing a
 	// practice run; the library shows the average and sorts by it.
 	Ratings map[string]int `json:"ratings,omitempty"`
+	// Played maps username -> timestamp of their first finished practice
+	// run. Server-side only (like Ratings); drives the played/unplayed
+	// filter in the library.
+	Played map[string]string `json:"played,omitempty"`
 	// Legacy single-line shape (before Lines existed); migrated on load and
 	// on every incoming payload, never written back.
 	Plays   []DrillPlay `json:"plays,omitempty"`
@@ -1075,6 +1079,7 @@ func (s *DrillSession) stateLocked() map[string]any {
 
 // enrichDoneRating attaches the problem's live rating summary to a finished
 // session state so the done view can show the average and the user's stars.
+// Finishing a run also stamps the user's played flag on the problem.
 // Called with s.mu held; takes drillsMu (the only nesting order used).
 func enrichDoneRating(st map[string]any, username string) {
 	if st["phase"] != "done" {
@@ -1083,12 +1088,31 @@ func enrichDoneRating(st map[string]any, username string) {
 	pid, _ := st["problemId"].(string)
 	drillsMu.Lock()
 	if p := drills[pid]; p != nil {
+		markPlayedLocked(p, username)
 		avg, count := ratingSummaryLocked(p)
 		st["rating"] = avg
 		st["ratings"] = count
 		st["yourRating"] = p.Ratings[username]
 	}
 	drillsMu.Unlock()
+}
+
+// markPlayedLocked stamps the first finished run of `username` on a problem.
+// Callers must hold drillsMu.
+func markPlayedLocked(p *DrillProblem, username string) {
+	if username == "" {
+		return
+	}
+	if _, ok := p.Played[username]; ok {
+		return
+	}
+	if p.Played == nil {
+		p.Played = map[string]string{}
+	}
+	p.Played[username] = time.Now().UTC().Format(time.RFC3339)
+	if err := saveDrillLocked(p); err != nil {
+		log.Printf("Could not persist played flag for drill %s: %v", p.ID, err)
+	}
 }
 
 // writeSessionState renders a session (with the live rating summary attached
@@ -1195,6 +1219,7 @@ func handleDrillsList(w http.ResponseWriter, r *http.Request) {
 		Rating     float64 `json:"rating"`
 		Ratings    int     `json:"ratings"`
 		YourRating int     `json:"yourRating"`
+		Played     bool    `json:"played"`
 		Created    string  `json:"created"`
 		Updated    string  `json:"updated"`
 	}
@@ -1205,12 +1230,13 @@ func handleDrillsList(w http.ResponseWriter, r *http.Request) {
 			label = c.String()
 		}
 		avg, count := ratingSummaryLocked(p)
+		_, played := p.Played[me]
 		list = append(list, info{
 			ID: p.ID, Owner: p.Owner, Title: p.Title, Role: p.Role,
 			HeroSeat: p.HeroSeat, Difficulty: p.Difficulty, Dealer: p.Dealer,
 			Vuln: p.Vuln, Contract: label, Lines: len(p.Lines),
 			Rating: avg, Ratings: count, YourRating: p.Ratings[me],
-			Created: p.Created, Updated: p.Updated,
+			Played: played, Created: p.Created, Updated: p.Updated,
 		})
 	}
 	drillsMu.Unlock()
@@ -1324,7 +1350,8 @@ func handleDrillPut(w http.ResponseWriter, r *http.Request) {
 	p.ID = id
 	p.Owner = existing.Owner
 	p.Created = existing.Created
-	p.Ratings = existing.Ratings // ratings are server-side only
+	p.Ratings = existing.Ratings // ratings and played stamps are server-side only
+	p.Played = existing.Played
 	p.Updated = time.Now().UTC().Format(time.RFC3339)
 	drills[id] = p
 	err := saveDrillLocked(p)
@@ -1365,6 +1392,7 @@ func handleDrillDelete(w http.ResponseWriter, r *http.Request) {
 	if err := os.Remove(drillPath(id)); err != nil && !os.IsNotExist(err) {
 		log.Printf("Could not remove drill file: %v", err)
 	}
+	removeDrillFromArchives(id)
 	writeJSON(w, map[string]bool{"ok": true})
 }
 

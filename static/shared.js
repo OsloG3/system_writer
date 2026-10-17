@@ -758,10 +758,6 @@ function renderLayout(options) {
         `;
     }
 
-    const navBase = "flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-headline font-bold text-sm tracking-tight transition-all no-underline";
-    const navActive = `${navBase} bg-white/12 text-gold-light shadow-[inset_0_0_0_1px_rgba(232,230,227,0.35)]`;
-    const navIdle = `${navBase} text-white/60 hover:text-white hover:bg-white/10`;
-
     const sideBase = "flex items-center gap-3 h-11 px-4 mx-3 rounded-xl font-label text-xs uppercase tracking-widest transition-all no-underline";
     const sideActive = `${sideBase} bg-white/10 text-gold-light shadow-[inset_0_0_0_1px_rgba(232,230,227,0.3)]`;
     const sideIdle = `${sideBase} text-white/55 hover:text-white hover:bg-white/8`;
@@ -797,24 +793,6 @@ function renderLayout(options) {
                     </span>
                     <span class="font-headline font-extrabold text-lg sm:text-xl text-white tracking-tight">Garbridge</span>
                 </a>
-                <nav class="hidden md:flex items-center gap-2 font-headline tracking-tight text-sm">
-                    <a class="${mode === 'play' || mode === 'bridge' || mode === 'drill' ? navIdle : navActive}" href="/">
-                        <span class="material-symbols-outlined text-base">account_tree</span>
-                        Collections
-                    </a>
-                    <a class="${mode === 'play' ? navActive : navIdle}" href="/play?m=bid">
-                        <span class="material-symbols-outlined text-base">gavel</span>
-                        Bid only
-                    </a>
-                    <a class="${mode === 'bridge' ? navActive : navIdle}" href="/play?m=play">
-                        <span class="material-symbols-outlined text-base">casino</span>
-                        Play bridge
-                    </a>
-                    <a class="${mode === 'drill' ? navActive : navIdle}" href="/drills">
-                        <span class="material-symbols-outlined text-base">style</span>
-                        Card problems
-                    </a>
-                </nav>
             </div>
             <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
                 <div id="authArea" class="flex items-center"></div>

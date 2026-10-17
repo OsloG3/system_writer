@@ -81,6 +81,9 @@ func migrateDataLayout() error {
 	if err := os.MkdirAll(drillsDir(), 0o755); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(drillArchivesDir(), 0o755); err != nil {
+		return err
+	}
 	entries, err := os.ReadDir(dataDir)
 	if err != nil {
 		return err
@@ -174,6 +177,7 @@ func main() {
 	initPlay()
 	initTeam()
 	initDrills()
+	initDrillArchives()
 	initAlerts()
 	initPush()
 
@@ -217,6 +221,11 @@ func main() {
 	http.HandleFunc("GET /api/drill/session/{sid}", handleDrillSessionGet)
 	http.HandleFunc("POST /api/drill/session/{sid}/card", handleDrillSessionCard)
 	http.HandleFunc("DELETE /api/drill/session/{sid}", handleDrillSessionDelete)
+	http.HandleFunc("GET /api/drill-archives", handleDrillArchivesList)
+	http.HandleFunc("POST /api/drill-archives", handleDrillArchiveCreate)
+	http.HandleFunc("PUT /api/drill-archives/{id}", handleDrillArchivePut)
+	http.HandleFunc("DELETE /api/drill-archives/{id}", handleDrillArchiveDelete)
+	http.HandleFunc("POST /api/drill-archives/{id}/drills", handleDrillArchiveDrills)
 
 	// Static/HTML Pages
 	// The service worker must be served from the origin root so its scope
