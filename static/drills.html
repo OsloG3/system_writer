@@ -2767,7 +2767,7 @@
             function libraryListHtml(list) {
                 if (list === undefined) list = filteredLibrary();
                 return list.length ? list.map((p) => problemRow(p, false)).join("")
-                    : `<div class="dr-empty">No problems match. ${library && library.length ? "Try loosening the filters." : "Be the first to author one in the Create tab."}</div>`;
+                    : `<div class="dr-empty">No problems match. ${selectedArchive() ? "Use \u201cAdd problems\u201d in the Archives panel to fill this archive." : (library && library.length ? "Try loosening the filters." : "Be the first to author one in the Create tab.")}</div>`;
             }
             function practiceTabHtml() {
                 const list = filteredLibrary();
@@ -2779,9 +2779,10 @@
                     <div class="dr-filters" style="align-items:center">
                         <select class="dr-input" id="drArchive" style="max-width:16rem;padding:.4rem .6rem">${archiveOptions()}</select>
                         <button class="dr-btn ghost" id="drArchNew"><span class="material-symbols-outlined">create_new_folder</span>New</button>
+                        ${arch ? `<button class="dr-btn ghost" id="drArchAdd" title="Add problems to this archive"><span class="material-symbols-outlined">playlist_add</span>Add problems</button>` : ""}
                         ${arch ? `<button class="dr-btn danger" id="drArchDel" title="Delete this archive"><span class="material-symbols-outlined">delete</span></button>` : ""}
                     </div>
-                    ${arch ? `<div class="dr-hint">Viewing the archive <b>${escapeHtml(arch.name)}</b> \u2014 the filters below search inside it; use the bookmark buttons to add or remove problems.</div>` : `<div class="dr-hint">Pick an archive to search just its problems; every problem also stays in the full library, and can be in several archives.</div>`}
+                    ${arch ? `<div class="dr-hint">Viewing the archive <b>${escapeHtml(arch.name)}</b> \u2014 the filters below search inside it; use the bookmark buttons or \u201cAdd problems\u201d to fill it.</div>` : `<div class="dr-hint">Pick an archive to search just its problems; every problem also stays in the full library, and can be in several archives.</div>`}
                 </div>
                 <div class="dr-panel">
                     <h3><span class="material-symbols-outlined" style="font-size:18px">tune</span>Filters</h3>
@@ -3301,6 +3302,24 @@
                         <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn danger" id="archDelOk"><span class="material-symbols-outlined">delete</span>Delete</button></div>
                     </div></div>`;
                 }
+                if (modal.kind === "archiveAdd") {
+                    const arch = selectedArchive();
+                    const inArch = new Set((arch && arch.drillIds) || []);
+                    const list = (library || []).filter((p) => !inArch.has(p.id));
+                    const chips = list.length
+                        ? list.map((p) => {
+                            const on = modal.sel.has(p.id);
+                            const label = escapeHtml(p.title || p.contract || "untitled");
+                            return `<button class="dr-chip${on ? " on" : ""}" data-archpick="${p.id}" style="text-transform:none;letter-spacing:0" title="${on ? "Remove from the selection" : "Select"} ${label}">${on ? "<span class=\"material-symbols-outlined\" style=\"font-size:14px\">check</span>" : ""}${label} <span style="opacity:.65">${escapeHtml(p.owner)}</span></button>`;
+                        }).join("")
+                        : `<div class="dr-hint">Every problem in the library is already in this archive.</div>`;
+                    return `<div class="dr-overlay"><div class="dr-modal">
+                        <h3>Add problems to ${escapeHtml(arch ? arch.name : "the archive")}</h3>
+                        <div class="dr-hint" style="margin-bottom:.5rem">Tap the problems to choose them, then add them all at once. They stay in the library and in any other archives too.</div>
+                        <div class="dr-filters" style="max-height:16rem;overflow-y:auto">${chips}</div>
+                        <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn gold" id="archAddOk" ${modal.sel.size ? "" : "disabled"}><span class="material-symbols-outlined">playlist_add</span>${modal.sel.size ? "Add " + modal.sel.size : "Add"}</button></div>
+                    </div></div>`;
+                }
                 return "";
             }
 
@@ -3455,6 +3474,22 @@
                     render();
                 } catch (e) { busy = false; render(); }
             }
+            // add several problems to the selected archive in one go
+            async function addDrillsToArchive(ids) {
+                const arch = selectedArchive();
+                if (!arch || !ids.length) return;
+                busy = true; render();
+                try {
+                    for (const id of ids) {
+                        const r = await api("POST", `/api/drill-archives/${arch.id}/drills`, { drillId: id, action: "add" });
+                        if (!r.ok) { showToast((r.data && r.data.error) || "Could not update the archive", true); break; }
+                    }
+                    await loadArchives();
+                    modal = null;
+                    showToast("Added to the archive");
+                } catch (e) { /* auth handled */ }
+                busy = false; render();
+            }
             async function toggleArchiveDrill(drillId) {
                 const arch = selectedArchive();
                 if (!arch) return;
@@ -3583,6 +3618,7 @@
                 const archSel = $("drArchive");
                 if (archSel) archSel.onchange = () => { selArchive = archSel.value; render(); };
                 on("drArchNew", () => { modal = { kind: "archive" }; render(); });
+                on("drArchAdd", () => { modal = { kind: "archiveAdd", sel: new Set() }; render(); });
                 on("drArchDel", () => { modal = { kind: "archiveDel", id: selArchive }; render(); });
                 const archName = $("archName");
                 if (archName) {
@@ -3688,6 +3724,17 @@
                     const name = (el ? el.value : "").trim();
                     if (!name) { showToast("Give the archive a name", true); return; }
                     createArchive(name);
+                });
+                document.querySelectorAll("[data-archpick]").forEach((el) => {
+                    el.onclick = () => {
+                        if (!modal || modal.kind !== "archiveAdd") return;
+                        const id = el.getAttribute("data-archpick");
+                        if (modal.sel.has(id)) modal.sel.delete(id); else modal.sel.add(id);
+                        render();
+                    };
+                });
+                on("archAddOk", () => {
+                    if (modal && modal.kind === "archiveAdd") addDrillsToArchive([...modal.sel]);
                 });
                 on("archDelOk", () => { if (modal && modal.id) deleteArchive(modal.id); });
                 const ct = $("claimTricks");
