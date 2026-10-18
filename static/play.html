@@ -2215,9 +2215,15 @@
                 checkLobbyTurnAlerts();
             }
 
+            // a partner table is mid-match and waiting on this user's bid
+            function partnerTurnWaiting() {
+                return (games || []).some((g) => g.inProgress && g.yourTurn);
+            }
+
             // Lobby polling: fire once per table when its yourTurn flips on
             function checkLobbyTurnAlerts() {
                 if (!games) return;
+                setBidTurnDot(partnerTurnWaiting());
                 const now = {};
                 for (const g of games) now[g.id] = !!g.yourTurn;
                 if (turnAlertsOn && prevGamesTurn) {
@@ -3525,14 +3531,15 @@
             }
 
             function bidTabsHtml() {
-                const tab = (id, label, icon, on) => `
-                    <button data-bidtab="${id}" class="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-label text-xs font-bold uppercase tracking-wider transition-all ${on ? "bg-gradient-to-b from-[#6f6c68] to-[#4a4642] text-white shadow-[0_2px_0_rgba(0,0,0,0.3)]" : "bg-white/5 text-[#908f8d] hover:bg-white/10"}">
+                const tab = (id, label, icon, on, dot) => `
+                    <button data-bidtab="${id}" class="relative flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-label text-xs font-bold uppercase tracking-wider transition-all ${on ? "bg-gradient-to-b from-[#6f6c68] to-[#4a4642] text-white shadow-[0_2px_0_rgba(0,0,0,0.3)]" : "bg-white/5 text-[#908f8d] hover:bg-white/10"}">
                         <span class="material-symbols-outlined text-sm">${icon}</span>${label}
+                        ${dot ? `<span title="A partner table awaits your bid" class="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-[#8fd694] shadow-[0_0_6px_rgba(143,214,148,0.9)] animate-pulse-dot"></span>` : ""}
                     </button>`;
                 return `
                     <div class="flex gap-2 mb-3">
                         ${tab("solo", "With a bot partner", "smart_toy", bidTab === "solo")}
-                        ${tab("partner", "With a partner", "group", bidTab === "partner")}
+                        ${tab("partner", "With a partner", "group", bidTab === "partner", partnerTurnWaiting())}
                     </div>`;
             }
 
@@ -4087,6 +4094,7 @@
                     state = null;
                     stats = null;
                     games = null;
+                    setBidTurnDot(false);
                     closeHistory();
                     render();
                 }

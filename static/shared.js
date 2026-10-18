@@ -822,9 +822,10 @@ function renderLayout(options) {
                         <span class="material-symbols-outlined text-lg">account_tree</span>
                         Collections
                     </a>
-                    <a href="/play?m=bid" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' ? sideActive : sideIdle}">
+                    <a href="/play?m=bid" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' ? sideActive : sideIdle} relative">
                         <span class="material-symbols-outlined text-lg">gavel</span>
                         Bid only
+                        <span id="bidTurnDot" title="A partner table awaits your bid" class="hidden absolute top-1.5 right-2.5 w-2 h-2 rounded-full bg-[#8fd694] shadow-[0_0_6px_rgba(143,214,148,0.9)] animate-pulse-dot"></span>
                     </a>
                     <a href="/play?m=play" onclick="closeSidebar()" class="${sideLink} ${mode === 'bridge' ? sideActive : sideIdle}">
                         <span class="material-symbols-outlined text-lg">casino</span>
@@ -865,6 +866,13 @@ function renderLayout(options) {
 
 // ---- Mobile sidebar drawer ----
 
+// Show or hide the green "your turn" dot on the sidebar's Bid only entry
+// (a partner table is mid-match and waiting on this user's bid).
+function setBidTurnDot(on) {
+    const dot = document.getElementById('bidTurnDot');
+    if (dot) dot.classList.toggle('hidden', !on);
+}
+
 function toggleSidebar(force) {
     const sidebar = document.getElementById("sidebar");
     if (!sidebar) return;
@@ -886,6 +894,19 @@ document.addEventListener("keydown", (e) => {
 
 window.addEventListener("resize", () => {
     if (window.innerWidth >= 768) closeSidebar();
+});
+
+// On every page, light the Bid only menu entry when a partner table is
+// mid-match and waiting on this user's bid (the play page keeps the dot
+// fresh itself while it polls the lobby).
+document.addEventListener("DOMContentLoaded", () => {
+    fetch("/api/play/team/list")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+            if (d && d.games)
+                setBidTurnDot(d.games.some((g) => g.inProgress && g.yourTurn));
+        })
+        .catch(() => {});
 });
 
 // ---- Home-screen install (PWA) ----
