@@ -65,11 +65,12 @@ type DrillClaim struct {
 
 // DrillBotEnd hands the rest of the hand to the card-play bots: from the end
 // of the script the hero may play ANY legal card and every other seat is
-// played by the bidding-dt sidecar. The hand is then graded: the counted
-// result matching Expect tricks is a success, anything else means a mistake
-// was made somewhere during the hand.
+// played by the bidding-dt sidecar. The counted result is graded against the
+// problem's Target like every other ending.
 type DrillBotEnd struct {
-	Expect int `json:"expect"` // declarer's expected final trick count
+	// Expect is the legacy per-line target (declarer tricks), folded into
+	// DrillProblem.Target by migrateTarget and never written back.
+	Expect int `json:"expect,omitempty"`
 }
 
 // DrillLine is one full scripted play with its ending. A problem carries one
@@ -97,7 +98,17 @@ type DrillProblem struct {
 	Calls          []string    `json:"calls"`
 	BidComment     string      `json:"bidComment,omitempty"`
 	ProblemComment string      `json:"problemComment,omitempty"`
-	Lines          []DrillLine `json:"lines"`
+	// Target is the number of tricks the hero's side must take (or beat) for
+	// a practice run to count as a success: declarer tricks on a declarer
+	// problem, defenders' tricks on a defense one. It is shown before the
+	// play starts and grades every ending (claim, bots, played out).
+	Target int `json:"target"`
+	// AllowWrong lets the practitioner stray from every scripted line: the
+	// wrong card stands, the bots finish the hand and it is graded against
+	// Target, instead of the pick being refused with a hint. This is how an
+	// author opens up incorrect lines without scripting them.
+	AllowWrong bool        `json:"allowWrong,omitempty"`
+	Lines      []DrillLine `json:"lines"`
 	// Ratings maps username -> stars (1..5), given after finishing a
 	// practice run; the library shows the average and sorts by it.
 	Ratings map[string]int `json:"ratings,omitempty"`
@@ -134,14 +145,52 @@ func (p *DrillProblem) migrateLines() {
 	p.Plays, p.Claim = nil, nil
 }
 
+// heroSide converts a declarer trick count to the hero's side of the table.
+func (p *DrillProblem) heroSide(decl int) int {
+	if p.Role == "declarer" {
+		return decl
+	}
+	return 13 - decl
+}
+
+// clearLegacyExpect drops the per-line bot targets problems carried before
+// the problem-level Target existed.
+func (p *DrillProblem) clearLegacyExpect() {
+	for i := range p.Lines {
+		if p.Lines[i].Bot != nil {
+			p.Lines[i].Bot.Expect = 0
+		}
+	}
+}
+
+// migrateTarget fills Target for problems saved before it existed, from the
+// first line's ending: a claim's tricks or the old bot expectation. A fully
+// scripted line (or a bot end without an expectation) is counted later, in
+// validateDrill, once the play is simulated.
+func (p *DrillProblem) migrateTarget() {
+	defer p.clearLegacyExpect()
+	if p.Target > 0 || len(p.Lines) == 0 {
+		return
+	}
+	l := p.Lines[0]
+	switch {
+	case l.Claim != nil:
+		p.Target = p.heroSide(l.Claim.Tricks)
+	case l.Bot != nil && l.Bot.Expect > 0:
+		p.Target = p.heroSide(l.Bot.Expect)
+	}
+}
+
+// DrillResult grades a finished run against the problem's Target: Success
+// when the hero's side took at least Target tricks, however the hand ended.
 type DrillResult struct {
 	Contract *PlayContract `json:"contract"`
-	Tricks   int           `json:"tricks"`
+	Tricks   int           `json:"tricks"` // declarer tricks taken
 	Claimed  bool          `json:"claimed"`
 	Wrong    int           `json:"wrong"`
-	Botted   bool          `json:"botted,omitempty"`   // the bots finished the hand
-	Expected *int          `json:"expected,omitempty"` // bot-end target tricks
-	Success  *bool         `json:"success,omitempty"`  // bot-end grade
+	Botted   bool          `json:"botted,omitempty"` // the bots finished the hand
+	Target   int           `json:"target"`           // hero-side tricks needed
+	Success  bool          `json:"success"`          // hero's side took at least Target
 }
 
 // DrillSession is one practice run. The problem is snapshotted at the start
@@ -157,7 +206,6 @@ type DrillSession struct {
 	Plays      []DrillPlay // applied prefix of the script (hero cards as actually played)
 	Live       []int       // indices of the lines still matching the play so far
 	Bot        bool        // the scripted part is over; bots play every non-hero seat
-	Expect     int         // bot-end target (decl tricks), valid when Bot
 	DeclTricks int
 	Wrong      int
 	Done       bool
@@ -195,6 +243,7 @@ func initDrills() {
 			continue
 		}
 		p.migrateLines()
+		p.migrateTarget()
 		drills[p.ID] = &p
 		n++
 	}
@@ -626,11 +675,6 @@ func validateLine(p *DrillProblem, contract *PlayContract, l *DrillLine, idx int
 		if len(l.Plays) >= 52 {
 			return 0, fmt.Errorf("line %d: there is nothing left for the bots to play", idx+1)
 		}
-		remaining := (52 - len(l.Plays) + 3) / 4
-		if l.Bot.Expect < 0 || l.Bot.Expect > 13 || l.Bot.Expect < declTricks || l.Bot.Expect > declTricks+remaining {
-			return 0, fmt.Errorf("line %d: expecting %d tricks is impossible (%d already won, at most %d more can be played)",
-				idx+1, l.Bot.Expect, declTricks, remaining)
-		}
 	default:
 		if len(l.Plays) != 52 {
 			return 0, fmt.Errorf("line %d: the play must cover all 52 cards, or end with a claim or with the bots", idx+1)
@@ -702,16 +746,30 @@ func validateDrill(p *DrillProblem) (*PlayContract, error) {
 		return nil, errors.New("a defense problem's hero must be one of the defenders")
 	}
 	p.migrateLines()
+	p.migrateTarget()
 	if len(p.Lines) == 0 {
 		return nil, errors.New("record the card play first")
 	}
 	if len(p.Lines) > drillMaxLines {
 		return nil, fmt.Errorf("a problem may have at most %d lines", drillMaxLines)
 	}
+	scripted := 0
 	for i := range p.Lines {
-		if _, err := validateLine(p, contract, &p.Lines[i], i); err != nil {
+		decl, err := validateLine(p, contract, &p.Lines[i], i)
+		if err != nil {
 			return nil, err
 		}
+		if i == 0 {
+			scripted = decl
+		}
+	}
+	if p.Target <= 0 {
+		// legacy problem whose first line plays out (or bots without an old
+		// expectation): count what the script itself takes
+		p.Target = p.heroSide(scripted)
+	}
+	if p.Target < 1 || p.Target > 13 {
+		return nil, errors.New("the target must be between 1 and 13 tricks")
 	}
 	for i := 0; i < len(p.Lines); i++ {
 		for j := i + 1; j < len(p.Lines); j++ {
@@ -825,47 +883,69 @@ func (s *DrillSession) liveLine() *DrillLine {
 	return &s.Problem.Lines[s.Live[0]]
 }
 
-// lineAccepts reports whether `line` takes `card` from the hero at the
-// current position: the scripted card itself, or an equivalent one (same
-// union-find class -- the hero holds it, since legality was checked first).
-func (s *DrillSession) lineAccepts(line int, seat int, card string) bool {
-	l := &s.Problem.Lines[line]
-	n := len(s.Plays)
-	if n >= len(l.Plays) || l.Plays[n].Seat != seat {
+// lineMatchesAt reports whether `card` played at position i of the session's
+// play is what `line` prescribes there: the scripted card itself, or an
+// equivalent one (same union-find class).
+func (s *DrillSession) lineMatchesAt(l *DrillLine, i int, seat int, card string) bool {
+	if i >= len(l.Plays) || l.Plays[i].Seat != seat {
 		return false
 	}
-	dp := l.Plays[n]
+	dp := l.Plays[i]
 	if dp.Card == card {
 		return true
 	}
 	return l.classRoot(seat, card) == l.classRoot(seat, dp.Card)
 }
 
-func (s *DrillSession) finishClaimLocked(tricks int) {
+// lineAccepts reports whether `line` takes `card` from the hero at the
+// current position.
+func (s *DrillSession) lineAccepts(line int, seat int, card string) bool {
+	return s.lineMatchesAt(&s.Problem.Lines[line], len(s.Plays), seat, card)
+}
+
+// gradeLocked ends the hand and grades it against the problem's Target: the
+// hero's side taking at least Target tricks is a success, however the hand
+// ended (claimed, played out, or finished by the bots).
+func (s *DrillSession) gradeLocked(tricks int, claimed, botted bool) {
 	s.Done = true
 	s.Result = &DrillResult{
 		Contract: s.contract, Tricks: tricks,
-		Claimed: true, Wrong: s.Wrong,
+		Claimed: claimed, Wrong: s.Wrong,
+		Botted: botted, Target: s.Problem.Target,
+		Success: s.Problem.heroSide(tricks) >= s.Problem.Target,
 	}
+	if botted {
+		s.dropBotSessionsLocked()
+	}
+}
+
+// strayLocked applies a hero card no live line prescribes, on a problem
+// whose author allows straying: the card stands, every other seat (and the
+// rest of the hand) goes to the bots and the counted result is graded
+// against the problem's Target, so an incorrect line simply fails (or
+// succeeds, if the practitioner found something the author missed).
+func (s *DrillSession) strayLocked(seat int, card string) error {
+	s.Wrong++
+	s.applyLocked(DrillPlay{Seat: seat, Card: card})
+	s.Bot = true
+	if len(s.Plays) == 52 {
+		s.finishBotLocked()
+		return nil
+	}
+	return s.advanceLocked()
+}
+
+func (s *DrillSession) finishClaimLocked(tricks int) {
+	s.gradeLocked(tricks, true, false)
 }
 
 func (s *DrillSession) finishCountedLocked() {
-	s.Done = true
-	s.Result = &DrillResult{Contract: s.contract, Tricks: s.DeclTricks, Wrong: s.Wrong}
+	s.gradeLocked(s.DeclTricks, false, false)
 }
 
-// finishBotLocked grades a hand the bots finished: matching the author's
-// expected trick count is a success; anything else means a mistake was made
-// somewhere during the hand.
+// finishBotLocked grades a hand the bots finished against the target.
 func (s *DrillSession) finishBotLocked() {
-	s.Done = true
-	exp := s.Expect
-	succ := s.DeclTricks == exp
-	s.Result = &DrillResult{
-		Contract: s.contract, Tricks: s.DeclTricks, Wrong: s.Wrong,
-		Botted: true, Expected: &exp, Success: &succ,
-	}
-	s.dropBotSessionsLocked()
+	s.gradeLocked(s.DeclTricks, false, true)
 }
 
 // dropBotSessionsLocked tells the sidecar to forget this session's bot
@@ -881,7 +961,6 @@ func (s *DrillSession) endScriptLocked() {
 	switch {
 	case l.Bot != nil:
 		s.Bot = true
-		s.Expect = l.Bot.Expect
 	case l.Claim != nil:
 		s.finishClaimLocked(l.Claim.Tricks)
 	default:
@@ -985,9 +1064,9 @@ func (s *DrillSession) botChooseLocked(seat int) (string, error) {
 // stateLocked renders the client-visible session. During the play the hero
 // sees their own hand only (plus the dummy once tabled); the script's
 // messages stay hidden until the hand is over, except for the hint returned
-// with a wrong pick. How the hand ends (claim, bots, played out) is never
-// revealed up front: the bot target only travels once the bots have visibly
-// taken over, and a claim's trick count only appears in the final result.
+// with a wrong pick. The target travels from the very first state so the
+// practitioner knows what to aim for before playing a card; how a line ends
+// (claim, bots, played out) is never revealed up front.
 func (s *DrillSession) stateLocked() map[string]any {
 	p := &s.Problem
 	st := map[string]any{
@@ -1012,12 +1091,11 @@ func (s *DrillSession) stateLocked() map[string]any {
 		"hand":           p.Hands[p.HeroSeat],
 		"heroSeats":      p.heroSeats(),
 		"lines":          len(p.Lines),
+		"target":         p.Target,
+		"allowWrong":     p.AllowWrong,
 		"bot":            s.Bot,
 		"wrong":          s.Wrong,
 		"done":           s.Done,
-	}
-	if s.Bot {
-		st["expectTricks"] = s.Expect
 	}
 	plays := make([]map[string]any, 0, len(s.Plays))
 	for _, dp := range s.Plays {
@@ -1050,7 +1128,9 @@ func (s *DrillSession) stateLocked() map[string]any {
 		line := make([]map[string]any, 0, len(s.Plays))
 		for i, dp := range s.Plays {
 			m := map[string]any{"seat": dp.Seat, "card": dp.Card}
-			if i < len(l.Plays) && s.heroControls(dp.Seat) {
+			// the script's reasoning only fits cards it actually prescribed
+			// (or an equivalent one); a strayed card carries no message
+			if i < len(l.Plays) && s.heroControls(dp.Seat) && s.lineMatchesAt(l, i, dp.Seat, dp.Card) {
 				msg := strings.TrimSpace(l.Plays[i].Msg)
 				if msg == "" {
 					msg = defaultHeroMsg(dp.Card)
@@ -1601,19 +1681,29 @@ func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(matched) == 0 {
-		s.Wrong++
-		scripted := s.liveLine().Plays[len(s.Plays)]
-		msg := strings.TrimSpace(scripted.Msg)
-		if msg == "" {
-			msg = defaultHeroMsg(scripted.Card)
+		if !s.Problem.AllowWrong {
+			s.Wrong++
+			scripted := s.liveLine().Plays[len(s.Plays)]
+			msg := strings.TrimSpace(scripted.Msg)
+			if msg == "" {
+				msg = defaultHeroMsg(scripted.Card)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]any{
+				"error": "not the card the author played",
+				"hint":  msg,
+				"wrong": s.Wrong,
+			})
+			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(map[string]any{
-			"error": "not the card the author played",
-			"hint":  msg,
-			"wrong": s.Wrong,
-		})
+		// the author lets the practitioner stray: the wrong card stands and
+		// the bots finish the hand, graded against the problem's target
+		if err := s.strayLocked(seat, card); err != nil {
+			// the hero's card stands; the client's polling GET retries the bot
+			log.Printf("drill session %s: bot advance: %v", s.ID, err)
+		}
+		writeSessionState(w, s, username)
 		return
 	}
 	s.Live = matched

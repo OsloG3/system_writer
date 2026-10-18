@@ -2034,12 +2034,12 @@
                 return `<span class="cb-call cb-call-${TILE_CLS[c[1]]}">${c[0]}<b style="font-size:.75rem;">${sym}</b></span>`;
             }
             function auctionHtml(dealer, vuln, calls, pending, youSeat) {
-                // columns run in calling order starting at the viewer's own
-                // seat, so you are always the leftmost column no matter who
+                // columns run in calling order ending at the viewer's own
+                // seat, so you are always the rightmost column no matter who
                 // deals; every call still lands under the seat that made it
                 const first = youSeat === null || youSeat === undefined ? dealer : youSeat;
-                const cols = [0, 1, 2, 3].map((k) => (first + k) % 4);
-                const off = (dealer - first + 4) % 4; // blank cells before the dealer opens
+                const cols = [0, 1, 2, 3].map((k) => (first + 1 + k) % 4);
+                const off = (dealer - first + 3) % 4; // blank cells before the dealer opens
                 const list = calls || [];
                 const rows = [];
                 for (let i = 0; i < list.length; i++) {
@@ -2050,7 +2050,7 @@
                     rows[r].push({ c: list[i], i });
                 }
                 if (pending !== null && pending !== undefined) {
-                    const pos = (pending - first + 4) % 4;
+                    const pos = (pending - first + 3) % 4;
                     let r = Math.floor((list.length + off) / 4);
                     if (!rows[r]) rows[r] = [];
                     if (pos < rows[r].length) { r++; rows[r] = []; }
@@ -2085,10 +2085,10 @@
                 return `<span class="cb-mini cb-mini-${TILE_CLS[c[1]]}">${c[0]}${sym}</span>`;
             }
             function miniAuctionHtml(dealer, calls, youSeat) {
-                // leftmost column is the viewer's own seat, like auctionHtml
+                // rightmost column is the viewer's own seat, like auctionHtml
                 const first = youSeat === null || youSeat === undefined ? dealer : youSeat;
-                const cols = [0, 1, 2, 3].map((k) => (first + k) % 4);
-                const off = (dealer - first + 4) % 4;
+                const cols = [0, 1, 2, 3].map((k) => (first + 1 + k) % 4);
+                const off = (dealer - first + 3) % 4;
                 const head = cols.map((s) => `<span class="${s === dealer ? "dlr" : ""}">${SEAT_NAMES[s][0]}</span>`).join("");
                 const list = calls || [];
                 const rows = [];
@@ -2411,8 +2411,10 @@
                 // front, exactly like the play-bridge table
                 const dr = rotOf(state.dummy);
                 const dcls = dr === 0 ? " dh" : (dr === 1 || dr === 3) ? " dv" : "";
-                const target = (state.bot && state.expectTricks !== undefined && state.expectTricks !== null)
-                    ? `<div class="dr-sub" style="text-align:right;white-space:nowrap">target ${dcolorSuits(resultText(state.contract, state.expectTricks))}</div>`
+                // the target is known before the first card, not at the end
+                const tEq = state.role === "declarer" ? state.target : 13 - state.target;
+                const target = state.target
+                    ? `<div class="dr-sub" style="text-align:right;white-space:nowrap" title="Your side must take at least ${state.target} tricks">target ${dcolorSuits(resultText(state.contract, tEq))}</div>`
                     : "";
                 return `<div class="cb-ptable${dcls}">
                     <div class="cb-pt-tl">${contractTagHtml()}</div>
@@ -2633,12 +2635,10 @@
                 const r = state.result || {};
                 const c = r.contract || state.contract;
                 const decl = c ? SEAT_NAMES[c.declarer] : "";
-                let grade = "";
-                if (r.botted) {
-                    grade = r.success
-                        ? `<div class="dr-msg" style="background:rgba(143,214,148,.12);border-color:rgba(143,214,148,.5);color:#c9ecd0"><span class="material-symbols-outlined">verified</span><span><b>Success</b> \u2014 the hand finished ${dcolorSuits(resultText(c, r.tricks))}, matching the author's target.</span></div>`
-                        : `<div class="dr-msg" style="background:rgba(240,138,138,.1);border-color:rgba(240,138,138,.5);color:#f3c1c1"><span class="material-symbols-outlined">error</span><span><b>A mistake occurred during the hand</b> \u2014 it finished ${dcolorSuits(resultText(c, r.tricks))} but the target was ${dcolorSuits(resultText(c, r.expected))}.</span></div>`;
-                }
+                const heroTook = state.role === "declarer" ? r.tricks : 13 - r.tricks;
+                const grade = r.success
+                    ? `<div class="dr-msg" style="background:rgba(143,214,148,.12);border-color:rgba(143,214,148,.5);color:#c9ecd0"><span class="material-symbols-outlined">verified</span><span><b>Success</b> \u2014 your side took ${heroTook} trick${heroTook === 1 ? "" : "s"} against a target of ${r.target}, finishing ${dcolorSuits(resultText(c, r.tricks))}.</span></div>`
+                    : `<div class="dr-msg" style="background:rgba(240,138,138,.1);border-color:rgba(240,138,138,.5);color:#f3c1c1"><span class="material-symbols-outlined">error</span><span><b>Short of the target</b> \u2014 your side took ${heroTook} of the ${r.target} tricks needed; the hand finished ${dcolorSuits(resultText(c, r.tricks))}.</span></div>`;
                 return `<div class="flex-1 min-h-0 flex flex-col">
                     ${topBarHtml()}
                     <div class="cb-mid" style="max-width:42rem">
@@ -2869,6 +2869,7 @@
                 return {
                     id: null, title: "", role: "defense", difficulty: 3, dealer: 0, vuln: 0,
                     assign: {}, calls: [], bidComment: "", problemComment: "",
+                    target: 0, allowWrong: false,
                     heroSeat: -1, lines: [blankLine()], lineIdx: 0, step: 0, selSeat: 2,
                 };
             }
@@ -2892,7 +2893,7 @@
                 return {
                     plays: (l.plays || []).map((p) => ({ seat: p.seat, card: p.card, msg: p.msg || "", alts: (p.alts || []).slice() })),
                     claim: l.claim ? { tricks: l.claim.tricks } : null,
-                    bot: l.bot ? { expect: l.bot.expect } : null,
+                    bot: l.bot ? {} : null,
                 };
             }
             function startWiz(existing) {
@@ -2904,6 +2905,7 @@
                         id: existing.id, title: existing.title || "", role: existing.role, difficulty: existing.difficulty,
                         dealer: existing.dealer, vuln: existing.vuln, assign: assignFromHands(existing.hands),
                         calls: (existing.calls || []).slice(), bidComment: existing.bidComment || "", problemComment: existing.problemComment || "",
+                        target: existing.target || 0, allowWrong: !!existing.allowWrong,
                         heroSeat: existing.heroSeat, lines: src.map(normLine), lineIdx: 0,
                         step: 0, selSeat: 2,
                     };
@@ -2963,7 +2965,8 @@
                 return won;
             }
             // one line is finished when it plays out all 52, claims at a trick
-            // boundary, or hands a reachable target to the bots
+            // boundary, or hands the rest to the bots (the problem's target
+            // grades every ending, so a bot end carries no target of its own)
             function lineOk(l, c) {
                 const n = l.plays.length;
                 const won = recDeclTricks(c, l);
@@ -2972,16 +2975,14 @@
                     const rem = Math.floor((52 - n) / 4);
                     return l.claim.tricks >= won && l.claim.tricks <= won + rem;
                 }
-                if (l.bot) {
-                    if (n >= 52) return false;
-                    const rem = Math.ceil((52 - n) / 4);
-                    return l.bot.expect >= 0 && l.bot.expect <= 13 && l.bot.expect >= won && l.bot.expect <= won + rem;
-                }
+                if (l.bot) return n < 52;
                 return n === 52;
             }
+            function targetSide() { return wiz.role === "declarer" ? "declarer's side" : "defence"; }
             function playOk() {
                 const c = wizContract();
                 if (!c || !heroOk()) return false;
+                if (!(wiz.target >= 1 && wiz.target <= 13)) return false;
                 return wiz.lines.length > 0 && wiz.lines.every((l) => lineOk(l, c));
             }
             function stepOk(step) {
@@ -3158,12 +3159,22 @@
                 const won = recDeclTricks(c);
                 const remaining = Math.floor((52 - n) / 4);
                 const canClaim = n >= 4 && n % 4 === 0 && n < 52;
+                const side = targetSide();
+                const tEq = wiz.role === "declarer" ? wiz.target : 13 - wiz.target;
                 let endTxt;
-                if (line.claim) endTxt = `<span class="dr-badge decl">claim</span> declarer takes ${line.claim.tricks} tricks \u2014 result <b>${dcolorSuits(resultText(c, line.claim.tricks))}</b>`;
-                else if (line.bot) endTxt = `<span class="dr-badge def">bots</span> the bots play the rest; target <b>${dcolorSuits(resultText(c, line.bot.expect))}</b> \u2014 matching it is a success, anything else a mistake`;
-                else if (n === 52) endTxt = `All 52 cards scripted \u2014 the result is counted from the play.`;
+                if (line.claim) endTxt = `<span class="dr-badge decl">claim</span> declarer takes ${line.claim.tricks} tricks \u2014 result <b>${dcolorSuits(resultText(c, line.claim.tricks))}</b> \u00b7 graded against the target, which it may differ from`;
+                else if (line.bot) endTxt = `<span class="dr-badge def">bots</span> the bots play the rest \u2014 a success if the ${side} reaches the target, whatever the bots make of it`;
+                else if (n === 52) endTxt = `All 52 cards scripted \u2014 the counted result is graded against the target.`;
                 else endTxt = `Script the play, then claim at a trick boundary or let the bots finish it.`;
                 return `<div class="dr-hint" style="margin-bottom:.5rem">${dcolorSuits(contractText(c))} \u00b7 trump ${c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom]} \u00b7 hero ${SEAT_NAMES[wiz.heroSeat]}. Click a highlighted card of the seat to play; \u2605 seats ask for your reasoning and equivalent cards.</div>
+                    <div class="dr-filters" style="align-items:flex-end;margin-bottom:.5rem">
+                        <div class="dr-field" style="margin:0;flex:0 1 13rem">
+                            <label class="dr-label">Target: tricks for the ${side}</label>
+                            <input class="dr-input" id="wizTarget" type="number" min="1" max="13" value="${wiz.target || ""}">
+                        </div>
+                        <span class="dr-hint" id="wizTargetPrev" style="flex:1">${wiz.target >= 1 && wiz.target <= 13 ? dcolorSuits(resultText(c, tEq)) + " or better" : "1\u201313 tricks \u2014 at least this many for a success"}</span>
+                        <button class="dr-chip${wiz.allowWrong ? " on" : ""}" id="wizAllowWrong" title="Let the practitioner play cards outside your lines: the wrong card stands, the bots finish the hand and it is graded against the target">Allow wrong lines</button>
+                    </div>
                     ${wiz.lines.length > 1 || n ? lineTabsHtml(c) : ""}
                     <div class="dr-panel" style="margin-bottom:.5rem;padding:.6rem">${recTrickHtml(c)}</div>
                     <div class="dr-rec">${recHandsHtml(c)}</div>
@@ -3233,24 +3244,35 @@
                         <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn gold" id="msgOk"><span class="material-symbols-outlined">playing_cards</span>Play card</button></div>
                     </div></div>`;
                 }
-                if (modal.kind === "claim" || modal.kind === "bot") {
-                    const c = modal.contract;
-                    const isBot = modal.kind === "bot";
+                if (modal.kind === "bot") {
                     const line = wiz ? wizLine() : null;
-                    const existing = isBot ? (line && line.bot) : (line && line.claim);
+                    const existing = line && line.bot;
+                    const side = wiz ? targetSide() : "hero's side";
                     return `<div class="dr-overlay"><div class="dr-modal">
-                        <h3>${isBot ? "Let the bots finish" : "Claim the remaining tricks"}</h3>
-                        <div class="dr-hint" style="margin-bottom:.6rem">${isBot
-                            ? `From here the hero may play <b>any</b> legal card and the bidding-dt bots play every other seat to the end. Set the result to aim for \u2014 matching it is a success, anything else means a mistake was made during the hand. (Bots need the sidecar running.) Declarer has won ${modal.min} so far.`
-                            : `Declarer has won ${modal.min} trick${modal.min === 1 ? "" : "s"} so far; ${modal.max - modal.min} remain to be played. Set the total number declarer takes \u2014 the result is shown as the contract and its margin.`}</div>
-                        <div class="dr-field"><label class="dr-label">${isBot ? "Target: tricks declarer takes" : "Tricks declarer takes (total)"}</label>
+                        <h3>Let the bots finish</h3>
+                        <div class="dr-hint" style="margin-bottom:.6rem">From here the hero may play <b>any</b> legal card and the bidding-dt bots play every other seat to the end. The counted result is graded against the problem's target${wiz && wiz.target ? ` (${wiz.target} tricks for the ${side})` : ""} \u2014 a bot end carries no target of its own. (Bots need the sidecar running.)</div>
+                        <div class="dr-modalfoot">
+                            <button class="dr-btn ghost" data-modal-cancel>Cancel</button>
+                            ${existing ? `<button class="dr-btn danger" id="claimRemove">Remove</button>` : ""}
+                            <button class="dr-btn gold" id="claimOk">Set bot end</button>
+                        </div>
+                    </div></div>`;
+                }
+                if (modal.kind === "claim") {
+                    const c = modal.contract;
+                    const line = wiz ? wizLine() : null;
+                    const existing = line && line.claim;
+                    return `<div class="dr-overlay"><div class="dr-modal">
+                        <h3>Claim the remaining tricks</h3>
+                        <div class="dr-hint" style="margin-bottom:.6rem">Declarer has won ${modal.min} trick${modal.min === 1 ? "" : "s"} so far; ${modal.max - modal.min} remain to be played. Set the total number declarer takes \u2014 the result is shown as the contract and its margin. The claim may differ from the problem's target; the run is graded against the target.</div>
+                        <div class="dr-field"><label class="dr-label">Tricks declarer takes (total)</label>
                             <input class="dr-input" id="claimTricks" type="number" min="${modal.min}" max="${modal.max}" value="${modal.tricks}"></div>
-                        <div class="dr-field"><span class="dr-label">${isBot ? "Target result" : "Result"}</span>
+                        <div class="dr-field"><span class="dr-label">Result</span>
                             <div class="dr-result-big" id="claimPreview" style="color:#e8e6e3;font-size:1.4rem">${c ? dcolorSuits(resultText(c, modal.tricks)) : ""}</div></div>
                         <div class="dr-modalfoot">
                             <button class="dr-btn ghost" data-modal-cancel>Cancel</button>
                             ${existing ? `<button class="dr-btn danger" id="claimRemove">Remove</button>` : ""}
-                            <button class="dr-btn gold" id="claimOk">${isBot ? "Set bot end" : "Set claim"}</button>
+                            <button class="dr-btn gold" id="claimOk">Set claim</button>
                         </div>
                     </div></div>`;
                 }
@@ -3349,16 +3371,12 @@
             function openBotModal() {
                 const c = wizContract();
                 if (!c) return;
-                const line = wizLine();
-                const won = recDeclTricks(c);
-                const remaining = Math.ceil((52 - line.plays.length) / 4);
-                const expect = line.bot ? line.bot.expect : Math.min(13, won + remaining);
-                modal = { kind: "bot", min: won, max: won + remaining, tricks: expect, contract: c };
+                modal = { kind: "bot", contract: c };
                 render();
             }
             // live-update the result preview as the trick count changes
             function refreshClaimPreview() {
-                if (!modal || (modal.kind !== "claim" && modal.kind !== "bot") || !modal.contract) return;
+                if (!modal || modal.kind !== "claim" || !modal.contract) return;
                 const ti = document.getElementById("claimTricks");
                 const el = document.getElementById("claimPreview");
                 const t = ti ? parseInt(ti.value) : NaN;
@@ -3369,7 +3387,7 @@
                 const lines = wiz.lines.map((l) => {
                     const o = { plays: l.plays.map((p) => ({ seat: p.seat, card: p.card, msg: p.msg || undefined, alts: (p.alts && p.alts.length) ? p.alts : undefined })) };
                     if (l.claim) o.claim = { tricks: l.claim.tricks };
-                    if (l.bot) o.bot = { expect: l.bot.expect };
+                    if (l.bot) o.bot = {};
                     return o;
                 });
                 const problem = {
@@ -3377,6 +3395,7 @@
                     difficulty: wiz.difficulty, dealer: wiz.dealer, vuln: wiz.vuln,
                     hands: handsFromAssign(wiz.assign), calls: wiz.calls,
                     bidComment: wiz.bidComment, problemComment: wiz.problemComment,
+                    target: wiz.target, allowWrong: wiz.allowWrong || undefined,
                     lines,
                 };
                 busy = true; render();
@@ -3648,11 +3667,11 @@
                     modal = null; render();
                 });
                 on("claimOk", () => {
+                    const line = wizLine();
+                    if (modal.kind === "bot") { line.bot = {}; line.claim = null; modal = null; render(); return; }
                     const t = parseInt(($("claimTricks") || {}).value);
                     if (isNaN(t) || t < modal.min || t > modal.max) { showToast("Tricks out of range", true); return; }
-                    const line = wizLine();
-                    if (modal.kind === "bot") { line.bot = { expect: t }; line.claim = null; }
-                    else { line.claim = { tricks: t }; line.bot = null; }
+                    line.claim = { tricks: t }; line.bot = null;
                     modal = null; render();
                 });
                 on("claimRemove", () => {
@@ -3670,6 +3689,17 @@
                 on("archDelOk", () => { if (modal && modal.id) deleteArchive(modal.id); });
                 const ct = $("claimTricks");
                 if (ct) ct.oninput = () => refreshClaimPreview();
+                on("wizAllowWrong", () => { wiz.allowWrong = !wiz.allowWrong; render(); });
+                const tg = $("wizTarget");
+                if (tg) tg.oninput = () => {
+                    wiz.target = parseInt(tg.value) || 0;
+                    const c = wizContract();
+                    const prev = $("wizTargetPrev");
+                    if (prev) prev.innerHTML = (wiz.target >= 1 && wiz.target <= 13 && c)
+                        ? dcolorSuits(resultText(c, wiz.role === "declarer" ? wiz.target : 13 - wiz.target)) + " or better"
+                        : "1\u201313 tricks \u2014 at least this many for a success";
+                    const sv = $("wizSave"); if (sv) sv.disabled = !playOk();
+                };
             }
 
             // tapping anywhere outside the hands drops a lifted card

@@ -1940,12 +1940,12 @@
             }
 
             function auctionHtml(dealer, vuln, calls, pending, youSeat, alerts) {
-                // columns run in calling order starting at the viewer's own
-                // seat, so you are always the leftmost column no matter who
+                // columns run in calling order ending at the viewer's own
+                // seat, so you are always the rightmost column no matter who
                 // deals; every call still lands under the seat that made it
                 const first = youSeat === null || youSeat === undefined ? dealer : youSeat;
-                const cols = [0, 1, 2, 3].map((k) => (first + k) % 4);
-                const off = (dealer - first + 4) % 4; // blank cells before the dealer opens
+                const cols = [0, 1, 2, 3].map((k) => (first + 1 + k) % 4);
+                const off = (dealer - first + 3) % 4; // blank cells before the dealer opens
                 const list = calls || [];
                 const rows = [];
                 for (let i = 0; i < list.length; i++) {
@@ -1956,7 +1956,7 @@
                     rows[r].push({ c: list[i], i });
                 }
                 if (pending !== null && pending !== undefined) {
-                    const pos = (pending - first + 4) % 4;
+                    const pos = (pending - first + 3) % 4;
                     let r = Math.floor((list.length + off) / 4);
                     if (!rows[r]) rows[r] = [];
                     if (pos < rows[r].length) {
@@ -2546,10 +2546,10 @@
             }
 
             function miniAuctionHtml(dealer, calls, youSeat) {
-                // leftmost column is the viewer's own seat, like auctionHtml
+                // rightmost column is the viewer's own seat, like auctionHtml
                 const first = youSeat === null || youSeat === undefined ? dealer : youSeat;
-                const cols = [0, 1, 2, 3].map((k) => (first + k) % 4);
-                const off = (dealer - first + 4) % 4;
+                const cols = [0, 1, 2, 3].map((k) => (first + 1 + k) % 4);
+                const off = (dealer - first + 3) % 4;
                 const head = cols
                     .map(
                         (s) =>

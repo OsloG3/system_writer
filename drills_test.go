@@ -209,17 +209,14 @@ func TestValidateDrill(t *testing.T) {
 		q.Lines[0].Plays = naivePlayLine(drillHands, 1, 'H')[:8]
 	})
 	mutate("claim and bots together", func(q *DrillProblem) {
-		q.Lines[0].Bot = &DrillBotEnd{Expect: 10}
+		q.Lines[0].Bot = &DrillBotEnd{}
 	})
 	mutate("bot line already 52", func(q *DrillProblem) {
 		q.Lines[0].Claim = nil
 		q.Lines[0].Plays = naivePlayLine(drillHands, 1, 'H')
-		q.Lines[0].Bot = &DrillBotEnd{Expect: 1}
+		q.Lines[0].Bot = &DrillBotEnd{}
 	})
-	mutate("bot expect impossible", func(q *DrillProblem) {
-		q.Lines[0].Claim = nil
-		q.Lines[0].Bot = &DrillBotEnd{Expect: 13} // only 12 tricks remain after one
-	})
+	mutate("target out of range", func(q *DrillProblem) { q.Target = 14 })
 	mutate("duplicate lines", func(q *DrillProblem) {
 		q.Lines = append(q.Lines, q.Lines[0])
 	})
@@ -231,23 +228,32 @@ func TestValidateDrill(t *testing.T) {
 	})
 
 	// A bot-ended line: the script stops after one trick and the sidecar
-	// plays the rest, graded against the expected trick count.
+	// plays the rest, graded against the problem's target.
 	bot := drillProblem()
 	bot.Lines[0].Claim = nil
-	bot.Lines[0].Bot = &DrillBotEnd{Expect: 10}
+	bot.Lines[0].Bot = &DrillBotEnd{}
+	bot.Target = 3
 	if _, err := validateDrill(&bot); err != nil {
 		t.Fatalf("bot-ended problem rejected: %v", err)
 	}
 
-	// A declarer problem played out to the end needs no ending.
+	// A declarer problem played out to the end needs no ending, and a
+	// problem without a target inherits the count of its scripted line.
 	full := drillProblem()
 	full.Role, full.HeroSeat = "declarer", 0
 	full.Lines = []DrillLine{{Plays: naivePlayLine(drillHands, 1, 'H')}}
-	if _, err := validateDrill(&full); err != nil {
+	full.Target = 0
+	c, err := validateDrill(&full)
+	if err != nil {
 		t.Fatalf("played-out declarer problem rejected: %v", err)
 	}
 	if len(full.Lines[0].Plays) != 52 {
 		t.Fatalf("naive line has %d plays", len(full.Lines[0].Plays))
+	}
+	if _, decl, err := simulateLine(&full, c, full.Lines[0].Plays); err != nil {
+		t.Fatalf("simulate: %v", err)
+	} else if full.Target != decl {
+		t.Fatalf("target not counted from the script: %d, want %d", full.Target, decl)
 	}
 
 	// The legacy single Plays+Claim shape still validates and migrates.
@@ -259,6 +265,11 @@ func TestValidateDrill(t *testing.T) {
 	}
 	if len(legacy.Lines) != 1 || legacy.Lines[0].Claim == nil || legacy.Plays != nil {
 		t.Fatalf("legacy shape not migrated: %+v", legacy)
+	}
+	// the target folds in from the legacy claim: 10 declarer tricks leave
+	// the defending hero's side 3
+	if legacy.Target != 3 {
+		t.Fatalf("legacy target not migrated: %d", legacy.Target)
 	}
 }
 
@@ -847,9 +858,10 @@ func newFakePlayServer(t *testing.T) (*httptest.Server, *fakePlayBot) {
 }
 
 // botProblem scripts one trick (West's queen wins) and hands the rest to the
-// bots, graded against Expect tricks.
-func botProblem(expect int) DrillProblem {
+// bots, graded against the problem's target (defenders' tricks).
+func botProblem(target int) DrillProblem {
 	p := drillProblem()
+	p.Target = target
 	p.Lines = []DrillLine{{
 		Plays: []DrillPlay{
 			{Seat: 1, Card: "5S", Msg: "the obvious lead"},
@@ -857,7 +869,7 @@ func botProblem(expect int) DrillProblem {
 			{Seat: 3, Card: "QS"},
 			{Seat: 0, Card: "7S"},
 		},
-		Bot: &DrillBotEnd{Expect: expect},
+		Bot: &DrillBotEnd{},
 	}}
 	return p
 }
@@ -875,6 +887,10 @@ func TestDrillBotFinish(t *testing.T) {
 	}
 	if s.Bot || len(s.Plays) != 0 || !s.heroControls(s.nextSeatLocked()) {
 		t.Fatalf("session should start at the hero's lead: bot=%v plays=%d", s.Bot, len(s.Plays))
+	}
+	// the target is revealed before the first card, not when the hand ends
+	if st0 := s.stateLocked(); st0["target"] != 10 {
+		t.Fatalf("target not revealed up front: %v", st0["target"])
 	}
 	// The hero plays the scripted lead; the remaining scripted cards play
 	// themselves and the bots take over -- one bot card per advance call.
@@ -924,16 +940,17 @@ func TestDrillBotFinish(t *testing.T) {
 	if r == nil || !r.Botted || r.Claimed {
 		t.Fatalf("bad bot result: %+v", r)
 	}
-	if r.Tricks != s.DeclTricks || *r.Expected != 10 || *r.Success != (s.DeclTricks == 10) {
+	if r.Tricks != s.DeclTricks || r.Target != 10 ||
+		r.Success != (s.Problem.heroSide(s.DeclTricks) >= 10) {
 		t.Fatalf("bad grading: %+v (decl %d)", r, s.DeclTricks)
 	}
 	if atomic.LoadInt32(&fb.drops) == 0 {
 		t.Fatal("the sidecar sessions were never dropped")
 	}
 
-	// the same deterministic bots replayed with the true expectation grade
-	// the hand a success
-	p2 := botProblem(s.DeclTricks)
+	// the same deterministic bots replayed with the target set to what the
+	// hero's side actually took grade the hand a success
+	p2 := botProblem(s.Problem.heroSide(s.DeclTricks))
 	s2, err := newDrillSession(&p2, "alice")
 	if err != nil {
 		t.Fatalf("session 2: %v", err)
@@ -954,13 +971,67 @@ func TestDrillBotFinish(t *testing.T) {
 			t.Fatalf("bot advance 2: %v", err)
 		}
 	}
-	if s2.DeclTricks != s.DeclTricks || s2.Result == nil || !*s2.Result.Success {
+	if s2.DeclTricks != s.DeclTricks || s2.Result == nil || !s2.Result.Success {
 		t.Fatalf("replay should succeed deterministically: decl %d vs %d, result %+v", s2.DeclTricks, s.DeclTricks, s2.Result)
 	}
-	// the target is public information in the session state
+	// the target is public information in the session state, from the start
 	st := s2.stateLocked()
-	if st["bot"] != true || st["expectTricks"] != s.DeclTricks {
-		t.Fatalf("bot phase state wrong: bot=%v expect=%v", st["bot"], st["expectTricks"])
+	if st["bot"] != true || st["target"] != s2.Problem.Target {
+		t.Fatalf("bot phase state wrong: bot=%v target=%v", st["bot"], st["target"])
+	}
+}
+
+func TestDrillAllowWrong(t *testing.T) {
+	srv, fb := newFakePlayServer(t)
+	oldURL := botURL
+	botURL = srv.URL
+	defer func() { botURL = oldURL }()
+
+	p := drillProblem()
+	p.AllowWrong = true
+	s, err := newDrillSession(&p, "alice")
+	if err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	// West (hero) on lead strays from the scripted 5S: the card stands and
+	// the bots take over instead of the pick being refused
+	if err := s.strayLocked(1, "3S"); err != nil {
+		t.Fatalf("stray: %v", err)
+	}
+	if !s.Bot || s.Wrong != 1 || len(s.Plays) < 2 {
+		t.Fatalf("stray should hand the hand to the bots: bot=%v wrong=%d plays=%d", s.Bot, s.Wrong, len(s.Plays))
+	}
+	if atomic.LoadInt32(&fb.calls) == 0 {
+		t.Fatal("the sidecar was never consulted after the stray")
+	}
+	// drive the hand out; the grade is against the target, not a script
+	for !s.Done {
+		seat := s.nextSeatLocked()
+		if s.heroControls(seat) {
+			legal := s.legalCardsLocked(seat)
+			s.applyLocked(DrillPlay{Seat: seat, Card: legal[len(legal)-1]})
+			if len(s.Plays) == 52 {
+				s.finishBotLocked()
+				break
+			}
+			continue
+		}
+		if err := s.advanceLocked(); err != nil {
+			t.Fatalf("bot advance: %v", err)
+		}
+	}
+	r := s.Result
+	if r == nil || !r.Botted || r.Target != s.Problem.Target || r.Target == 0 ||
+		r.Success != (s.Problem.heroSide(r.Tricks) >= r.Target) {
+		t.Fatalf("bad stray grading: %+v", r)
+	}
+	// the strayed card carries no script message in the review
+	st := s.stateLocked()
+	line, _ := st["line"].([]map[string]any)
+	if len(line) > 0 {
+		if _, ok := line[0]["msg"]; ok {
+			t.Fatalf("strayed card carries a script message: %+v", line[0])
+		}
 	}
 }
 
