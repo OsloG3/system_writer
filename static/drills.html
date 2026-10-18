@@ -548,11 +548,11 @@
                 margin: 0 auto;
                 width: 100%;
             }
-            /* the bidding fan starts at the same left edge the play fan and
-               the dummy row use, so nothing jumps when the phase changes */
+            /* the bidding fan centers exactly like the play fan below, so
+               nothing jumps when the phase changes */
             .cb-handfoot .cb-fan {
                 width: 100%;
-                justify-content: flex-start;
+                justify-content: safe center;
             }
             .cb-handlabel {
                 color: #e8e6e3;
@@ -561,9 +561,7 @@
             }
             .cb-fan {
                 display: flex;
-                /* no right padding: the scroll box ends exactly at the last
-                   card, so nothing is clipped and no scrollbar appears */
-                padding: 0.2rem 0 0.2rem 0.4rem;
+                padding: 0.2rem 0.4rem;
             }
             .cb-card {
                 position: relative;
@@ -637,10 +635,10 @@
                other card -- they are simply not clickable. */
             .cb-fan-play {
                 flex-wrap: nowrap;
-                /* full-width like the dummy row above it, cards pinned at the
-                   left edge: the two hands line up and playing a card never
-                   slides the rest; overflow scrolls from the start */
-                justify-content: flex-start;
+                /* centered like the bidding fan; "safe" falls back to start
+                   alignment when a row is wider than the screen, so overflow
+                   scrolls from the first card and is never cut off */
+                justify-content: safe center;
                 max-width: 100%;
                 overflow-x: auto;
                 overscroll-behavior-x: contain;
@@ -682,14 +680,13 @@
                your own fan at the bottom */
             .cb-flat {
                 display: flex;
-                /* same left inset as the fan below; no right padding so the
-                   scroll box ends at the last card */
-                padding: 0.15rem 0 0.15rem 0.4rem;
+                padding: 0.15rem 0.4rem;
             }
             .cb-flat-h {
                 flex-direction: row;
-                /* pinned like your fan: playing a card never shifts the rest */
-                justify-content: flex-start;
+                /* centered like your fan; "safe" keeps overflow scrollable
+                   from the first card instead of cutting either edge */
+                justify-content: safe center;
                 width: 100%;
                 max-width: 100%;
                 overflow-x: auto;
@@ -1527,11 +1524,39 @@
             .dr-rate-row {
                 display: flex;
                 align-items: center;
+                justify-content: center;
                 gap: .6rem;
                 flex-wrap: wrap;
-                border-top: 1px solid rgba(255,255,255,.06);
-                padding-top: .6rem;
             }
+            /* the rating ask on the done view: a gold call-to-action card at
+               the top, with big tappable stars */
+            .dr-rate-cta {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.35rem;
+                padding: 0.8rem 0.6rem;
+                border-radius: 0.9rem;
+                background: rgba(255, 213, 74, 0.08);
+                border: 1px solid rgba(255, 213, 74, 0.4);
+                text-align: center;
+            }
+            .dr-rate-cta-head {
+                display: flex;
+                align-items: center;
+                gap: 0.4rem;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.05rem;
+                color: #ffd54a;
+            }
+            .dr-rate-cta-head .material-symbols-outlined {
+                font-size: 20px;
+                font-variation-settings: 'FILL' 1;
+            }
+            .dr-rate-cta .dr-rater { gap: 6px; }
+            .dr-rate-cta .dr-rater button { font-size: 2.4rem; padding: 0 2px; }
+            .dr-rate-cta .dr-hint { font-size: 0.78rem; }
             .dr-btn {
                 display: inline-flex;
                 align-items: center;
@@ -2009,14 +2034,24 @@
                 return `<span class="cb-call cb-call-${TILE_CLS[c[1]]}">${c[0]}<b style="font-size:.75rem;">${sym}</b></span>`;
             }
             function auctionHtml(dealer, vuln, calls, pending, youSeat) {
-                const cols = [0, 1, 2, 3].map((k) => (dealer + k) % 4);
+                // columns run in calling order starting at the viewer's own
+                // seat, so you are always the leftmost column no matter who
+                // deals; every call still lands under the seat that made it
+                const first = youSeat === null || youSeat === undefined ? dealer : youSeat;
+                const cols = [0, 1, 2, 3].map((k) => (first + k) % 4);
+                const off = (dealer - first + 4) % 4; // blank cells before the dealer opens
                 const list = calls || [];
                 const rows = [];
-                for (let i = 0; i < list.length; i += 4)
-                    rows.push(list.slice(i, i + 4).map((c, j) => ({ c, i: i + j })));
+                for (let i = 0; i < list.length; i++) {
+                    const L = i + off;
+                    const r = Math.floor(L / 4);
+                    if (!rows[r]) rows[r] = [];
+                    while (rows[r].length < L % 4) rows[r].push({ c: null });
+                    rows[r].push({ c: list[i], i });
+                }
                 if (pending !== null && pending !== undefined) {
-                    const pos = (pending - dealer + 4) % 4;
-                    let r = Math.floor(list.length / 4);
+                    const pos = (pending - first + 4) % 4;
+                    let r = Math.floor((list.length + off) / 4);
                     if (!rows[r]) rows[r] = [];
                     if (pos < rows[r].length) { r++; rows[r] = []; }
                     while (rows[r].length < pos) rows[r].push({ c: null });
@@ -2049,13 +2084,21 @@
                 const sym = c[1] === "N" ? "NT" : SUIT_SYMBOL[c[1]];
                 return `<span class="cb-mini cb-mini-${TILE_CLS[c[1]]}">${c[0]}${sym}</span>`;
             }
-            function miniAuctionHtml(dealer, calls) {
-                const cols = [0, 1, 2, 3].map((k) => (dealer + k) % 4);
+            function miniAuctionHtml(dealer, calls, youSeat) {
+                // leftmost column is the viewer's own seat, like auctionHtml
+                const first = youSeat === null || youSeat === undefined ? dealer : youSeat;
+                const cols = [0, 1, 2, 3].map((k) => (first + k) % 4);
+                const off = (dealer - first + 4) % 4;
                 const head = cols.map((s) => `<span class="${s === dealer ? "dlr" : ""}">${SEAT_NAMES[s][0]}</span>`).join("");
                 const list = calls || [];
+                const rows = [];
+                for (let i = 0; i < list.length; i++) {
+                    const r = Math.floor((i + off) / 4);
+                    if (!rows[r]) rows[r] = [];
+                    rows[r].push(list[i]);
+                }
                 let body = "";
-                for (let i = 0; i < list.length; i += 4) {
-                    const row = list.slice(i, i + 4);
+                for (const row of rows) {
                     let cells = "";
                     for (let k = 0; k < 4; k++) cells += row[k] ? miniChip(row[k]) : `<span></span>`;
                     body += `<div class="cb-auc-mini-row">${cells}</div>`;
@@ -2066,7 +2109,7 @@
                 const cls = ["cb-dg-n", "cb-dg-e", "cb-dg-s", "cb-dg-w"];
                 return `<div class="cb-diagram cb-diagram-done">` +
                     [0, 1, 2, 3].map((s) => `<div class="cb-dg-seat ${cls[s]}">${diagramSeatHtml(s, hands[s], youSeat)}</div>`).join("") +
-                    `<div class="cb-dg-a">${miniAuctionHtml(dealer, calls)}</div></div>`;
+                    `<div class="cb-dg-a">${miniAuctionHtml(dealer, calls, youSeat)}</div></div>`;
             }
 
             // ---- API plumbing ----
@@ -2569,10 +2612,11 @@
                     return `<div class="dr-rate-row"><span class="dr-label" style="margin:0">Rating</span>${avgLine}<span class="dr-hint">(your problem)</span></div>`;
                 const starBtns = [1, 2, 3, 4, 5].map((i) =>
                     `<button data-rate="${i}" class="${i <= your ? "on" : ""}" title="Rate ${i} star${i === 1 ? "" : "s"}">\u2605</button>`).join("");
-                return `<div class="dr-rate-row">
-                    <div style="flex:1;min-width:8rem">${avgLine}</div>
+                return `<div class="dr-rate-cta">
+                    <div class="dr-rate-cta-head"><span class="material-symbols-outlined">grade</span>Rate this problem</div>
                     <div class="dr-rater">${starBtns}</div>
-                    <span class="dr-hint">${your ? "you rated " + your + "\u2605" : "rate this problem"}</span>
+                    <span class="dr-hint">${your ? `you rated ${your}\u2605 \u2014 tap a star to change it` : "tap a star \u2014 it tells the author how good it was"}</span>
+                    <div>${avgLine}</div>
                 </div>`;
             }
             async function rateProblem(star) {
@@ -2599,6 +2643,7 @@
                     ${topBarHtml()}
                     <div class="cb-mid" style="max-width:42rem">
                         <div class="cb-done pop-in">
+                            ${rateWidgetHtml()}
                             <div class="cb-done-head">
                                 <div class="cb-done-score">
                                     <div class="dr-result-big" style="color:#e8e6e3">${dcolorSuits(resultText(c, r.tricks))}</div>
@@ -2613,7 +2658,6 @@
                                 ${state.bidComment ? `<div><div class="dr-label">Bidding</div><div class="dr-comment">${suitify(state.bidComment)}</div></div>` : ""}
                             </div>` : ""}
                             <div><div class="dr-label">The author's line</div>${lineReviewHtml()}</div>
-                            ${rateWidgetHtml()}
                             <div class="cb-done-foot" style="gap:.5rem">
                                 <button id="drAgainBtn" class="dr-btn gold"><span class="material-symbols-outlined">restart_alt</span>Practise again</button>
                                 <button id="drLibBtn" class="dr-btn ghost"><span class="material-symbols-outlined">library_books</span>Library</button>
@@ -3283,7 +3327,15 @@
                     render();
                 }
             }
-            function recUndo() { wizLine().plays.pop(); render(); }
+            function recUndo() {
+                const l = wizLine();
+                l.plays.pop();
+                // undoing a play re-opens the line: drop any claim / bot end
+                // so a new continuation can be recorded
+                l.claim = null;
+                l.bot = null;
+                render();
+            }
             function openClaimModal() {
                 const c = wizContract();
                 if (!c) return;
@@ -3619,6 +3671,14 @@
                 const ct = $("claimTricks");
                 if (ct) ct.oninput = () => refreshClaimPreview();
             }
+
+            // tapping anywhere outside the hands drops a lifted card
+            document.addEventListener("click", (e) => {
+                if (selectedCard && !e.target.closest(".cb-fan-play, .cb-flat")) {
+                    selectedCard = null;
+                    render();
+                }
+            });
 
             // ---- bootstrap ----
             document.addEventListener("authchange", () => {
