@@ -1282,73 +1282,11 @@
             }
             .cb-done-foot { display: flex; }
 
-            .cb-diagram.cb-diagram-done {
-                grid-template-areas:
-                    ". n ."
-                    "w a e"
-                    ". s .";
-            }
-            .cb-dg-a {
-                grid-area: a;
-                min-width: 0;
-                width: 100%;
-                align-self: center;
-                max-height: 10.5rem;
-                overflow-y: auto;
-                overscroll-behavior: contain;
-            }
-            .cb-auc-mini-head,
-            .cb-auc-mini-row {
-                display: grid;
-                grid-template-columns: repeat(4, 1fr);
-                gap: 2px;
-                margin-bottom: 2px;
-            }
-            .cb-auc-mini-head span {
-                text-align: center;
-                font-family: Inter, sans-serif;
-                font-weight: 700;
-                font-size: 0.55rem;
-                letter-spacing: 0.05em;
-                color: #908f8d;
-            }
-            .cb-auc-mini-head span.dlr { color: #e8e6e3; }
-            .cb-mini {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                height: 1.05rem;
-                min-width: 0;
-                border-radius: 0.3rem;
-                font-family: Manrope, sans-serif;
-                font-weight: 800;
-                font-size: 0.6rem;
-                padding: 0 1px;
-            }
-            .cb-mini-c { background: #b5e48c; color: #2b7a4b; }
-            .cb-mini-d { background: #f8c471; color: #c05621; }
-            .cb-mini-h { background: #f1948a; color: #b03a2e; }
-            .cb-mini-s { background: #a5b4f4; color: #2a3f93; }
-            .cb-mini-n { background: #e8eaed; color: #1b1f27; }
-            .cb-mini-p { background: #2e5d43; color: #cfe8d4; }
-            .cb-mini-x { background: #c0392b; color: #fff; }
-            .cb-mini-xx { background: #2a51b0; color: #fff; }
-            @media (max-width: 400px) {
-                .cb-diagram.cb-diagram-done {
-                    grid-template-columns: 1fr 1fr;
-                    grid-template-areas:
-                        "n n"
-                        "w e"
-                        "s s"
-                        "a a";
-                }
-                .cb-dg-a {
-                    width: auto;
-                    min-width: 65%;
-                    max-width: 100%;
-                    justify-self: center;
-                    max-height: 7.5rem;
-                }
+            /* the finished hand's auction, in the same table the history
+               viewer uses, centered under the hand diagram */
+            .cb-done-auc {
+                max-width: 22rem;
+                margin: 0.55rem auto 0;
             }
 
             .cb-cardpanel {
@@ -2537,53 +2475,16 @@
             // One card: score top-left, par top-right, the hand diagram with
             // the auction compacted into its center, next board bottom-left.
 
-            function miniChip(c) {
-                if (c === "P") return `<span class="cb-mini cb-mini-p">P</span>`;
-                if (c === "X") return `<span class="cb-mini cb-mini-x">X</span>`;
-                if (c === "XX") return `<span class="cb-mini cb-mini-xx">XX</span>`;
-                const sym = c[1] === "N" ? "NT" : SUIT_SYMBOL[c[1]];
-                return `<span class="cb-mini cb-mini-${TILE_CLS[c[1]]}">${c[0]}${sym}</span>`;
-            }
-
-            function miniAuctionHtml(dealer, calls, youSeat) {
-                // rightmost column is the viewer's own seat, like auctionHtml
-                const first = youSeat === null || youSeat === undefined ? dealer : youSeat;
-                const cols = [0, 1, 2, 3].map((k) => (first + 1 + k) % 4);
-                const off = (dealer - first + 3) % 4;
-                const head = cols
-                    .map(
-                        (s) =>
-                            `<span class="${s === dealer ? "dlr" : ""}">${SEAT_NAMES[s][0]}</span>`,
-                    )
-                    .join("");
-                const list = calls || [];
-                const rows = [];
-                for (let i = 0; i < list.length; i++) {
-                    const r = Math.floor((i + off) / 4);
-                    if (!rows[r]) rows[r] = [];
-                    rows[r].push(list[i]);
-                }
-                let body = "";
-                for (const row of rows) {
-                    let cells = "";
-                    for (let k = 0; k < 4; k++)
-                        cells += row[k] ? miniChip(row[k]) : `<span></span>`;
-                    body += `<div class="cb-auc-mini-row">${cells}</div>`;
-                }
-                return `<div class="cb-auc-mini-head">${head}</div>${body}`;
-            }
-
-            function doneDiagramHtml(hands, youSeat, dealer, calls) {
+            function doneDiagramHtml(hands, youSeat) {
                 const cls = ["cb-dg-n", "cb-dg-e", "cb-dg-s", "cb-dg-w"];
                 return (
-                    `<div class="cb-diagram cb-diagram-done">` +
+                    `<div class="cb-diagram">` +
                     [0, 1, 2, 3]
                         .map(
                             (s) =>
                                 `<div class="cb-dg-seat ${cls[s]}">${diagramSeatHtml(s, hands[s], youSeat)}</div>`,
                         )
                         .join("") +
-                    `<div class="cb-dg-a">${miniAuctionHtml(dealer, calls, youSeat)}</div>` +
                     `</div>`
                 );
             }
@@ -2627,7 +2528,10 @@
                                 <div class="val">${scoreText(r.parNs)}</div>
                             </div>
                         </div>
-                        ${state.hands ? doneDiagramHtml(state.hands, state.humanSeat, state.dealer, state.calls) : ""}
+                        ${state.hands ? doneDiagramHtml(state.hands, state.humanSeat) : ""}
+                        ${(state.calls || []).length
+                            ? `<div class="cb-done-auc">${auctionHtml(state.dealer, state.vuln, state.calls, null, state.humanSeat, state.alerts)}</div>`
+                            : ""}
                         <div class="cb-done-foot">
                             <button id="nextBoardBtn" class="cb-btn-green">
                                 <span class="material-symbols-outlined text-sm">${matchDone ? "restart_alt" : "casino"}</span>
@@ -4117,8 +4021,8 @@
                 );
                 if (aucBody && followAuc)
                     aucBody.scrollTop = aucBody.scrollHeight;
-                const miniAuc = content.querySelector(".cb-dg-a");
-                if (miniAuc) miniAuc.scrollTop = miniAuc.scrollHeight;
+                const doneAuc = content.querySelector(".cb-done-auc .cb-auc-body");
+                if (doneAuc) doneAuc.scrollTop = doneAuc.scrollHeight;
                 // Deliberately no renderOverlay() here: a finished hand can
                 // never change, so the history overlay only re-renders when
                 // it is opened, closed or navigated -- polling and the paced

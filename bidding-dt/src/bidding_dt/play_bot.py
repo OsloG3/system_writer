@@ -282,41 +282,50 @@ class PlaySession:
         idx = rng.permutation(len(pool))[:R]
         return set(pool[i] for i in idx)
 
-    def _uniform_partition(self, free, R, excl, rng):
+    def _uniform_partition(self, free, R, excl, rng, first):
+        """Split `free` between the two hidden seats honouring the exclusion
+        sets. `first` is the seat filled before the other takes the remainder
+        (it also wins any over-constrained leftovers), so callers alternate it
+        to keep the pool free of a generation-order bias."""
         a, b = self.hidden_seats
-        fa = excl[a] & free
-        fb = excl[b] & free
+        second = b if first == a else a
+        fa = excl[first] & free
+        fb = excl[second] & free
         must_a = [c for c in free if c in fb and c not in fa]
         must_b = [c for c in free if c in fa and c not in fb]
         flex = [c for c in free if c not in fa and c not in fb]
         neither = [c for c in free if c in fa and c in fb]
         ha, hb = set(must_a), set(must_b)
         rng.shuffle(flex)
-        need_a = max(0, R[a] - len(ha))
+        need_a = max(0, R[first] - len(ha))
         ha |= set(flex[:need_a])
         rest = flex[need_a:]
-        need_b = max(0, R[b] - len(hb))
+        need_b = max(0, R[second] - len(hb))
         hb |= set(rest[:need_b])
         for c in neither + rest[need_b:]:
-            if len(ha) < R[a]:
+            if len(ha) < R[first]:
                 ha.add(c)
-            elif len(hb) < R[b]:
+            elif len(hb) < R[second]:
                 hb.add(c)
-        return {a: ha, b: hb}
+        return {first: ha, second: hb}
 
-    def _gen_candidate(self, info, rng):
+    def _gen_candidate(self, info, rng, first):
+        """One hidden-hand hypothesis. `first` is the hidden seat generated
+        up front (by the model, or uniformly); the other seat is then given
+        the remaining cards. Callers alternate `first` so half the pool is
+        built from each hidden seat's perspective."""
         played = info["played_all"]
         free = self.hidden_pool - set(played)
         R = {s: 13 - len(info["played_by_seat"][s]) for s in self.hidden_seats}
         if sum(R.values()) != len(free):              # safety: sizes must match
             R = {s: max(0, R[s]) for s in R}
         a, b = self.hidden_seats
+        second = b if first == a else a
         excl = {s: self._excl_for(s, played) for s in self.hidden_seats}
-        order = [a, b]
-        rng.shuffle(order)
+        order = [first, second]
         for t in range(self.cfg.topup_tries):
             s = order[t % 2]
-            o = b if s == a else a
+            o = second if s == first else first
             if R[s] <= 0:
                 hands = {s: set(), o: set(free)}
             elif self.model is not None:
@@ -329,7 +338,7 @@ class PlaySession:
                 o_rem = free - s_rem
                 hands = {s: s_rem, o: o_rem}
             else:
-                hands = self._uniform_partition(free, R, excl, rng)
+                hands = self._uniform_partition(free, R, excl, rng, s)
             o_rem = hands[o]
             if len(o_rem) != R[o] or (o_rem & (excl[o] & free)):
                 continue                              # complement broke a rule
@@ -337,13 +346,19 @@ class PlaySession:
                 continue
             return _Candidate(hands=hands)
         # last resort: a plain partition ignoring soft inferences
-        hands = self._uniform_partition(free, R, {s: set() for s in self.hidden_seats}, rng)
+        hands = self._uniform_partition(
+            free, R, {s: set() for s in self.hidden_seats}, rng, first)
         return _Candidate(hands=hands)
 
     def _topup(self, need, info):
         rng = self.rng
         for _ in range(max(0, need)):
-            self.pool.append(self._gen_candidate(info, rng))
+            # alternate which hidden seat is generated first: half the pool
+            # is dealt from one seat with the other taking the remainder,
+            # half the other way round, so neither seat's generator order
+            # dominates the candidates
+            first = self.hidden_seats[len(self.pool) % 2]
+            self.pool.append(self._gen_candidate(info, rng, first))
 
     def _min_pool(self, n_done):
         base = self.cfg.decl_pool if self._is_decl_side else self.cfg.def_pool

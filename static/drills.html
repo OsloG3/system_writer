@@ -2093,8 +2093,11 @@
                 const list = calls || [];
                 const rows = [];
                 for (let i = 0; i < list.length; i++) {
-                    const r = Math.floor((i + off) / 4);
+                    const L = i + off;
+                    const r = Math.floor(L / 4);
                     if (!rows[r]) rows[r] = [];
+                    // blank lead-in cells keep every call in its seat's column
+                    while (rows[r].length < L % 4) rows[r].push(null);
                     rows[r].push(list[i]);
                 }
                 let body = "";
