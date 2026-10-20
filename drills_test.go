@@ -428,7 +428,7 @@ func TestDrillMultipleLines(t *testing.T) {
 	if len(s.Live) != 2 || s.Problem.Lines[0].Plays[0].Card != "3S" {
 		t.Fatalf("both lines should start alive: %+v", s.Live)
 	}
-	// Neither line's card: refused, hint from the first live line.
+	// Neither line's card is accepted while both lines are live.
 	if s.lineAccepts(s.Live[0], 1, "7H") || s.lineAccepts(s.Live[1], 1, "7H") {
 		t.Fatal("7H must not be accepted by either line")
 	}
@@ -538,6 +538,7 @@ func TestDrillHandlersCRUDAndSession(t *testing.T) {
 
 	alice, bob := drillLogin(t, "alice"), drillLogin(t, "bob")
 	problem := drillProblem()
+	problem.Explanation = "The whole point is the spade duck."
 	body, _ := json.Marshal(problem)
 
 	// logged out
@@ -582,7 +583,7 @@ func TestDrillHandlersCRUDAndSession(t *testing.T) {
 		t.Fatalf("list: %d", rr.Code)
 	}
 	listBody := rr.Body.String()
-	for _, leak := range []string{`"hands"`, `"plays"`, "Udca", "5S", "KT943"} {
+	for _, leak := range []string{`"hands"`, `"plays"`, "Udca", "5S", "KT943", "spade duck"} {
 		if strings.Contains(listBody, leak) {
 			t.Fatalf("library list leaks %s", leak)
 		}
@@ -615,6 +616,7 @@ func TestDrillHandlersCRUDAndSession(t *testing.T) {
 	edited := drillProblem()
 	edited.Title = "Renamed"
 	edited.Difficulty = 5
+	edited.Explanation = "The whole point is the spade duck."
 	editedBody, _ := json.Marshal(edited)
 	rr = httptest.NewRecorder()
 	req = drillReq(t, "PUT", "/api/drills/"+id, string(editedBody), bob)
@@ -658,6 +660,9 @@ func TestDrillHandlersCRUDAndSession(t *testing.T) {
 	if strings.Contains(rr.Body.String(), "obvious lead") {
 		t.Fatal("session state leaks the hero message")
 	}
+	if _, has := st["explanation"]; has {
+		t.Fatal("the explanation may only travel with the done state")
+	}
 
 	card := func(payload string) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
@@ -666,21 +671,47 @@ func TestDrillHandlersCRUDAndSession(t *testing.T) {
 		handleDrillSessionCard(rr, req)
 		return rr
 	}
+	hint := func(token string) *httptest.ResponseRecorder {
+		rr := httptest.NewRecorder()
+		req := drillReq(t, "GET", "/api/drill/session/"+sid+"/hint", "", token)
+		req.SetPathValue("sid", sid)
+		handleDrillSessionHint(rr, req)
+		return rr
+	}
+	// the opt-in hint serves the author's message for the card expected now
+	rr = hint(bob)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("hint: %d %s", rr.Code, rr.Body.String())
+	}
+	var hb struct {
+		Hint string `json:"hint"`
+	}
+	json.Unmarshal(rr.Body.Bytes(), &hb)
+	if hb.Hint != "the obvious lead" {
+		t.Fatalf("bad hint payload: %+v", hb)
+	}
+	// sessions are user-isolated for hints too
+	if rr := hint(alice); rr.Code != http.StatusNotFound {
+		t.Fatalf("foreign hint: %d", rr.Code)
+	}
 	// a card East does not hold
 	if rr := card(`{"card":"2S"}`); rr.Code != http.StatusBadRequest {
 		t.Fatalf("card not held: %d", rr.Code)
 	}
-	// legal but not the authored card: refused, hint returned, nothing played
+	// legal but not the authored card: refused with a bare 409 -- no hint
+	// revealed, nothing played
 	rr = card(`{"card":"7H"}`)
 	if rr.Code != http.StatusConflict {
 		t.Fatalf("wrong card: %d %s", rr.Code, rr.Body.String())
 	}
+	if strings.Contains(rr.Body.String(), "obvious lead") {
+		t.Fatalf("a wrong pick must not reveal the hint: %s", rr.Body.String())
+	}
 	var wrong struct {
-		Hint  string `json:"hint"`
-		Wrong int    `json:"wrong"`
+		Wrong int `json:"wrong"`
 	}
 	json.Unmarshal(rr.Body.Bytes(), &wrong)
-	if wrong.Hint != "the obvious lead" || wrong.Wrong != 1 {
+	if wrong.Wrong != 1 {
 		t.Fatalf("bad wrong-pick response: %+v", wrong)
 	}
 	if s := lookupDrillSession(sid, "bob"); s == nil || len(s.Plays) != 0 || s.Wrong != 1 {
@@ -695,6 +726,13 @@ func TestDrillHandlersCRUDAndSession(t *testing.T) {
 	json.Unmarshal(rr.Body.Bytes(), &st)
 	if st["phase"] != "done" || st["wrong"] != float64(1) {
 		t.Fatalf("session not done after the claim: %+v", st)
+	}
+	if st["explanation"] != "The whole point is the spade duck." {
+		t.Fatalf("done state lost the explanation: %+v", st["explanation"])
+	}
+	// once the hand is over the hint endpoint bows out (the review has it all)
+	if rr := hint(bob); rr.Code != http.StatusConflict {
+		t.Fatalf("hint after done: %d %s", rr.Code, rr.Body.String())
 	}
 	res := st["result"].(map[string]any)
 	if res["tricks"] != float64(10) || res["claimed"] != true {

@@ -26,10 +26,14 @@ import (
 //
 // Practice replays the script: the hero (the declarer side for declarer
 // problems, one chosen defender for defense problems) must find the authored
-// card at every turn; a different pick is refused and answered with the
-// message the author attached to the correct card. Every other seat plays
-// itself from the script. The hand ends after 52 cards or at the author's
-// claim (a trick count plus a plain final score -- no IMPs, no par).
+// card at every turn; a different pick is refused with a plain 409 (the
+// client buzzes and flashes red) and nothing is revealed. The message the
+// author attached to the correct card is an opt-in HINT: the practitioner
+// asks for it explicitly (GET /api/drill/session/{sid}/hint), and every
+// message is shown again in the end-of-hand review, together with the
+// problem's optional explanation. Every other seat plays itself from the
+// script. The hand ends after 52 cards or at the author's claim (a trick
+// count plus a plain final score -- no IMPs, no par).
 
 const (
 	drillMaxCalls   = 40 // authored auctions are not bound by the model's cap
@@ -98,6 +102,10 @@ type DrillProblem struct {
 	Calls          []string    `json:"calls"`
 	BidComment     string      `json:"bidComment,omitempty"`
 	ProblemComment string      `json:"problemComment,omitempty"`
+	// Explanation is the afterword of the problem: unlike ProblemComment
+	// (part of the pre-play briefing) it travels to the client only once the
+	// hand is over, as the end-of-hand explication of the whole deal.
+	Explanation string `json:"explanation,omitempty"`
 	// Target is the number of tricks the hero's side must take (or beat) for
 	// a practice run to count as a success: declarer tricks on a declarer
 	// problem, defenders' tricks on a defense one. It is shown before the
@@ -781,6 +789,7 @@ func validateDrill(p *DrillProblem) (*PlayContract, error) {
 	p.Title = strings.TrimSpace(p.Title)
 	p.BidComment = strings.TrimSpace(p.BidComment)
 	p.ProblemComment = strings.TrimSpace(p.ProblemComment)
+	p.Explanation = strings.TrimSpace(p.Explanation)
 	return contract, nil
 }
 
@@ -1063,10 +1072,12 @@ func (s *DrillSession) botChooseLocked(seat int) (string, error) {
 
 // stateLocked renders the client-visible session. During the play the hero
 // sees their own hand only (plus the dummy once tabled); the script's
-// messages stay hidden until the hand is over, except for the hint returned
-// with a wrong pick. The target travels from the very first state so the
-// practitioner knows what to aim for before playing a card; how a line ends
-// (claim, bots, played out) is never revealed up front.
+// messages stay hidden until the hand is over, and even a wrong pick reveals
+// nothing -- the hint endpoint serves the current card's message on explicit
+// request. The target travels from the very first state so the practitioner
+// knows what to aim for before playing a card; how a line ends (claim, bots,
+// played out) is never revealed up front. The problem's Explanation travels
+// only with the done state.
 func (s *DrillSession) stateLocked() map[string]any {
 	p := &s.Problem
 	st := map[string]any{
@@ -1121,6 +1132,7 @@ func (s *DrillSession) stateLocked() map[string]any {
 		st["nextSeat"] = -1
 		st["hands"] = p.Hands
 		st["result"] = s.Result
+		st["explanation"] = p.Explanation
 		// The review follows what ACTUALLY happened: the applied plays, with
 		// the followed line's messages and equivalents on the scripted hero
 		// cards (the bot-phase tail has no script).
@@ -1611,9 +1623,10 @@ func handleDrillSessionGet(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/drill/session/{sid}/card - the hero's pick. While the script is
 // in charge only the authored card (or one of its declared equivalents) is
-// accepted; anything else answers 409 with the author's message for the
-// correct card and plays nothing. Once the bots finish the hand, ANY legal
-// card is accepted and the result is graded at the end.
+// accepted; anything else answers a bare 409 and plays nothing -- the
+// author's message is NOT revealed (the client buzzes and flashes red; the
+// hint stays behind its opt-in endpoint). Once the bots finish the hand, ANY
+// legal card is accepted and the result is graded at the end.
 func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
 	if username == "" {
@@ -1683,16 +1696,10 @@ func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 	if len(matched) == 0 {
 		if !s.Problem.AllowWrong {
 			s.Wrong++
-			scripted := s.liveLine().Plays[len(s.Plays)]
-			msg := strings.TrimSpace(scripted.Msg)
-			if msg == "" {
-				msg = defaultHeroMsg(scripted.Card)
-			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
 			json.NewEncoder(w).Encode(map[string]any{
 				"error": "not the card the author played",
-				"hint":  msg,
 				"wrong": s.Wrong,
 			})
 			return
@@ -1712,6 +1719,52 @@ func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 		log.Printf("drill session %s: bot advance: %v", s.ID, err)
 	}
 	writeSessionState(w, s, username)
+}
+
+// GET /api/drill/session/{sid}/hint - the author's message for the card the
+// script expects right now. This is the opt-in hint: the practitioner asks
+// for it with a button while it is their turn in the scripted phase; a wrong
+// pick never reveals it. Using a hint does not count as a wrong pick. While
+// the bots play the rest of the hand there is no script left to hint from.
+func handleDrillSessionHint(w http.ResponseWriter, r *http.Request) {
+	username := requireLogin(w, r)
+	if username == "" {
+		return
+	}
+	sid := r.PathValue("sid")
+	if !validID(sid) {
+		jsonError(w, http.StatusBadRequest, "invalid session ID")
+		return
+	}
+	s := lookupDrillSession(sid, username)
+	if s == nil {
+		jsonError(w, http.StatusNotFound, "no such session")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch {
+	case s.Done:
+		jsonError(w, http.StatusConflict, "the hand is over -- the review shows every message")
+		return
+	case s.Bot:
+		jsonError(w, http.StatusConflict, "the bots are playing the rest -- every legal card is fine")
+		return
+	case !s.heroControls(s.nextSeatLocked()):
+		jsonError(w, http.StatusConflict, "it is not your turn")
+		return
+	}
+	l := s.liveLine()
+	if len(s.Plays) >= len(l.Plays) {
+		jsonError(w, http.StatusConflict, "no hint for this card")
+		return
+	}
+	scripted := l.Plays[len(s.Plays)]
+	msg := strings.TrimSpace(scripted.Msg)
+	if msg == "" {
+		msg = defaultHeroMsg(scripted.Card)
+	}
+	writeJSON(w, map[string]any{"hint": msg})
 }
 
 // DELETE /api/drill/session/{sid} - abandon a practice session.

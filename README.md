@@ -49,8 +49,10 @@ card-play bot as Play bridge. Two tabs:
 - **Create** — build a problem in a five-step wizard: setup (optional title,
   difficulty 1–5 ★, dealer, vulnerability, and whether it tests **Declarer** or
   **Defense**), the four hands from a click-to-assign deck picker, the auction on
-  a bidding box (with a comment about the bidding and a **problem comment** that
-  should record the defenders' carding agreements), the hero defender for a
+  a bidding box (with a comment about the bidding, a **problem comment** that
+  should record the defenders' carding agreements, and an **explanation** that
+  is revealed to the practitioner only after the hand is over), the hero
+  defender for a
   defense problem, then the **card play**. The play is scripted card by card in
   god-mode; every card played by a *hero* seat (declarer + dummy, or the one
   chosen defender) asks for the author's reasoning, pre-filled with
@@ -63,7 +65,11 @@ card-play bot as Play bridge. Two tabs:
     still hold is accepted at each later play of that group. The server proves
     this safe by re-simulating the line under every reordering of the group and
     rejecting it if any trick's winner could move (e.g. cashing a honour that
-    was ducked before) — such a choice is not an equivalence.
+    was ducked before) — such a choice is not an equivalence. Hints and
+    equivalences of **already-recorded** plays are editable in place: tap the
+    play in the "Hero cards scripted" list and the whole line is re-checked
+    with the same proof, so an edit that would break the rest of the line is
+    refused — no undoing and re-recording needed.
   - **Multiple lines** — when a hero choice genuinely changes who wins a trick
     (so the play must differ afterwards), the author records separate lines:
     **Branch here** forks the script at the current point and each line then
@@ -86,9 +92,13 @@ card-play bot as Play bridge. Two tabs:
   rotated to the bottom, dummy tabled after the opening lead). Non-hero seats
   play themselves from the author's script. If the hero picks a card that is
   neither the authored one nor one of its declared equivalents, it is **not**
-  played: the server answers `409` with the author's message for the correct
-  card (a wrong pick is counted) and the hero chooses again. Messages stay
-  hidden while you play correctly and are all revealed in the end-of-hand
+  played: the server answers a bare `409` (a wrong pick is counted) and the
+  table buzzes — vibration plus a red flash — without revealing anything about
+  the right card. The author's message for the card expected now is an
+  **opt-in hint**: the Hint button fetches it on request
+  (`GET /api/drill/session/{sid}/hint`, only while the script is in charge and
+  it is the hero's turn; using it does not count as a wrong pick). Every
+  message, plus the problem's explanation, is revealed in the end-of-hand
   review. In the bot phase every legal card is accepted and the hand is
   **graded**: finishing at the target result is a success, anything else means a
   mistake was made somewhere during the hand. Drills never touch the rankings or

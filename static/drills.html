@@ -1836,6 +1836,36 @@
             }
             .dr-hintclose:hover { background: rgba(255, 255, 255, 0.12); }
             .dr-hintclose .material-symbols-outlined { font-size: 15px; margin: 0; }
+            /* wrong pick: red bubble + table shake + red vignette flash.
+               Nothing about the right card is revealed -- that stays behind
+               the opt-in Hint button. */
+            .dr-msg-bad {
+                background: rgba(240, 138, 138, 0.12);
+                border-color: rgba(240, 138, 138, 0.55);
+                color: #f3c1c1;
+            }
+            .dr-msg-float.dr-msg-bad {
+                background: rgba(74, 27, 27, 0.97);
+                box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+            }
+            @keyframes dr-wrongshake {
+                10%, 90% { transform: translateX(-2px); }
+                20%, 80% { transform: translateX(3px); }
+                30%, 50%, 70% { transform: translateX(-5px); }
+                40%, 60% { transform: translateX(5px); }
+            }
+            @keyframes dr-wrongfade { from { opacity: 1; } to { opacity: 0; } }
+            .cb-playview.wrong .cb-ptable { animation: dr-wrongshake 0.5s ease; }
+            .cb-playview.wrong .cb-fan-play { animation: dr-wrongshake 0.5s ease; }
+            .cb-playview.wrong::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                z-index: 60;
+                pointer-events: none;
+                background: radial-gradient(115% 85% at 50% 50%, rgba(240, 80, 80, 0) 52%, rgba(240, 80, 80, 0.5) 100%);
+                animation: dr-wrongfade 0.65s ease forwards;
+            }
             /* modal */
             .dr-overlay {
                 position: fixed;
@@ -1880,6 +1910,11 @@
             .dr-line-trick { display: flex; gap: 0.3rem; align-items: center; padding: 0.2rem 0; border-bottom: 1px solid rgba(255,255,255,.04); }
             .dr-line-no { font-size: 0.6rem; color: #787572; width: 1.3rem; font-family: Inter, sans-serif; }
             .dr-line-msg { font-size: 0.72rem; color: #ffe6a3; font-family: Inter, sans-serif; margin: 1px 0 3px 1.6rem; line-height: 1.35; }
+            /* wizard: a scripted hero play in the summary — tap to edit its
+               hint and equivalents without undoing the line */
+            .dr-scriptrow { cursor: pointer; padding: 2px 5px; border-radius: 6px; }
+            .dr-scriptrow:hover { background: rgba(255, 213, 74, 0.09); box-shadow: inset 0 0 0 1px rgba(255, 213, 74, 0.25); }
+            .dr-scriptrow .material-symbols-outlined { font-size: 13px; vertical-align: -2px; opacity: 0.55; }
             .dr-tk-mini {
                 display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
                 width: 1.9rem; height: 2.5rem; border-radius: 4px;
@@ -1917,7 +1952,7 @@
                 badge: "Card problems",
                 title: "Card problems",
                 subtitle:
-                    "Author fully-scripted card-play problems -- the deal, the auction, your defensive agreements and every card of the play, each hero card annotated with why it was chosen -- then practise the library. Pick a wrong card and the author's reasoning for the right one is revealed; the hand is never scored in IMPs, only the final result.",
+                    "Author fully-scripted card-play problems -- the deal, the auction, your defensive agreements and every card of the play, each hero card annotated with a hint about why it was chosen -- then practise the library. A wrong card buzzes and flashes red without giving anything away; the author's hints are opt-in and all of them, plus the problem's explanation, are revealed in the review after the hand. The hand is never scored in IMPs, only the final result.",
             });
 
             const SEAT_NAMES = ["North", "East", "South", "West"];
@@ -1951,7 +1986,11 @@
             let showLastTrick = false;
             let showAuction = false;
             let showNotes = false;
-            let hintMsg = null; // wrong-pick feedback from the author
+            let hintMsg = null; // opt-in hint for the current card (Hint button)
+            let hintBusy = false; // a hint fetch is in flight
+            let wrongMsg = null; // red "try again" bubble after a refused pick
+            let wrongFlash = false; // red flash + shake while a wrong pick stings
+            let wrongTimer = null;
             let showIntro = false; // pre-play briefing overlay
             let stepping = false; // a bot-phase fetch is in flight
             let autoRetries = 0; // bot-phase fetch backoff
@@ -1959,6 +1998,7 @@
             // authoring wizard
             let wiz = null; // draft problem (see blankWiz)
             let wizModal = null; // {kind:'msg'|'claim'|'delete', ...}
+            let summaryOpen = false; // the "hero cards scripted" list stays open across renders
 
             // ---- shared formatting helpers (ported from play.html) ----
             function dcolorSuits(text) {
@@ -2408,6 +2448,18 @@
                 if (!hintMsg) return "";
                 return `<div class="dr-msg dr-msg-float"><span class="material-symbols-outlined">tips_and_updates</span><span style="flex:1">${suitify(hintMsg)}</span><button id="drHintClose" class="dr-hintclose" title="Dismiss"><span class="material-symbols-outlined">close</span></button></div>`;
             }
+            function wrongBubbleHtml() {
+                if (!wrongMsg) return "";
+                const n = state && state.wrong ? ` \u00b7 \u2717 ${state.wrong}` : "";
+                return `<div class="dr-msg dr-msg-float dr-msg-bad"><span class="material-symbols-outlined">priority_high</span><span style="flex:1">${escapeHtml(wrongMsg)} \u2014 try again${n}. Tap <b>Hint</b> if you are stuck.</span><button id="drWrongClose" class="dr-hintclose" title="Dismiss"><span class="material-symbols-outlined">close</span></button></div>`;
+            }
+            // the opt-in hint: only while the script is in charge and it is
+            // the hero's turn (in the bot phase every legal card is fine)
+            function hintBtnHtml() {
+                if (!playReady() || state.bot) return "";
+                return `<button id="drHintBtn" class="cb-trickbtn${hintMsg ? " on" : ""}" title="Reveal the author's note for this card">
+                    <span class="material-symbols-outlined">tips_and_updates</span>Hint</button>`;
+            }
             function playTableView() {
                 // dh/dv: where the tabled dummy will lie on screen (row at the
                 // top, column at a side) so the table reserves its space up
@@ -2429,10 +2481,10 @@
                     <div class="cb-pt-s">${playSeatHtml(seatForArea(2))}</div>
                 </div>
                 <div class="cb-playbottom">
-                    ${auctionPanelHtml()}${notesPanelHtml()}${lastTrickPanelHtml()}${hintBubbleHtml()}
+                    ${auctionPanelHtml()}${notesPanelHtml()}${lastTrickPanelHtml()}${hintBubbleHtml()}${wrongBubbleHtml()}
                     <div class="cb-playrow">
                         <div class="cb-pprompt">${playPromptHtml()}</div>
-                        ${auctionBtnHtml()}${notesBtnHtml()}${lastTrickBtnHtml()}
+                        ${auctionBtnHtml()}${notesBtnHtml()}${lastTrickBtnHtml()}${hintBtnHtml()}
                     </div>
                 </div>`;
             }
@@ -2447,15 +2499,24 @@
             async function makePlay(card) {
                 if (busy || !state) return;
                 selectedCard = null;
+                wrongMsg = null;
                 busy = true;
                 render();
                 try {
                     const r = await api("POST", `/api/drill/session/${state.id}/card`, { card });
                     busy = false;
-                    if (r.status === 409 && r.data && r.data.hint !== undefined) {
-                        hintMsg = r.data.hint;
-                        if (typeof r.data.wrong === "number") state.wrong = r.data.wrong;
+                    if (r.status === 409) {
+                        // refused: buzz + red flash, nothing about the right
+                        // card is revealed (the Hint button stays opt-in)
+                        if (r.data && typeof r.data.wrong === "number") state.wrong = r.data.wrong;
+                        const err = (r.data && r.data.error) || "not the card the author played";
+                        wrongMsg = err.charAt(0).toUpperCase() + err.slice(1);
+                        hintMsg = null;
+                        wrongFlash = true;
+                        try { if (navigator.vibrate) navigator.vibrate([90, 50, 90]); } catch (e) { }
                         render();
+                        clearTimeout(wrongTimer);
+                        wrongTimer = setTimeout(() => { wrongFlash = false; render(); }, 650);
                         return;
                     }
                     if (!r.ok) { showToast((r.data && r.data.error) || "Play failed", true); render(); return; }
@@ -2465,6 +2526,19 @@
                     if (!e || !e.auth) showToast("Network error", true);
                     render();
                 }
+            }
+            // the opt-in hint for the card the script expects now
+            async function toggleHint() {
+                if (hintMsg) { hintMsg = null; render(); return; }
+                if (!state || hintBusy) return;
+                hintBusy = true;
+                try {
+                    const r = await api("GET", `/api/drill/session/${state.id}/hint`);
+                    hintBusy = false;
+                    if (r.ok && r.data && r.data.hint !== undefined) { hintMsg = r.data.hint; wrongMsg = null; }
+                    else showToast((r.data && r.data.error) || "No hint right now", true);
+                } catch (e) { hintBusy = false; }
+                render();
             }
             function drivePlay() {
                 clearTimeout(paceTimer); paceTimer = null;
@@ -2533,6 +2607,9 @@
                 }
                 if (data.id) localStorage.setItem(SESSION_KEY, data.id);
                 hintMsg = null;
+                wrongMsg = null;
+                wrongFlash = false;
+                clearTimeout(wrongTimer);
                 render();
                 drivePlay();
             }
@@ -2564,6 +2641,7 @@
                         <h3>${escapeHtml(state.title || "Card problem")}</h3>
                         <div class="dr-sub" style="margin-bottom:.6rem">${contractText(c)} \u00b7 Dealer ${SEAT_NAMES[state.dealer][0]} \u00b7 Vuln ${VULN_NAMES[state.vuln]} \u00b7 ${stars(state.difficulty)}</div>
                         <div class="dr-hint" style="margin-bottom:.6rem">${heroRole}</div>
+                        <div class="dr-hint" style="margin-bottom:.6rem">A wrong card is refused with a red flash \u2014 nothing is revealed. Tap <b>Hint</b> for the author's note on the current card; every note, plus the problem's explanation, is shown in the review after the hand.</div>
                         ${state.problemComment ? `<div class="dr-label">Problem / defensive agreements</div><div class="dr-comment" style="margin-bottom:.6rem">${suitify(state.problemComment)}</div>` : ""}
                         <div class="dr-label">Auction</div>
                         ${auctionHtml(state.dealer, state.vuln, state.calls, null, state.heroSeat)}
@@ -2660,6 +2738,7 @@
                                 ${state.problemComment ? `<div><div class="dr-label">Problem / defence</div><div class="dr-comment">${suitify(state.problemComment)}</div></div>` : ""}
                                 ${state.bidComment ? `<div><div class="dr-label">Bidding</div><div class="dr-comment">${suitify(state.bidComment)}</div></div>` : ""}
                             </div>` : ""}
+                            ${state.explanation ? `<div><div class="dr-label">Explanation</div><div class="dr-comment">${suitify(state.explanation)}</div></div>` : ""}
                             <div><div class="dr-label">The author's line</div>${lineReviewHtml()}</div>
                             <div class="cb-done-foot" style="gap:.5rem">
                                 <button id="drAgainBtn" class="dr-btn gold"><span class="material-symbols-outlined">restart_alt</span>Practise again</button>
@@ -2675,7 +2754,7 @@
                 if (doneRevealed) return doneViewHtml();
                 return `<div class="flex-1 min-h-0 flex flex-col">
                     ${topBarHtml()}
-                    <div class="cb-playview">
+                    <div class="cb-playview${wrongFlash ? " wrong" : ""}">
                         ${playTableView()}
                         ${playFanHtml()}
                     </div>
@@ -2854,8 +2933,9 @@
             }
             async function leaveSession() {
                 const id = state && state.id;
-                view = "lobby"; state = null; hintMsg = null; showIntro = false;
+                view = "lobby"; state = null; hintMsg = null; wrongMsg = null; showIntro = false;
                 clearTimeout(paceTimer);
+                clearTimeout(wrongTimer); wrongFlash = false;
                 localStorage.removeItem(SESSION_KEY);
                 render();
                 if (id) { try { await api("DELETE", `/api/drill/session/${id}`); } catch (e) { } }
@@ -2872,7 +2952,7 @@
             function blankWiz() {
                 return {
                     id: null, title: "", role: "defense", difficulty: 3, dealer: 0, vuln: 0,
-                    assign: {}, calls: [], bidComment: "", problemComment: "",
+                    assign: {}, calls: [], bidComment: "", problemComment: "", explanation: "",
                     target: 0, allowWrong: false,
                     heroSeat: -1, lines: [blankLine()], lineIdx: 0, step: 0, selSeat: 2,
                 };
@@ -2909,12 +2989,13 @@
                         id: existing.id, title: existing.title || "", role: existing.role, difficulty: existing.difficulty,
                         dealer: existing.dealer, vuln: existing.vuln, assign: assignFromHands(existing.hands),
                         calls: (existing.calls || []).slice(), bidComment: existing.bidComment || "", problemComment: existing.problemComment || "",
+                        explanation: existing.explanation || "",
                         target: existing.target || 0, allowWrong: !!existing.allowWrong,
                         heroSeat: existing.heroSeat, lines: src.map(normLine), lineIdx: 0,
                         step: 0, selSeat: 2,
                     };
                 } else wiz = blankWiz();
-                view = "wizard"; wizModal = null;
+                view = "wizard"; wizModal = null; summaryOpen = false;
                 render();
             }
             function wizContract() { return contractFromCalls(wiz.dealer, wiz.calls); }
@@ -3079,7 +3160,9 @@
                     <div class="dr-field"><label class="dr-label">Comment about the bidding <span style="text-transform:none;letter-spacing:0;opacity:.7">(!s \u2660 !h \u2665 !d \u2666 !c \u2663)</span></label>
                         <textarea class="dr-input" id="wizBidComment" placeholder="What the auction shows, conventions in play\u2026">${escapeHtml(wiz.bidComment)}</textarea></div>
                     <div class="dr-field"><label class="dr-label">Problem comment \u2014 include the defenders' agreements <span style="text-transform:none;letter-spacing:0;opacity:.7">(!s \u2660 !h \u2665 !d \u2666 !c \u2663)</span></label>
-                        <textarea class="dr-input" id="wizProblemComment" placeholder="Defensive carding: leads, signals, discards, count/attitude agreements\u2026">${escapeHtml(wiz.problemComment)}</textarea></div>`;
+                        <textarea class="dr-input" id="wizProblemComment" placeholder="Defensive carding: leads, signals, discards, count/attitude agreements\u2026">${escapeHtml(wiz.problemComment)}</textarea></div>
+                    <div class="dr-field"><label class="dr-label">Explanation \u2014 revealed only after the hand is over <span style="text-transform:none;letter-spacing:0;opacity:.7">(!s \u2660 !h \u2665 !d \u2666 !c \u2663)</span></label>
+                        <textarea class="dr-input" id="wizExplanation" placeholder="The explication of the problem: what the point was, why the line works, what to take away\u2026">${escapeHtml(wiz.explanation)}</textarea></div>`;
             }
             function wizStepHero() {
                 const c = wizContract();
@@ -3127,7 +3210,9 @@
                 }).join("");
             }
             // compact list of the hero's scripted cards with their reasoning
-            // and equivalents, so alts stay visible while recording
+            // and equivalents, so alts stay visible while recording; every
+            // row is tappable to edit that play's hint/alts in place (the
+            // line is re-validated, so a bad equivalence cannot break it)
             function scriptSummaryHtml(contract) {
                 const line = wizLine();
                 const hero = recHeroSeats(contract);
@@ -3137,10 +3222,10 @@
                     .map((x) => {
                         const alts = (x.p.alts || []).length ? ` <span style="color:#8fd694">\u2261 ${dcolorSuits(x.p.alts.map(cardNameJS).join(" "))}</span>` : "";
                         const msg = x.p.msg ? ` \u2014 ${suitify(x.p.msg)}` : "";
-                        return `<div class="dr-sub" style="margin-top:2px">${Math.floor(x.i / 4) + 1}.${x.i % 4 + 1} ${SEAT_NAMES[x.p.seat][0]} <b style="color:#e8e6e3">${cardNameJS(x.p.card)}</b>${alts}${msg}</div>`;
+                        return `<div class="dr-sub dr-scriptrow" data-editplay="${x.i}" title="Edit the hint and equivalent cards"><span class="material-symbols-outlined">edit</span>${Math.floor(x.i / 4) + 1}.${x.i % 4 + 1} ${SEAT_NAMES[x.p.seat][0]} <b style="color:#e8e6e3">${cardNameJS(x.p.card)}</b>${alts}${msg}</div>`;
                     }).join("");
                 if (!rows) return "";
-                return `<details style="margin-top:.5rem"><summary class="dr-hint" style="cursor:pointer">Hero cards scripted (${line.plays.filter((p) => hero.indexOf(p.seat) >= 0).length})</summary>${rows}</details>`;
+                return `<details id="wizScriptSum"${summaryOpen ? " open" : ""} style="margin-top:.5rem"><summary class="dr-hint" style="cursor:pointer">Hero cards scripted (${line.plays.filter((p) => hero.indexOf(p.seat) >= 0).length}) \u2014 tap one to edit its hint</summary>${rows}</details>`;
             }
             function lineTabsHtml(contract) {
                 const tabs = wiz.lines.map((l, i) => {
@@ -3232,7 +3317,7 @@
                     return `<span class="dr-rc ${red ? "red" : "blk"}${on ? " legal" : ""}" data-alt="${c}" title="${on ? "Remove from equivalents" : "Also accept this card"}" style="cursor:pointer">${rank}<span class="sym">${SUIT_SYMBOL[c[1]]}</span></span>`;
                 }).join("");
                 return `<div class="dr-field" style="margin-top:.7rem">
-                    <label class="dr-label">Also accept as equivalent <span style="text-transform:none;letter-spacing:0;opacity:.7">(only cards that never change who wins a trick \u2014 the server verifies)</span></label>
+                    <label class="dr-label">Also accept as equivalent <span style="text-transform:none;letter-spacing:0;opacity:.7">(only cards that never change who wins a trick \u2014 the whole line is re-checked on save)</span></label>
                     <div class="dr-reccards">${chips}</div>
                     ${(modal.alts && modal.alts.length) ? `<div class="dr-hint" style="margin-top:.3rem">Equivalent to: ${dcolorSuits(modal.alts.map(cardNameJS).join(" "))} \u2014 they stay interchangeable for the rest of the line.</div>` : ""}
                 </div>`;
@@ -3240,12 +3325,17 @@
             function modalHtml() {
                 if (!modal) return "";
                 if (modal.kind === "msg") {
+                    const editing = modal.index !== undefined && modal.index !== null;
+                    const pos = editing ? ` at trick ${Math.floor(modal.index / 4) + 1}` : "";
+                    const why = editing
+                        ? `Update the hint and the equivalent cards \u2014 the rest of the line is re-checked, so an edit that would break it is refused.`
+                        : `Explain the reasoning \u2014 it is the practitioner's opt-in hint, and it is revealed in the review after the hand.`;
                     return `<div class="dr-overlay"><div class="dr-modal">
-                        <h3>Why the ${cardNameJS(modal.card)}?</h3>
-                        <div class="dr-hint" style="margin-bottom:.5rem">${SEAT_NAMES[modal.seat]} (hero) plays the ${cardNameJS(modal.card)}. Explain the reasoning \u2014 it is revealed to anyone who picks a different card. <span style="opacity:.75">Type !s !h !d !c for \u2660 \u2665 \u2666 \u2663.</span></div>
+                        <h3>${editing ? `Edit the hint for the ${cardNameJS(modal.card)}` : `Why the ${cardNameJS(modal.card)}?`}</h3>
+                        <div class="dr-hint" style="margin-bottom:.5rem">${SEAT_NAMES[modal.seat]} (hero) plays the ${cardNameJS(modal.card)}${pos}. ${why} <span style="opacity:.75">Type !s !h !d !c for \u2660 \u2665 \u2666 \u2663.</span></div>
                         <textarea class="dr-input" id="msgText" rows="3">${escapeHtml(modal.msg)}</textarea>
                         ${altPickerHtml()}
-                        <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn gold" id="msgOk"><span class="material-symbols-outlined">playing_cards</span>Play card</button></div>
+                        <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn gold" id="msgOk"><span class="material-symbols-outlined">${editing ? "save" : "playing_cards"}</span>${editing ? "Save" : "Play card"}</button></div>
                     </div></div>`;
                 }
                 if (modal.kind === "bot") {
@@ -3380,6 +3470,164 @@
                 l.bot = null;
                 render();
             }
+
+            // ---- editing an old play's hint / equivalents in place ----
+            // The script summary rows open the same modal the recording uses,
+            // pre-filled; saving re-validates the WHOLE line (mirroring the
+            // server's checks in drills.go) so an edit that would break the
+            // rest of the line is refused instead of saved.
+            function simLinePlays(contract, hands, plays) {
+                const trump = contract.denom[0];
+                const remaining = [0, 1, 2, 3].map((s) => new Set(handToCards(hands[s])));
+                const winners = [];
+                let next = (contract.declarer + 1) % 4;
+                for (let i = 0; i < plays.length; i++) {
+                    const dp = plays[i];
+                    if (dp.seat !== next) return { winners, error: `play ${i + 1}: ${SEAT_NAMES[dp.seat]} is out of turn` };
+                    if (!remaining[dp.seat].has(dp.card)) return { winners, error: `play ${i + 1}: ${SEAT_NAMES[dp.seat]} does not hold ${cardNameJS(dp.card)}` };
+                    if (i % 4 > 0) {
+                        const lead = plays[Math.floor(i / 4) * 4].card[1];
+                        if (dp.card[1] !== lead) {
+                            let has = false;
+                            for (const c of remaining[dp.seat]) if (c[1] === lead) { has = true; break; }
+                            if (has) return { winners, error: `play ${i + 1}: ${SEAT_NAMES[dp.seat]} must follow suit` };
+                        }
+                    }
+                    remaining[dp.seat].delete(dp.card);
+                    if ((i + 1) % 4 === 0) {
+                        const w = trickWinnerJS(plays.slice(i - 3, i + 1).map((q) => ({ seat: q.seat, card: q.card })), trump);
+                        winners.push(w);
+                        next = w;
+                    } else next = (dp.seat + 1) % 4;
+                }
+                return { winners, error: null };
+            }
+            // union-find of each hero play with its declared alternatives, per
+            // seat (same shape as DrillLine.buildClasses on the server)
+            function buildLineClasses(hero, plays) {
+                const parent = {};
+                const find = (seat, c) => {
+                    if (!parent[seat]) parent[seat] = {};
+                    const m = parent[seat];
+                    if (!(c in m)) m[c] = c;
+                    while (m[c] !== c) c = m[c];
+                    return c;
+                };
+                for (const dp of plays) {
+                    if (hero.indexOf(dp.seat) < 0 || !(dp.alts && dp.alts.length)) continue;
+                    const root = find(dp.seat, dp.card);
+                    for (const a of dp.alts) {
+                        const ra = find(dp.seat, a);
+                        if (ra !== root) parent[dp.seat][ra] = root;
+                    }
+                }
+                return parent;
+            }
+            function lineClassRoot(classes, seat, card) {
+                const m = classes[seat];
+                if (!m || !(card in m)) return card;
+                let c = card;
+                while (m[c] !== c) c = m[c];
+                return c;
+            }
+            function lineClassMembers(classes, seat, card) {
+                if (!classes[seat]) return [card];
+                const root = lineClassRoot(classes, seat, card);
+                const out = Object.keys(classes[seat]).filter((c) => lineClassRoot(classes, seat, c) === root);
+                out.sort();
+                return out.length ? out : [card];
+            }
+            // every injective assignment of a class's members onto the class's
+            // scripted positions must stay legal and keep every trick winner
+            function validateLineEquivalence(contract, hands, plays, hero, baseWinners) {
+                const classes = buildLineClasses(hero, plays);
+                const checked = {};
+                for (const dp of plays) {
+                    if (hero.indexOf(dp.seat) < 0) continue;
+                    const root = lineClassRoot(classes, dp.seat, dp.card);
+                    const key = dp.seat + "|" + root;
+                    if (checked[key]) continue;
+                    const members = lineClassMembers(classes, dp.seat, dp.card);
+                    if (members.length < 2) continue;
+                    checked[key] = true;
+                    const positions = [];
+                    plays.forEach((q, j) => { if (q.seat === dp.seat && lineClassRoot(classes, dp.seat, q.card) === root) positions.push(j); });
+                    let perms = 1, tooBig = false;
+                    for (let k = 0; k < positions.length; k++) {
+                        if (members.length - k <= 0) break;
+                        perms *= members.length - k;
+                        if (perms > 5000) { tooBig = true; break; }
+                    }
+                    const names = members.map(cardNameJS).join(" ");
+                    if (tooBig) return `${SEAT_NAMES[dp.seat]}'s group (${names}) is too large to verify \u2014 narrow the alternatives`;
+                    const used = new Array(members.length).fill(false);
+                    const pick = new Array(positions.length);
+                    const rec = (k) => {
+                        if (k === positions.length) {
+                            const swapped = plays.map((q) => ({ seat: q.seat, card: q.card }));
+                            positions.forEach((pos, idx) => { swapped[pos].card = pick[idx]; });
+                            const r = simLinePlays(contract, hands, swapped);
+                            if (r.error) return r.error;
+                            for (let t = 0; t < r.winners.length && t < baseWinners.length; t++)
+                                if (r.winners[t] !== baseWinners[t]) return `the winner of trick ${t + 1} would change`;
+                            return null;
+                        }
+                        for (let mi = 0; mi < members.length; mi++) {
+                            if (used[mi]) continue;
+                            used[mi] = true; pick[k] = members[mi];
+                            const err = rec(k + 1);
+                            used[mi] = false;
+                            if (err) return err;
+                        }
+                        return null;
+                    };
+                    const err = rec(0);
+                    if (err) return `${SEAT_NAMES[dp.seat]}'s equivalent cards (${names}) are not interchangeable: ${err} \u2014 give separate lines for that choice`;
+                }
+                return null;
+            }
+            function openPlayEdit(i) {
+                const c = wizContract();
+                if (!c) return;
+                const line = wizLine();
+                const p = line.plays[i];
+                if (!p || recHeroSeats(c).indexOf(p.seat) < 0) return;
+                const hands = handsFromAssign(wiz.assign);
+                const playedBefore = new Set(line.plays.slice(0, i).filter((q) => q.seat === p.seat).map((q) => q.card));
+                const pool = handToCards(hands[p.seat]).filter((x) => x !== p.card && !playedBefore.has(x));
+                modal = { kind: "msg", index: i, seat: p.seat, card: p.card, msg: p.msg || defaultMsg(p.card), alts: (p.alts || []).slice(), pool };
+                render();
+            }
+            // returns an error string when the edit would break the line,
+            // otherwise applies it and returns null
+            function applyPlayEdit(index, msg, alts) {
+                const c = wizContract();
+                if (!c) return "Complete the auction first";
+                const line = wizLine();
+                const p = line.plays[index];
+                if (!p) return "No such play";
+                const hands = handsFromAssign(wiz.assign);
+                const held = handToCards(hands[p.seat]);
+                for (const a of alts) {
+                    if (a === p.card) return `${cardNameJS(a)} is the played card itself`;
+                    if (held.indexOf(a) < 0) return `${SEAT_NAMES[p.seat]} does not hold ${cardNameJS(a)}`;
+                }
+                const prev = p.alts || [];
+                const unchanged = alts.length === prev.length && alts.every((a) => prev.indexOf(a) >= 0);
+                if (!unchanged) {
+                    const trial = line.plays.map((q, j) => ({
+                        seat: q.seat, card: q.card,
+                        alts: j === index ? alts.slice() : (q.alts || []).slice(),
+                    }));
+                    const base = simLinePlays(c, hands, trial);
+                    if (base.error) return base.error;
+                    const err = validateLineEquivalence(c, hands, trial, recHeroSeats(c), base.winners);
+                    if (err) return err;
+                }
+                p.msg = msg;
+                p.alts = alts.slice();
+                return null;
+            }
             function openClaimModal() {
                 const c = wizContract();
                 if (!c) return;
@@ -3417,6 +3665,7 @@
                     difficulty: wiz.difficulty, dealer: wiz.dealer, vuln: wiz.vuln,
                     hands: handsFromAssign(wiz.assign), calls: wiz.calls,
                     bidComment: wiz.bidComment, problemComment: wiz.problemComment,
+                    explanation: wiz.explanation,
                     target: wiz.target, allowWrong: wiz.allowWrong || undefined,
                     lines,
                 };
@@ -3597,6 +3846,8 @@
                 on("drNotesBtn", () => { showNotes = !showNotes; showAuction = false; render(); });
                 on("drLastTrickBtn", () => { showLastTrick = !showLastTrick; render(); });
                 on("drHintClose", () => { hintMsg = null; render(); });
+                on("drWrongClose", () => { wrongMsg = null; render(); });
+                on("drHintBtn", () => toggleHint());
                 document.querySelectorAll("[data-play]").forEach((el) => {
                     el.onclick = () => onCardClick(el.getAttribute("data-play"));
                 });
@@ -3652,6 +3903,11 @@
                 document.querySelectorAll("[data-card]").forEach((el) => el.onclick = () => assignCard(el.dataset.card));
                 document.querySelectorAll("[data-sel]").forEach((el) => el.onclick = () => { wiz.selSeat = parseInt(el.dataset.sel); render(); });
                 document.querySelectorAll("[data-rec]").forEach((el) => el.onclick = () => recCard(el.dataset.rec));
+                document.querySelectorAll("[data-editplay]").forEach((el) => {
+                    el.onclick = () => openPlayEdit(parseInt(el.getAttribute("data-editplay"), 10));
+                });
+                const sum = $("wizScriptSum");
+                if (sum) sum.ontoggle = () => { summaryOpen = sum.open; };
                 on("wizClearHands", () => { wiz.assign = {}; render(); });
                 on("wizUndoCall", () => undoCall());
                 on("wizUndoPlay", () => recUndo());
@@ -3685,6 +3941,7 @@
                 bindInput("wizTitle", (v) => { wiz.title = v; });
                 bindSymbol("wizBidComment", (v) => { wiz.bidComment = v; });
                 bindSymbol("wizProblemComment", (v) => { wiz.problemComment = v; });
+                bindSymbol("wizExplanation", (v) => { wiz.explanation = v; });
                 bindSymbol("msgText", (v) => { if (modal) modal.msg = v; });
                 document.querySelectorAll("[data-alt]").forEach((el) => {
                     el.onclick = () => {
@@ -3702,7 +3959,16 @@
                 document.querySelectorAll("[data-modal-cancel]").forEach((el) => el.onclick = () => { modal = null; render(); });
                 on("msgOk", () => {
                     const el = $("msgText");
-                    wizLine().plays.push({ seat: modal.seat, card: modal.card, msg: (el ? el.value : modal.msg).trim(), alts: (modal.alts || []).slice() });
+                    const msg = (el ? el.value : modal.msg).trim();
+                    if (modal.index !== undefined && modal.index !== null) {
+                        // editing an old play: validate against the rest of
+                        // the line before touching it
+                        const err = applyPlayEdit(modal.index, msg, (modal.alts || []).slice());
+                        if (err) { showToast(err, true); return; }
+                        modal = null; render();
+                        return;
+                    }
+                    wizLine().plays.push({ seat: modal.seat, card: modal.card, msg, alts: (modal.alts || []).slice() });
                     modal = null; render();
                 });
                 on("claimOk", () => {

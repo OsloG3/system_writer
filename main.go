@@ -220,6 +220,7 @@ func main() {
 	http.HandleFunc("POST /api/drills/{id}/session", handleDrillSessionNew)
 	http.HandleFunc("GET /api/drill/session/{sid}", handleDrillSessionGet)
 	http.HandleFunc("POST /api/drill/session/{sid}/card", handleDrillSessionCard)
+	http.HandleFunc("GET /api/drill/session/{sid}/hint", handleDrillSessionHint)
 	http.HandleFunc("DELETE /api/drill/session/{sid}", handleDrillSessionDelete)
 	http.HandleFunc("GET /api/drill-archives", handleDrillArchivesList)
 	http.HandleFunc("POST /api/drill-archives", handleDrillArchiveCreate)
