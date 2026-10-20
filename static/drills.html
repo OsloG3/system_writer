@@ -2633,15 +2633,10 @@
             }
             function introHtml() {
                 const c = state.contract;
-                const heroRole = state.role === "declarer"
-                    ? `You are <b>${SEAT_NAMES[state.heroSeat]}</b>, the declarer. Play both your hand and the dummy.`
-                    : `You are <b>${SEAT_NAMES[state.heroSeat]}</b>, defending. Find the card the author played at every turn.`;
                 return `<div class="dr-overlay" id="drIntro">
                     <div class="dr-modal">
                         <h3>${escapeHtml(state.title || "Card problem")}</h3>
                         <div class="dr-sub" style="margin-bottom:.6rem">${contractText(c)} \u00b7 Dealer ${SEAT_NAMES[state.dealer][0]} \u00b7 Vuln ${VULN_NAMES[state.vuln]} \u00b7 ${stars(state.difficulty)}</div>
-                        <div class="dr-hint" style="margin-bottom:.6rem">${heroRole}</div>
-                        <div class="dr-hint" style="margin-bottom:.6rem">A wrong card is refused with a red flash \u2014 nothing is revealed. Tap <b>Hint</b> for the author's note on the current card; every note, plus the problem's explanation, is shown in the review after the hand.</div>
                         ${state.problemComment ? `<div class="dr-label">Problem / defensive agreements</div><div class="dr-comment" style="margin-bottom:.6rem">${suitify(state.problemComment)}</div>` : ""}
                         <div class="dr-label">Auction</div>
                         ${auctionHtml(state.dealer, state.vuln, state.calls, null, state.heroSeat)}
