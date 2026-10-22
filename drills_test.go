@@ -125,6 +125,13 @@ func TestValidateAuction(t *testing.T) {
 		{2, []string{"1C", "X", "XX", "P", "P", "P"}, 1, "C", 2, 2},
 		{0, []string{"1H", "P", "P", "2S", "P", "P", "P"}, 2, "S", 3, 0},
 		{1, []string{"P", "1NT", "P", "P", "P"}, 1, "N", 2, 0},
+		// Law 19: only passes may sit between the bid and its double, so
+		// balancing doubles work...
+		{0, []string{"1H", "P", "P", "X", "P", "P", "P"}, 1, "H", 0, 1},
+		// ...the doubler may re-double a later opponents' bid after passes...
+		{0, []string{"1S", "X", "2C", "P", "P", "X", "P", "P", "P"}, 2, "C", 2, 1},
+		// ...and a redouble may follow the double after passes.
+		{0, []string{"1S", "X", "P", "P", "XX", "P", "P", "P"}, 1, "S", 0, 2},
 	}
 	for _, c := range ok {
 		contract, err := validateAuction(c.dealer, c.calls)
@@ -137,23 +144,27 @@ func TestValidateAuction(t *testing.T) {
 		}
 	}
 	bad := [][]string{
-		{"P", "P", "P", "P"},                  // passed out
-		{"1H", "P", "P"},                      // unfinished
-		{"1H", "P", "P", "P", "P"},            // calls after the auction ended
-		{"2C", "1H", "P", "P", "P"},           // bid does not outrank
-		{"1H", "P", "X", "P", "P", "P"},       // double not directly over the bid
-		{"1H", "X", "P", "XX", "P", "P", "P"}, // redouble not directly over the double
-		{"1H", "1H", "P", "P", "P"},           // equal bid
-		{"1H", "P", "4H", "P", "P", "P", "X"}, // double after the auction ended
-		{"1H", "2S", "P", "P", "P", "P", "P"}, // trailing passes beyond three
+		{"P", "P", "P", "P"},                        // passed out
+		{"1H", "P", "P"},                            // unfinished
+		{"1H", "P", "P", "P", "P"},                  // calls after the auction ended
+		{"2C", "1H", "P", "P", "P"},                 // bid does not outrank
+		{"1H", "P", "X", "P", "P", "P"},             // double of the partner's bid
+		{"1H", "X", "P", "XX", "P", "P", "P"},       // redouble by the doubler's partner
+		{"1H", "1H", "P", "P", "P"},                 // equal bid
+		{"1H", "P", "4H", "P", "P", "P", "X"},       // double after the auction ended
+		{"1H", "2S", "P", "P", "P", "P", "P"},       // trailing passes beyond three
+		{"P", "P", "P", "1S", "P", "P", "P"},        // bid after a pass-out
+		{"1S", "X", "P", "2C", "XX", "P", "P", "P"}, // redouble over a bid, not the double
+		{"1S", "X", "XX", "P", "X", "P", "P", "P"},  // double over a redouble
+		{"1S", "P", "2C", "P", "X", "P", "P", "P"},  // double of the partner's later bid
 	}
 	for _, calls := range bad {
 		if _, err := validateAuction(0, calls); err == nil {
 			t.Fatalf("%v accepted, want rejection", calls)
 		}
 	}
-	// A double directly over the bid is always by the next seat (an
-	// opponent); a redouble by anyone else must be rejected.
+	// A redouble must come over the opponents' double of your side's bid;
+	// a stray redouble over an undoubled bid is rejected.
 	if _, err := validateAuction(0, []string{"1H", "P", "P", "XX"}); err == nil {
 		t.Fatal("stray redouble accepted")
 	}

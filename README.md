@@ -80,7 +80,10 @@ card-play bot as Play bridge. Two tabs:
     trick boundary (just the declarer's total tricks), or by letting the **bots
     finish**: from the end of the script the hero may play *any* legal card and
     every other seat is played by the card-play bot, one slow card per request
-    (paced like the play-a-hand table). The result is always shown as the
+    (paced like the play-a-hand table). A practice run that ends on a claim
+    first shows a short announcement — who claimed, how many more tricks, the
+    result and all four hands — and clicking anywhere moves on to the review.
+    The result is always shown as the
     contract and its margin (e.g. **4♠−1**, **3NT=**, **4♥+2**) — no score, no
     IMPs, no par. Authors can edit or delete their own problems.
 - **Practice** — filter the library of everyone's problems by role, author and

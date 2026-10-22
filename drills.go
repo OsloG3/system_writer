@@ -326,37 +326,49 @@ func validateAuction(dealer int, calls []string) (*PlayContract, error) {
 		return nil, fmt.Errorf("the auction has more than %d calls", drillMaxCalls)
 	}
 	lastBidRank, lastBidSeat := -1, -1
+	passRun := 0 // consecutive passes immediately before the current call
 	for i, raw := range calls {
 		c := normalizeCall(raw)
 		if c == "" {
 			return nil, fmt.Errorf("call %d is not a valid call", i+1)
 		}
-		if auctionFinished(calls[:i]) {
+		if passRun >= 3 {
 			return nil, errors.New("the auction continues after three passes")
 		}
 		seat := (dealer + i) % 4
-		prev := ""
-		if i > 0 {
-			prev = normalizeCall(calls[i-1])
+		// the last call that was not a pass: a double or redouble may have
+		// passes in between (Law 19 -- balancing doubles, a late redouble)
+		// but no other call
+		prevNP := ""
+		for j := i - 1; j >= 0; j-- {
+			if pc := normalizeCall(calls[j]); pc != "P" {
+				prevNP = pc
+				break
+			}
 		}
 		switch {
 		case c == "P":
 		case c == "X":
-			// a double must sit directly over an opponent's bid
-			if bidRank(prev) < 0 || lastBidSeat < 0 || lastBidSeat%2 == seat%2 {
-				return nil, fmt.Errorf("call %d: double must directly follow an opponent's bid", i+1)
+			// a double over an opponent's bid, only passes in between
+			if bidRank(prevNP) < 0 || lastBidSeat < 0 || lastBidSeat%2 == seat%2 {
+				return nil, fmt.Errorf("call %d: double must be over an opponent's bid, with only passes in between", i+1)
 			}
 		case c == "XX":
-			// a redouble must sit directly over the opponents' double of
-			// your side's bid
-			if prev != "X" || lastBidSeat < 0 || lastBidSeat%2 != seat%2 {
-				return nil, fmt.Errorf("call %d: redouble must directly follow the opponents' double of your bid", i+1)
+			// a redouble over the opponents' double of your side's bid,
+			// only passes in between
+			if prevNP != "X" || lastBidSeat < 0 || lastBidSeat%2 != seat%2 {
+				return nil, fmt.Errorf("call %d: redouble must be over the opponents' double of your bid, with only passes in between", i+1)
 			}
 		default: // a bid
 			if bidRank(c) <= lastBidRank {
 				return nil, fmt.Errorf("call %d: %s does not outrank the previous bid", i+1, c)
 			}
 			lastBidRank, lastBidSeat = bidRank(c), seat
+		}
+		if c == "P" {
+			passRun++
+		} else {
+			passRun = 0
 		}
 	}
 	if !auctionFinished(calls) {

@@ -1282,6 +1282,40 @@
             }
             .cb-done-foot { display: flex; }
 
+            /* claim announcement: full-screen interstitial shown when a drill
+               ends on the author's claim -- who claimed, how many more tricks,
+               the result, all four hands -- click anywhere for the done view */
+            .dr-claim {
+                background: rgba(12, 11, 10, 0.96);
+                z-index: 95;
+                cursor: pointer;
+                animation: dr-claim-fade 0.3s ease;
+            }
+            @keyframes dr-claim-fade { from { opacity: 0; } to { opacity: 1; } }
+            .dr-claim-card { max-width: 30rem; animation: dr-claim-pop 0.45s cubic-bezier(0.2, 1.3, 0.4, 1) both; }
+            @keyframes dr-claim-pop { from { opacity: 0; transform: scale(0.92) translateY(14px); } to { opacity: 1; } }
+            .dr-claim-head {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.45rem;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 1.25rem;
+                color: #ffd54a;
+                animation: dr-claim-in 0.5s ease 0.15s both;
+            }
+            .dr-claim-head .material-symbols-outlined { font-size: 1.5rem; font-variation-settings: 'FILL' 1; }
+            .dr-claim-result {
+                text-align: center;
+                margin: 0.55rem 0 0.85rem;
+                color: #e8e6e3;
+                animation: dr-claim-in 0.5s ease 0.35s both;
+            }
+            .dr-claim .cb-diagram-done { animation: dr-claim-in 0.6s ease 0.55s both; }
+            .dr-claim-tap { text-align: center; margin-top: 0.9rem; animation: dr-claim-in 0.6s ease 0.95s both; }
+            @keyframes dr-claim-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
+
             .cb-diagram.cb-diagram-done {
                 grid-template-areas:
                     ". n ."
@@ -1991,6 +2025,7 @@
             let wrongMsg = null; // red "try again" bubble after a refused pick
             let wrongFlash = false; // red flash + shake while a wrong pick stings
             let wrongTimer = null;
+            let claimSeen = false; // the claim announcement was dismissed (per session)
             let showIntro = false; // pre-play briefing overlay
             let stepping = false; // a bot-phase fetch is in flight
             let autoRetries = 0; // bot-phase fetch backoff
@@ -2177,19 +2212,25 @@
                 const n = calls.length;
                 return n >= 3 && calls[n - 1] === "P" && calls[n - 2] === "P" && calls[n - 3] === "P";
             }
-            // legal continuations of an auction, for the authoring bidding box
+            // legal continuations of an auction, for the authoring bidding box.
+            // A double is legal over an opponents' bid with only passes in
+            // between (Law 19A -- so protective re-doubles like 1S-X-2C-P-P-X
+            // and balancing doubles like 1S-P-P-X work); a redouble the same
+            // way over an opponents' double of your side's bid.
             function legalCalls(dealer, calls) {
                 if (auctionOver(calls)) return [];
                 const n = calls.length, seat = (dealer + n) % 4;
                 let lastBidSeat = -1, lastBidRank = -1;
                 for (let i = 0; i < n; i++)
                     if (isBid(calls[i])) { lastBidRank = bidRank(calls[i]); lastBidSeat = (dealer + i) % 4; }
-                const prev = n > 0 ? calls[n - 1] : "";
+                // the last call that was not a pass
+                let prevNP = "";
+                for (let i = n - 1; i >= 0; i--) if (calls[i] !== "P") { prevNP = calls[i]; break; }
                 const out = [];
                 for (let lv = 1; lv <= 7; lv++)
                     for (const d of "CDHSN") { const tok = lv + d; if (bidRank(tok) > lastBidRank) out.push(tok); }
-                if (isBid(prev) && lastBidSeat >= 0 && lastBidSeat % 2 !== seat % 2) out.push("X");
-                if (prev === "X" && lastBidSeat >= 0 && lastBidSeat % 2 === seat % 2) out.push("XX");
+                if (isBid(prevNP) && lastBidSeat >= 0 && lastBidSeat % 2 !== seat % 2) out.push("X");
+                if (prevNP === "X" && lastBidSeat >= 0 && lastBidSeat % 2 === seat % 2) out.push("XX");
                 out.push("P");
                 return out;
             }
@@ -2604,6 +2645,7 @@
                     revealBoardId = data.id;
                     revealCount = (data.plays || []).length;
                     lastRevealTs = 0;
+                    claimSeen = false;
                 }
                 if (data.id) localStorage.setItem(SESSION_KEY, data.id);
                 hintMsg = null;
@@ -2743,10 +2785,40 @@
                     </div>
                 </div>`;
             }
+            // declarer-side tricks among the completed tricks of a play list
+            function declTricksOf(plays, trump, declarer) {
+                let won = 0;
+                for (let t = 0; t * 4 + 4 <= plays.length; t++) {
+                    const w = trickWinnerJS(plays.slice(t * 4, t * 4 + 4), trump);
+                    if (w === declarer || w === (declarer + 2) % 4) won++;
+                }
+                return won;
+            }
+            // end-of-drill announcement when the author's line finishes on a
+            // claim: who claims, how many more tricks, the result and all
+            // four hands; a click anywhere moves on to the done view
+            function claimAnimHtml() {
+                const r = state.result || {};
+                const c = r.contract || state.contract;
+                const declarer = c ? c.declarer : state.declarer;
+                const won = declTricksOf(state.plays || [], state.trump, declarer);
+                const more = Math.max(0, (r.tricks || 0) - won);
+                return `<div class="dr-overlay dr-claim" id="drClaimAnim">
+                    <div class="dr-modal dr-claim-card">
+                        <div class="dr-claim-head"><span class="material-symbols-outlined">flag</span>${SEAT_NAMES[declarer]} claims ${more} more trick${more === 1 ? "" : "s"}</div>
+                        ${c ? `<div class="dr-result-big dr-claim-result">${dcolorSuits(resultText(c, r.tricks))}</div>` : ""}
+                        ${state.hands ? doneDiagramHtml(state.hands, state.heroSeat, state.dealer, state.calls) : ""}
+                        <div class="dr-hint dr-claim-tap">Click anywhere to continue</div>
+                    </div>
+                </div>`;
+            }
             function sessionHtml() {
                 const plays = state.plays || [];
                 const doneRevealed = state.phase === "done" && revealCount >= plays.length;
-                if (doneRevealed) return doneViewHtml();
+                if (doneRevealed) {
+                    if (state.result && state.result.claimed && !claimSeen) return claimAnimHtml();
+                    return doneViewHtml();
+                }
                 return `<div class="flex-1 min-h-0 flex flex-col">
                     ${topBarHtml()}
                     <div class="cb-playview${wrongFlash ? " wrong" : ""}">
@@ -2929,6 +3001,7 @@
             async function leaveSession() {
                 const id = state && state.id;
                 view = "lobby"; state = null; hintMsg = null; wrongMsg = null; showIntro = false;
+                claimSeen = false;
                 clearTimeout(paceTimer);
                 clearTimeout(wrongTimer); wrongFlash = false;
                 localStorage.removeItem(SESSION_KEY);
@@ -3831,6 +3904,7 @@
                 on("drBackBtn", () => leaveSession());
                 on("drRestartBtn", () => restartSession());
                 on("drAgainBtn", () => restartSession());
+                on("drClaimAnim", () => { claimSeen = true; render(); });
                 on("drLibBtn", () => { view = "lobby"; state = null; localStorage.removeItem(SESSION_KEY); render(); loadLibrary(); });
                 document.querySelectorAll("[data-rate]").forEach((el) => {
                     el.onclick = () => rateProblem(parseInt(el.dataset.rate));
