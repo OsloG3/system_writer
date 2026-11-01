@@ -1282,39 +1282,45 @@
             }
             .cb-done-foot { display: flex; }
 
-            /* claim announcement: full-screen interstitial shown when a drill
-               ends on the author's claim -- who claimed, how many more tricks,
-               the result, all four hands -- click anywhere for the done view */
-            .dr-claim {
-                background: rgba(12, 11, 10, 0.96);
-                z-index: 95;
-                cursor: pointer;
-                animation: dr-claim-fade 0.3s ease;
+            /* claim reveal: a drill that ends on the author's claim turns
+               every seat's remaining cards face up on the table itself and
+               puts "Claim" + the result in the trick center -- nothing else;
+               clicking anywhere moves on to the done view */
+            .cb-playview.claim-mode { cursor: pointer; }
+            .claim-reveal .cb-flat,
+            .claim-reveal .cb-fan-play { perspective: 60rem; }
+            .cb-card.claim-up { animation: dr-claim-flip 0.4s ease both; }
+            @keyframes dr-claim-flip {
+                from { opacity: 0; transform: rotateY(88deg); }
+                to { opacity: 1; transform: rotateY(0deg); }
             }
-            @keyframes dr-claim-fade { from { opacity: 0; } to { opacity: 1; } }
-            .dr-claim-card { max-width: 30rem; animation: dr-claim-pop 0.45s cubic-bezier(0.2, 1.3, 0.4, 1) both; }
-            @keyframes dr-claim-pop { from { opacity: 0; transform: scale(0.92) translateY(14px); } to { opacity: 1; } }
-            .dr-claim-head {
+            .claim-center {
+                position: absolute;
+                inset: 0;
                 display: flex;
+                flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                gap: 0.45rem;
-                font-family: Manrope, sans-serif;
-                font-weight: 800;
-                font-size: 1.25rem;
-                color: #ffd54a;
-                animation: dr-claim-in 0.5s ease 0.15s both;
-            }
-            .dr-claim-head .material-symbols-outlined { font-size: 1.5rem; font-variation-settings: 'FILL' 1; }
-            .dr-claim-result {
-                text-align: center;
-                margin: 0.55rem 0 0.85rem;
-                color: #e8e6e3;
+                gap: 0.25rem;
+                pointer-events: none;
                 animation: dr-claim-in 0.5s ease 0.35s both;
             }
-            .dr-claim .cb-diagram-done { animation: dr-claim-in 0.6s ease 0.55s both; }
-            .dr-claim-tap { text-align: center; margin-top: 0.9rem; animation: dr-claim-in 0.6s ease 0.95s both; }
-            @keyframes dr-claim-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
+            .claim-center .claim-word {
+                font-family: Inter, sans-serif;
+                font-size: 0.72rem;
+                font-weight: 700;
+                letter-spacing: 0.22em;
+                text-transform: uppercase;
+                color: #ffd54a;
+            }
+            .claim-center .claim-result {
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 2rem;
+                line-height: 1;
+                color: #e8e6e3;
+            }
+            @keyframes dr-claim-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } to { opacity: 1; } }
 
             .cb-diagram.cb-diagram-done {
                 grid-template-areas:
@@ -2025,7 +2031,7 @@
             let wrongMsg = null; // red "try again" bubble after a refused pick
             let wrongFlash = false; // red flash + shake while a wrong pick stings
             let wrongTimer = null;
-            let claimSeen = false; // the claim announcement was dismissed (per session)
+            let claimSeen = false; // the on-table claim reveal was dismissed (per session)
             let showIntro = false; // pre-play briefing overlay
             let stepping = false; // a bot-phase fetch is in flight
             let autoRetries = 0; // bot-phase fetch backoff
@@ -2785,38 +2791,60 @@
                     </div>
                 </div>`;
             }
-            // declarer-side tricks among the completed tricks of a play list
-            function declTricksOf(plays, trump, declarer) {
-                let won = 0;
-                for (let t = 0; t * 4 + 4 <= plays.length; t++) {
-                    const w = trickWinnerJS(plays.slice(t * 4, t * 4 + 4), trump);
-                    if (w === declarer || w === (declarer + 2) % 4) won++;
-                }
-                return won;
+            // ---- claim reveal ----
+            // a drill that ends on the author's claim: every seat's remaining
+            // cards turn face up on the table, "Claim" + the result sit in the
+            // trick center -- no score, no extras -- and a click anywhere
+            // moves on to the done view
+            function claimRemaining(seat) {
+                const orig = (state.hands && state.hands[seat]) || origHandOf(seat);
+                if (orig == null) return [];
+                const played = new Set((state.plays || []).filter((p) => p.seat === seat).map((p) => p.card));
+                return handToCards(orig).filter((c) => !played.has(c));
             }
-            // end-of-drill announcement when the author's line finishes on a
-            // claim: who claims, how many more tricks, the result and all
-            // four hands; a click anywhere moves on to the done view
-            function claimAnimHtml() {
+            function claimSeatHtml(seat) {
+                const isHero = seat === state.heroSeat; // the hero's own cards stay in the fan below
+                const flat = rotOf(seat) === 0 ? "cb-flat-h" : "cb-flat-v";
+                const cards = isHero ? "" : `<div class="cb-flat ${flat}">` + sortHand(claimRemaining(seat))
+                    .map((c, i) => gridCardHtml(c, "claim-up", `style="animation-delay:${80 + i * 40}ms"`)).join("") + `</div>`;
+                return `<div class="cb-pseat">
+                    <div class="cb-pseat-name"><span class="cb-pbadge">${"NESW"[seat]}</span>${SEAT_NAMES[seat]}${isHero ? ' <span class="you">you</span>' : ""}</div>
+                    ${cards}
+                </div>`;
+            }
+            function claimCenterHtml() {
                 const r = state.result || {};
                 const c = r.contract || state.contract;
-                const declarer = c ? c.declarer : state.declarer;
-                const won = declTricksOf(state.plays || [], state.trump, declarer);
-                const more = Math.max(0, (r.tricks || 0) - won);
-                return `<div class="dr-overlay dr-claim" id="drClaimAnim">
-                    <div class="dr-modal dr-claim-card">
-                        <div class="dr-claim-head"><span class="material-symbols-outlined">flag</span>${SEAT_NAMES[declarer]} claims ${more} more trick${more === 1 ? "" : "s"}</div>
-                        ${c ? `<div class="dr-result-big dr-claim-result">${dcolorSuits(resultText(c, r.tricks))}</div>` : ""}
-                        ${state.hands ? doneDiagramHtml(state.hands, state.heroSeat, state.dealer, state.calls) : ""}
-                        <div class="dr-hint dr-claim-tap">Click anywhere to continue</div>
-                    </div>
+                return `<div class="cb-ptrick"><div class="claim-center">
+                    <div class="claim-word">Claim</div>
+                    ${c ? `<div class="claim-result">${dcolorSuits(resultText(c, r.tricks))}</div>` : ""}
+                </div></div>`;
+            }
+            function claimTableView() {
+                const dr = rotOf(state.dummy);
+                const dcls = dr === 0 ? " dh" : (dr === 1 || dr === 3) ? " dv" : "";
+                return `<div class="cb-ptable claim-reveal${dcls}">
+                    <div class="cb-pt-tl">${contractTagHtml()}</div>
+                    <div class="cb-pt-n">${claimSeatHtml(seatForArea(0))}</div>
+                    <div class="cb-pt-tr"></div>
+                    <div class="cb-pt-w">${claimSeatHtml(seatForArea(3))}</div>
+                    <div class="cb-pt-c">${claimCenterHtml()}</div>
+                    <div class="cb-pt-e">${claimSeatHtml(seatForArea(1))}</div>
+                    <div class="cb-pt-s">${claimSeatHtml(seatForArea(2))}</div>
                 </div>`;
             }
             function sessionHtml() {
                 const plays = state.plays || [];
                 const doneRevealed = state.phase === "done" && revealCount >= plays.length;
                 if (doneRevealed) {
-                    if (state.result && state.result.claimed && !claimSeen) return claimAnimHtml();
+                    if (state.result && state.result.claimed && !claimSeen)
+                        return `<div class="flex-1 min-h-0 flex flex-col">
+                            ${topBarHtml()}
+                            <div class="cb-playview claim-mode" id="drClaimView">
+                                ${claimTableView()}
+                                ${playFanHtml()}
+                            </div>
+                        </div>`;
                     return doneViewHtml();
                 }
                 return `<div class="flex-1 min-h-0 flex flex-col">
@@ -3904,7 +3932,7 @@
                 on("drBackBtn", () => leaveSession());
                 on("drRestartBtn", () => restartSession());
                 on("drAgainBtn", () => restartSession());
-                on("drClaimAnim", () => { claimSeen = true; render(); });
+                on("drClaimView", () => { claimSeen = true; render(); });
                 on("drLibBtn", () => { view = "lobby"; state = null; localStorage.removeItem(SESSION_KEY); render(); loadLibrary(); });
                 document.querySelectorAll("[data-rate]").forEach((el) => {
                     el.onclick = () => rateProblem(parseInt(el.dataset.rate));
