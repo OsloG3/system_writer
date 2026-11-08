@@ -94,6 +94,11 @@ uv run python -m bidding_dt.bid --ckpt runs/small/best.pt \
 #    /deal /legal /bid /score (JSON; par scoring via the DD solver, tables
 #    cached in cache/dd_play.sqlite). Repeat --ckpt to load several named
 #    models ([name=]path); the first is the default.
+#    Auctions on the wire may run to WIRE_MAX_CALLS (80, the site's cap); the
+#    model only reads MAX_CALLS (36), so /bid answers 409 past that and the Go
+#    side auto-passes the bots instead. Long auctions also bypass the VQ hand
+#    model in /play/choose (its positional embedding stops at MAX_CALLS): the
+#    hidden-hand pool falls back to the constraint-based sampler.
 #    Card play adds /play/choose /play/result /play/drop: /play/choose picks a
 #    bot's card by double-dummy simulation over a pool of hidden-hand candidates
 #    consistent with the auction and the play so far (see play_bot.py). The

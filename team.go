@@ -245,12 +245,19 @@ func (g *TeamGame) legalLocked(b *TeamBoard) ([]string, error) {
 }
 
 // advanceLocked runs the bots until a human must act, the auction ends or the
-// model call cap is hit, then scores. Callers must hold g.mu.
+// site call cap is hit, then scores. Past the model's cap the bots pass
+// automatically (see play.go botMaxModelCalls). Callers must hold g.mu.
 func (g *TeamGame) advanceLocked(b *TeamBoard) error {
 	for b.Result == nil && !auctionFinished(b.Calls) && len(b.Calls) < maxAuctionCalls {
 		seat := (b.Dealer + len(b.Calls)) % 4
 		if seat == teamSouthSeat || seat == teamNorthSeat {
 			return nil // wait for a human call
+		}
+		if len(b.Calls) >= botMaxModelCalls {
+			b.Calls = append(b.Calls, "P")
+			b.Legal = nil
+			b.LegalLen = -1
+			continue
 		}
 		body := map[string]any{
 			"hands":  b.Hands,

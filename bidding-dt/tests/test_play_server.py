@@ -86,6 +86,20 @@ def test_auction_validation(svc):
         svc.legal({"dealer": 0, "vuln": 7, "calls": []})
 
 
+def test_wire_calls_cap(svc):
+    from bidding_dt.data.parse import MAX_CALLS
+    from bidding_dt.play_server import WIRE_MAX_CALLS
+    # the site allows longer auctions than the model can read: the non-/bid
+    # endpoints accept up to WIRE_MAX_CALLS tokens (Go auto-passes the bots
+    # past MAX_CALLS instead of asking /bid)
+    long_calls = ["P", "1C"] * ((MAX_CALLS + 2) // 2)   # > MAX_CALLS, not over
+    assert len(long_calls) > MAX_CALLS
+    r = svc.legal({"dealer": 0, "vuln": 0, "calls": long_calls})
+    assert r["over"] is False and "P" in r["legal"]
+    with pytest.raises(ServiceError):
+        svc.legal({"dealer": 0, "vuln": 0, "calls": ["P"] * (WIRE_MAX_CALLS + 1)})
+
+
 def test_bid_without_models(svc):
     with pytest.raises(ServiceError) as e:
         svc.bid({"dealer": 0, "vuln": 0, "calls": [], "hands": DEAL1})

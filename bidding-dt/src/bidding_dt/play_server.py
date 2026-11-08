@@ -75,6 +75,12 @@ from .data.vocab import CALL_PAD, DENOMS, VOCAB_SIZE, call_to_id, id_to_call
 
 MAX_BODY = 64 << 10
 
+# The site allows auctions longer than the model's MAX_CALLS (Go caps them at
+# 80 calls, 20 per player). Every endpoint accepts up to this on the wire;
+# only /bid actually feeds the auction to the model, and it refuses past
+# MAX_CALLS (the Go side auto-passes the bots from there instead of asking).
+WIRE_MAX_CALLS = 80
+
 
 class ServiceError(Exception):
     """Request-level error; `code` becomes the HTTP status."""
@@ -136,8 +142,8 @@ class Service:
         if vuln is None or not isinstance(vuln, int) or not 0 <= vuln <= 3:
             raise ServiceError("vuln must be an int 0..3 (None/N-S/E-W/Both)")
         raw = body.get("calls", [])
-        if not isinstance(raw, list) or len(raw) > MAX_CALLS:
-            raise ServiceError(f"calls must be a list of at most {MAX_CALLS} tokens")
+        if not isinstance(raw, list) or len(raw) > WIRE_MAX_CALLS:
+            raise ServiceError(f"calls must be a list of at most {WIRE_MAX_CALLS} tokens")
         ids = []
         for tok in raw:
             if not isinstance(tok, str):

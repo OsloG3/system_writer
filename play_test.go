@@ -1,8 +1,11 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -215,5 +218,59 @@ func TestPlayBoardsPersistRoundTrip(t *testing.T) {
 	}
 	if _, ok := playBoards["persist2"]; ok {
 		t.Fatal("finished board must not be persisted")
+	}
+}
+
+func TestAdvanceBotsPassPastModelCap(t *testing.T) {
+	var bids, legals int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/bid":
+			atomic.AddInt32(&bids, 1)
+			writeJSON(w, map[string]any{"seat": 0, "call": "P"})
+		case "/legal":
+			atomic.AddInt32(&legals, 1)
+			writeJSON(w, map[string]any{"seat": humanSeat, "over": false, "legal": []string{"P", "2C"}})
+		default:
+			http.Error(w, "unexpected "+r.URL.Path, 400)
+		}
+	}))
+	defer srv.Close()
+	oldURL := botURL
+	botURL = srv.URL
+	defer func() { botURL = oldURL }()
+
+	// 36 calls, the last one a bid so the auction is still running: from here
+	// the bots must pass on their own, without ever asking the sidecar
+	calls := make([]string, 0, botMaxModelCalls+2)
+	for i := 0; i < botMaxModelCalls-1; i++ {
+		calls = append(calls, "P")
+	}
+	calls = append(calls, "1C")
+	b := &PlayBoard{ID: "testboard0000001", User: "alice", Mode: "bid", Dealer: 0, Vuln: 0,
+		Hands: [4]string{"AT7.KT943.A42.K8", "J6543.75.K8.AQJT", "K982.AQ6.T73.952", "Q.J82.QJ965.7643"},
+		Calls: calls}
+
+	if err := b.advance(); err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	// North and East passed automatically; then it is the human's turn
+	if len(b.Calls) != botMaxModelCalls+2 {
+		t.Fatalf("expected %d calls, got %d", botMaxModelCalls+2, len(b.Calls))
+	}
+	if b.Calls[botMaxModelCalls] != "P" || b.Calls[botMaxModelCalls+1] != "P" {
+		t.Fatalf("bots did not auto-pass: %v", b.Calls[botMaxModelCalls:])
+	}
+	if atomic.LoadInt32(&bids) != 0 {
+		t.Fatal("the sidecar was asked for a bid past the model cap")
+	}
+	if atomic.LoadInt32(&legals) != 1 {
+		t.Fatal("the human's legal calls were not fetched")
+	}
+	if b.Result != nil || b.over() {
+		t.Fatal("the auction must still be running on the human's turn")
+	}
+	if b.nextSeat() != humanSeat {
+		t.Fatalf("next seat = %d, want the human", b.nextSeat())
 	}
 }

@@ -37,6 +37,11 @@ the full auction and the play.
 Both solo sections send `{"mode":"bid"|"play"}` to `POST /api/play/new`; the
 board keeps that mode for its whole life.
 
+An auction may run up to **80 calls** (20 per player). The bidding model itself
+only reads the first 36, so from there on the bots **pass automatically** rather
+than being asked for a call they cannot see; the human (and the legality the
+site shows them) is unaffected up to the full 80.
+
 ## Card problems (`/drills`)
 
 Author fully-scripted **card-play problems** and practise the community library.

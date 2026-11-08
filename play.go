@@ -29,9 +29,12 @@ import (
 const (
 	defaultBotURL   = "http://127.0.0.1:8081"
 	humanSeat       = 2  // South
-	maxAuctionCalls = 24 // model sequence cap (MAX_CALLS in bidding-dt)
-	playBoardTTL    = 6 * time.Hour
-	playRecentMax   = 128 // ranking window: last 128 boards per mode
+	maxAuctionCalls = 80 // site-wide cap: 20 calls per player, enough for any auction
+	// bidding-dt's MAX_CALLS: the model cannot read a longer auction, so from
+	// this length on the bots pass automatically (see advance).
+	botMaxModelCalls = 36
+	playBoardTTL     = 6 * time.Hour
+	playRecentMax    = 128 // ranking window: last 128 boards per mode
 
 	botTimeout      = 30 * time.Second  // deal / bid / legal
 	botScoreTimeout = 90 * time.Second  // score (cold double-dummy solve)
@@ -432,6 +435,12 @@ func (b *PlayBoard) advance() error {
 		return b.advancePlay()
 	}
 	for !b.over() && len(b.Calls) < maxAuctionCalls && b.nextSeat() != humanSeat {
+		// past the model's sequence cap the bots cannot read the auction any
+		// more: they pass automatically instead of asking the sidecar
+		if len(b.Calls) >= botMaxModelCalls {
+			b.Calls = append(b.Calls, "P")
+			continue
+		}
 		body := map[string]any{
 			"hands":  b.Hands,
 			"dealer": b.Dealer,

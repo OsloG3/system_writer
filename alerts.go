@@ -45,7 +45,7 @@ const (
 	alertNodeSize        = 20 // packed bytes per node in the cache
 	alertKidSize         = 8  // packed bytes per child edge in the cache
 	alertMaxNodes        = 16 << 20
-	alertMaxDepth        = 64 // auctions are capped at MAX_CALLS = 36
+	alertMaxDepth        = 64 // deeper auctions (the site cap is 80 calls) simply get no alerts
 	alertSuitCount       = 4  // S,H,D,C as in bidding_dt.data.hands
 )
 

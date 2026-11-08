@@ -38,6 +38,7 @@ import (
 const (
 	drillMaxCalls   = 40 // authored auctions are not bound by the model's cap
 	drillMaxLines   = 8  // alternative lines per problem
+	drillTitleMax   = 80 // the wizard caps titles at 60; the API stays a little laxer
 	drillSessionTTL = 6 * time.Hour
 )
 
@@ -90,18 +91,18 @@ type DrillLine struct {
 }
 
 type DrillProblem struct {
-	ID             string      `json:"id"`
-	Owner          string      `json:"owner"`
-	Title          string      `json:"title,omitempty"`
-	Role           string      `json:"role"`     // "declarer" | "defense"
-	HeroSeat       int         `json:"heroSeat"` // declarer, or the one chosen defender
-	Difficulty     int         `json:"difficulty"`
-	Dealer         int         `json:"dealer"`
-	Vuln           int         `json:"vuln"`
-	Hands          [4]string   `json:"hands"` // N,E,S,W 'S.H.D.C'
-	Calls          []string    `json:"calls"`
-	BidComment     string      `json:"bidComment,omitempty"`
-	ProblemComment string      `json:"problemComment,omitempty"`
+	ID             string    `json:"id"`
+	Owner          string    `json:"owner"`
+	Title          string    `json:"title,omitempty"`
+	Role           string    `json:"role"`     // "declarer" | "defense"
+	HeroSeat       int       `json:"heroSeat"` // declarer, or the one chosen defender
+	Difficulty     int       `json:"difficulty"`
+	Dealer         int       `json:"dealer"`
+	Vuln           int       `json:"vuln"`
+	Hands          [4]string `json:"hands"` // N,E,S,W 'S.H.D.C'
+	Calls          []string  `json:"calls"`
+	BidComment     string    `json:"bidComment,omitempty"`
+	ProblemComment string    `json:"problemComment,omitempty"`
 	// Explanation is the afterword of the problem: unlike ProblemComment
 	// (part of the pre-play briefing) it travels to the client only once the
 	// hand is over, as the end-of-hand explication of the whole deal.
@@ -799,6 +800,9 @@ func validateDrill(p *DrillProblem) (*PlayContract, error) {
 		}
 	}
 	p.Title = strings.TrimSpace(p.Title)
+	if len([]rune(p.Title)) > drillTitleMax {
+		return nil, fmt.Errorf("the title must be at most %d characters", drillTitleMax)
+	}
 	p.BidComment = strings.TrimSpace(p.BidComment)
 	p.ProblemComment = strings.TrimSpace(p.ProblemComment)
 	p.Explanation = strings.TrimSpace(p.Explanation)

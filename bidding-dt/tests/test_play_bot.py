@@ -285,6 +285,33 @@ def svc(tmp_path_factory):
 
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_long_auction_disables_the_hand_model():
+    from bidding_dt.data.parse import MAX_CALLS
+    long_calls = [call_to_id(c) for c in ["P", "1C"] * ((MAX_CALLS + 2) // 2)]
+    dummy = (DECLARER + 2) % 4
+    # any non-None model would do: the guard must drop it before the encoder
+    # runs, because the VQ positional embedding has no room past MAX_CALLS
+    s = PlaySession("long", 0, 0, long_calls, DECLARER, DENOM_H,
+                    {1: DEAL[1], dummy: DEAL[dummy]}, model=object(),
+                    cfg=PlayConfig(def_pool=4, min_floor=2),
+                    rng=np.random.default_rng(0))
+    assert s.model is None                     # fell back to the plain sampler
+    assert s.choose([], 1) in HANDS[1]         # and still picks a legal lead
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_play_choose_long_auction(svc):
+    # a 38-call auction (past the model cap, within the wire cap) still plays:
+    # the last 1C is East's -> contract 1C by E, dummy W, opener S
+    calls = ["P", "1C"] * 19
+    body = {"session": "t:long1", "dealer": 0, "vuln": 0, "calls": calls,
+            "known": {"2": DEAL[2], "3": DEAL[3]}, "plays": [], "to_act": 2,
+            "pool": 4}
+    out = svc.play_choose(body)
+    assert out["seat"] == 2 and str_to_card(out["card"]) in HANDS[2]
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
 def test_play_choose_endpoint(svc):
     body = {"session": "t:def1", "dealer": 0, "vuln": 0,
             "calls": "1H P 4H P P P".split(),

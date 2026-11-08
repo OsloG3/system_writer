@@ -49,6 +49,7 @@ except ImportError:  # pragma: no cover - guarded by play_server's own check
 
 from .data.dataset import BiddingDataset
 from .data.hands import cards_to_str, indicator_from_cards, str_to_cards
+from .data.parse import MAX_CALLS
 from .dd.solver import _PROJ_DENOM_TO_ENDPLAY
 from .hand.data import rotated_tokens
 
@@ -153,6 +154,12 @@ class PlaySession:
         self.opener = (self.declarer + 1) % 4
         self.trump = ep_denom(int(denom))
         self.model = model
+        # the VQ hand model reads auctions up to MAX_CALLS (its positional
+        # embedding has no room beyond that); the site allows longer ones, so
+        # for those fall back to the constraint-based sampler, which still
+        # honours the play and the lead rules
+        if self.model is not None and len(self.calls_ids) > MAX_CALLS:
+            self.model = None
         self.device = device
         self.rng = rng if rng is not None else np.random.default_rng(self.cfg.seed)
         self._lock = threading.Lock()

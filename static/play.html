@@ -2028,6 +2028,7 @@
             async function post(path, body) {
                 busy = true;
                 render();
+                const seq = ++reqSeq;
                 try {
                     const res = await fetch(path, {
                         method: "POST",
@@ -2036,6 +2037,7 @@
                             : {},
                         body: body ? JSON.stringify(body) : undefined,
                     });
+                    lastWriteSeq = seq; // the server has applied this write
                     await handleResponse(res);
                 } catch (e) {
                     busy = false;
@@ -2070,6 +2072,14 @@
                 }
             }
 
+            // Request ordering: every fetch takes a sequence number, and a
+            // finished write (a call, a board switch) marks it. A background
+            // poll that started BEFORE the last write finished carries stale
+            // state and is dropped instead of overwriting the fresh one.
+            let reqSeq = 0;
+            let lastWriteSeq = -1;
+            let quietPollBusy = false;
+
             async function refreshBoard(force) {
                 if (!state || busy) return;
                 if (
@@ -2084,8 +2094,19 @@
                     state.mode === "team" &&
                     !state.done &&
                     (state.yourTurn || state.noBoard);
-                busy = true;
-                if (!quiet) render();
+                if (quiet) {
+                    // A background poll must never set `busy`: the bid box
+                    // renders every button disabled while busy is on, so a
+                    // poll in flight used to freeze the table for anyone who
+                    // tapped mid-poll (and an unchanged response skipped the
+                    // render that would have restored it).
+                    if (quietPollBusy) return;
+                    quietPollBusy = true;
+                } else {
+                    busy = true;
+                    render();
+                }
+                const seq = ++reqSeq;
                 try {
                     const path =
                         state.mode === "team"
@@ -2095,15 +2116,41 @@
                                   : "")
                             : `/api/play/${state.id}`;
                     const res = await fetch(path);
+                    if (quiet && (busy || seq < lastWriteSeq)) {
+                        // a write of ours is in flight or already landed:
+                        // this poll's state is stale -- drop it
+                        schedulePoll();
+                        return;
+                    }
                     await handleResponse(res);
                 } catch (e) {
-                    busy = false;
-                    render();
+                    if (quiet) schedulePoll(); // keep the poll loop alive
+                    else {
+                        busy = false;
+                        render();
+                    }
+                } finally {
+                    quietPollBusy = false;
                 }
             }
 
             async function teamStart() {
                 if (!state || state.mode !== "team" || busy) return;
+                // an explicit confirmation: the done-view button sits exactly
+                // where "Next board" was all match long, so a habitual tap
+                // must never deal a fresh match by accident
+                const other =
+                    state.yourSeat === 2 ? state.partner : state.host;
+                const n = (state.boards || []).length || 8;
+                // a table with no boards yet is started on purpose (its big
+                // green button says so); only a *new* match needs the question
+                if (
+                    (state.boards || []).length &&
+                    !confirm(
+                        `Start a new ${n}-board match${other ? " with " + other : ""}?`,
+                    )
+                )
+                    return;
                 await post(`/api/play/team/${state.id}/start`);
             }
 
@@ -2111,10 +2158,12 @@
                 if (!state || state.mode !== "team" || busy) return;
                 if (no === state.boardSel) return;
                 busy = true;
+                const seq = ++reqSeq;
                 try {
                     const res = await fetch(
                         `/api/play/team/${state.id}?board=${no}`,
                     );
+                    lastWriteSeq = seq; // drops polls fetching the old board
                     await handleResponse(res);
                 } catch (e) {
                     busy = false;
@@ -2386,8 +2435,10 @@
                         resel();
                     };
                 });
-                // first tap selects the call (and shows its alert); the
-                // confirm button makes it
+                // First tap ANYWHERE on a tile selects the call -- including
+                // on its % badge, which used to swallow the tap and only show
+                // the alert; selecting already brings the call's alert into
+                // the box via defaultAlertLine(). The confirm button makes it.
                 box.querySelectorAll("[data-call]").forEach((btn) => {
                     btn.onclick = () => {
                         const c = btn.dataset.call;
@@ -2404,12 +2455,6 @@
                     const c = btn.dataset.opt;
                     btn.onmouseenter = () => showOptAlert(c);
                     btn.onmouseleave = () => setAlertBox(defaultAlertLine());
-                    const pct = btn.querySelector(".cb-pct");
-                    if (pct)
-                        pct.onclick = (e) => {
-                            e.stopPropagation();
-                            showOptAlert(c);
-                        };
                 });
             }
 
@@ -2538,7 +2583,13 @@
                         ${(state.calls || []).length
                             ? `<div class="cb-done-auc">${auctionHtml(state.dealer, state.vuln, state.calls, null, state.humanSeat, state.alerts)}</div>`
                             : ""}
-                        <div class="cb-done-foot">
+                        <div class="cb-done-foot"${matchDone ? ' style="flex-direction:column;gap:.45rem"' : ""}>
+                            ${matchDone
+                                ? `<div class="text-center text-xs text-[#908f8d] font-label">
+                                       Match complete — ${(state.boards || []).filter((b) => b.done).length}/${(state.boards || []).length} boards ·
+                                       <span class="${impsColor(state.matchImps || 0)} font-headline font-bold">${signed(state.matchImps || 0)}</span> IMPs
+                                   </div>`
+                                : ""}
                             <button id="nextBoardBtn" class="cb-btn-green">
                                 <span class="material-symbols-outlined text-sm">${matchDone ? "restart_alt" : "casino"}</span>
                                 ${matchDone ? "Start next match" : "Next board"}
@@ -2615,14 +2666,6 @@
                             <span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' 1;">arrow_forward_ios</span>
                         </button>`
                         : "";
-                const target =
-                    team && !state.noBoard ? nextTeamBoardTarget() : null;
-                const jump =
-                    target !== null
-                        ? `<button id="jumpHandBtn" class="cb-nexthand" title="Go to the next hand where it is your turn to bid">
-                               <span class="material-symbols-outlined text-sm">touch_app</span>Next hand
-                           </button>`
-                        : "";
                 const bell = team
                     ? `<button id="alertBellBtn" class="cb-iconbtn" title="${turnAlertsOn ? "Turn alerts on (also while the page is closed) — tap to disable" : "Turn alerts off — tap to enable"}" style="${turnAlertsOn ? "color:#e8e6e3;" : "opacity:.5;"}">
                            <span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' ${turnAlertsOn ? 1 : 0};">${turnAlertsOn ? "notifications_active" : "notifications_off"}</span>
@@ -2648,7 +2691,7 @@
                             <div class="t">${title}</div>
                             <div class="s">${sub}</div>
                         </div>
-                        ${arrows}${jump}${bell}${menu}
+                        ${arrows}${bell}${menu}
                     </div>`;
             }
 
@@ -3404,11 +3447,7 @@
             }
 
             function recentHtml() {
-                const all = soloHistoryItems().filter((it) =>
-                    PLAY_MODE === "play"
-                        ? it.mode === "play"
-                        : it.mode !== "play",
-                );
+                const all = soloHistoryItems();
                 if (all.length === 0) return "";
                 const shown = all.slice(0, recentShown);
                 const rows = shown
@@ -3428,7 +3467,7 @@
                     <div class="mt-8">
                         <div class="flex items-center justify-between mb-2">
                             <div class="text-[10px] uppercase tracking-[0.2em] text-[#908f8d] font-label font-bold flex items-center gap-1.5">
-                                <span class="material-symbols-outlined text-sm text-[#e8e6e3]">history</span>Recent boards
+                                <span class="material-symbols-outlined text-sm text-[#e8e6e3]">history</span>Recent boards${PLAY_MODE === "bid" ? `<span class="normal-case tracking-normal text-[#787572]">&nbsp;· with the bot partner</span>` : ""}
                             </div>
                             <div class="text-[10px] text-[#787572] font-label">tap a board for its cards &amp; auction</div>
                         </div>
@@ -3595,15 +3634,24 @@
                 };
             }
 
-            // Every solo board (bid-only and played out), newest first -- the
-            // one list both the recent-boards rows and the history overlay
-            // use, so a row index always matches an overlay item.
+            // The current section's solo history, newest first: the bid-only
+            // lobby and its "Past boards" overlay show ONLY the boards bid
+            // with the bot partner, and the play-bridge ones ONLY the played
+            // hands -- partner-table boards never appear here (a table's own
+            // matches are its history, see openHistory). One list for both
+            // the recent-boards rows and the overlay, so a row index always
+            // matches an overlay item.
             function soloHistoryItems() {
                 const recs = [
                     ...((stats && stats.recent) || []),
                     ...((stats && stats.recentPlay) || []),
-                ];
-                recs.sort((a, b) => new Date(b.ts || 0) - new Date(a.ts || 0));
+                ]
+                    .filter((r) =>
+                        PLAY_MODE === "play"
+                            ? r.mode === "play"
+                            : r.mode !== "play",
+                    )
+                    .sort((a, b) => new Date(b.ts || 0) - new Date(a.ts || 0));
                 const items = recs.map(historyItemFromSolo);
                 items.forEach((it, i) => (it.idx = i));
                 return items;
@@ -3773,7 +3821,11 @@
                 }
                 return `
                     <div class="flex items-center justify-between mb-3">
-                        <div class="font-headline font-bold text-white">${overlay.groups ? "Match history" : "Board history"}</div>
+                        <div class="font-headline font-bold text-white">${overlay.groups
+                            ? "Match history"
+                            : PLAY_MODE === "play"
+                              ? "Played boards"
+                              : "Bidding history — with the bot partner"}</div>
                         <button id="histCloseBtn" class="material-symbols-outlined text-[#908f8d] hover:text-white">close</button>
                     </div>
                     ${body}`;
@@ -3934,12 +3986,6 @@
                 const nxt = document.getElementById("nextHandBtn");
                 if (nxt)
                     nxt.onclick = () => teamSelectBoard(state.boardSel + 1);
-                const jump = document.getElementById("jumpHandBtn");
-                if (jump)
-                    jump.onclick = () => {
-                        const t = nextTeamBoardTarget();
-                        if (t !== null) teamSelectBoard(t);
-                    };
                 const bell = document.getElementById("alertBellBtn");
                 if (bell) bell.onclick = toggleTurnAlerts;
                 const mbtn = document.getElementById("cbMenuBtn");
@@ -3956,6 +4002,8 @@
                         closeMenu();
                         teamStart();
                     };
+                const dealFirst = document.getElementById("dealFirstBtn");
+                if (dealFirst) dealFirst.onclick = () => teamStart();
                 const history = document.getElementById("historyBtn");
                 if (history)
                     history.onclick = () => {

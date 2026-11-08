@@ -3601,7 +3601,10 @@
                 }
                 if (leader !== opener) throw new Error("Only a play from the opening lead can be imported");
                 const plays = pbnPlays(playToks, hands, leader, contract.denom);
-                return { title: String(tags.event || "").trim(), dealer, vuln, hands, calls, plays, contract };
+                // the [Event] text is the only free-form string that survives
+                // the parse; cap it to the wizard's title length (it is
+                // escaped wherever it is rendered, server-side cap too)
+                return { title: String(tags.event || "").trim().slice(0, 60), dealer, vuln, hands, calls, plays, contract };
             }
             function importPBN(text) {
                 let p;
@@ -4288,6 +4291,9 @@
                     const f = pbnFile.files && pbnFile.files[0];
                     pbnFile.value = "";
                     if (!f) return;
+                    // a real hand is a few hundred bytes; refuse anything that
+                    // could stall the tab before it is even read
+                    if (f.size > 256 * 1024) { showToast("That file is too large to be a PBN hand (256 KB max)", true); return; }
                     const rd = new FileReader();
                     rd.onload = () => importPBN(String(rd.result || ""));
                     rd.onerror = () => showToast("Could not read that file", true);

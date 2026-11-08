@@ -1335,3 +1335,25 @@ func TestDrillPBN(t *testing.T) {
 		t.Fatalf("unknown problem: %d", rr.Code)
 	}
 }
+
+func TestDrillTitleCap(t *testing.T) {
+	drillTestEnv(t)
+	alice := drillLogin(t, "alice")
+
+	p := drillProblem()
+	p.Title = strings.Repeat("x", drillTitleMax+1)
+	body, _ := json.Marshal(p)
+	rr := httptest.NewRecorder()
+	handleDrillCreate(rr, drillReq(t, "POST", "/api/drills", string(body), alice))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("overlong title accepted: %d", rr.Code)
+	}
+
+	p.Title = strings.Repeat("x", drillTitleMax)
+	body, _ = json.Marshal(p)
+	rr = httptest.NewRecorder()
+	handleDrillCreate(rr, drillReq(t, "POST", "/api/drills", string(body), alice))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("max-length title rejected: %d %s", rr.Code, rr.Body.String())
+	}
+}
