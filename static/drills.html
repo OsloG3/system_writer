@@ -1154,6 +1154,15 @@
                 color: #e8e6e3;
                 border-color: rgba(255, 255, 255, 0.25);
             }
+            /* short screens: the play-row buttons (Bidding / Notes / Last
+               trick / Hint) shrink to their icon alone -- the title tooltip
+               carries the label -- so the row leaves more height to the
+               table */
+            @media (max-height: 640px) {
+                .cb-trickbtn-t { display: none; }
+                .cb-trickbtn { padding: 0.28rem 0.45rem; }
+                .cb-playrow { gap: 0.4rem; }
+            }
             /* the reviewed trick pops up right above the last-trick button
                (bottom of the screen), never in the middle of the table, so
                the single screen keeps its height */
@@ -2010,8 +2019,9 @@
             let view = "lobby"; // "lobby" | "session"
             let lobbyTab = "practice"; // "practice" | "create"
             let library = null; // [{id,owner,title,role,played,...}]
-            let archives = null; // my archives: [{id,name,drillIds,...}]
+            let archives = null; // public archives: [{id,name,owner,drillIds,...}]
             let selArchive = "all"; // "all" | archive id
+            let archScope = "in"; // with an archive selected: "in" (its problems) | "all" (whole library, to add)
             let filters = { role: "all", author: "all", difficulty: 0, played: "all", search: "" }; // difficulty 0 = any
             let busy = false;
 
@@ -2460,8 +2470,8 @@
             function lastTrickBtnHtml() {
                 const trick = lastTrickPlays();
                 const open = showLastTrick && trick;
-                return `<button id="drLastTrickBtn" class="cb-trickbtn${open ? " on" : ""}"${trick ? "" : " disabled"}>
-                    <span class="material-symbols-outlined">${open ? "expand_less" : "style"}</span>Last trick</button>`;
+                return `<button id="drLastTrickBtn" class="cb-trickbtn${open ? " on" : ""}"${trick ? "" : " disabled"} title="Review the last completed trick">
+                    <span class="material-symbols-outlined">${open ? "expand_less" : "style"}</span><span class="cb-trickbtn-t">Last trick</span></button>`;
             }
             function lastTrickPanelHtml() {
                 const trick = lastTrickPlays();
@@ -2471,8 +2481,8 @@
                 return `<div class="cb-lasttrick"><div class="cap">${SEAT_NAMES[win]} won trick ${no}</div>${trickCrossHtml(trick, win)}</div>`;
             }
             function auctionBtnHtml() {
-                return `<button id="drAuctionBtn" class="cb-trickbtn${showAuction ? " on" : ""}">
-                    <span class="material-symbols-outlined">${showAuction ? "expand_less" : "gavel"}</span>Bidding</button>`;
+                return `<button id="drAuctionBtn" class="cb-trickbtn${showAuction ? " on" : ""}" title="Show the auction that led here">
+                    <span class="material-symbols-outlined">${showAuction ? "expand_less" : "gavel"}</span><span class="cb-trickbtn-t">Bidding</span></button>`;
             }
             function auctionPanelHtml() {
                 if (!showAuction) return "";
@@ -2481,8 +2491,8 @@
             function notesBtnHtml() {
                 const has = (state.problemComment || state.bidComment);
                 if (!has) return "";
-                return `<button id="drNotesBtn" class="cb-trickbtn${showNotes ? " on" : ""}">
-                    <span class="material-symbols-outlined">${showNotes ? "expand_less" : "notes"}</span>Notes</button>`;
+                return `<button id="drNotesBtn" class="cb-trickbtn${showNotes ? " on" : ""}" title="Show the author's notes">
+                    <span class="material-symbols-outlined">${showNotes ? "expand_less" : "notes"}</span><span class="cb-trickbtn-t">Notes</span></button>`;
             }
             function notesPanelHtml() {
                 if (!showNotes) return "";
@@ -2505,7 +2515,7 @@
             function hintBtnHtml() {
                 if (!playReady() || state.bot) return "";
                 return `<button id="drHintBtn" class="cb-trickbtn${hintMsg ? " on" : ""}" title="Reveal the author's note for this card">
-                    <span class="material-symbols-outlined">tips_and_updates</span>Hint</button>`;
+                    <span class="material-symbols-outlined">tips_and_updates</span><span class="cb-trickbtn-t">Hint</span></button>`;
             }
             function playTableView() {
                 // dh/dv: where the tabled dummy will lie on screen (row at the
@@ -2883,6 +2893,12 @@
             function selectedArchive() {
                 return selArchive === "all" ? null : (archives || []).find((a) => a.id === selArchive) || null;
             }
+            // archives are public like the problems, but only their owner
+            // manages them (rename, delete, membership)
+            function archIsMine(a) {
+                return !!a && String(a.owner || "").toLowerCase() ===
+                    String(window.currentUser || "").toLowerCase();
+            }
             function inSelectedArchive(id) {
                 const a = selectedArchive();
                 return !!a && (a.drillIds || []).includes(id);
@@ -2895,7 +2911,7 @@
                     (filters.difficulty === 0 || p.difficulty === filters.difficulty) &&
                     (filters.author === "all" || p.owner === filters.author) &&
                     (filters.played === "all" || !!p.played === (filters.played === "played")) &&
-                    (!arch || (arch.drillIds || []).includes(p.id)) &&
+                    (!arch || archScope === "all" || (arch.drillIds || []).includes(p.id)) &&
                     (!q || (p.title || "").toLowerCase().includes(q) ||
                         (p.owner || "").toLowerCase().includes(q) ||
                         contractLabel(p).toLowerCase().includes(q)));
@@ -2916,11 +2932,14 @@
                     ? `<span class="dr-badge decl">declarer</span>`
                     : `<span class="dr-badge def">defense</span>`;
                 const arch = selectedArchive();
-                const bm = arch
+                // the bookmark only appears on the archives you own -- public
+                // archives of other users are read-only, like their problems
+                const bm = archIsMine(arch)
                     ? `<button class="dr-btn ghost" data-arch-toggle="${p.id}" title="${inSelectedArchive(p.id) ? "Remove from" : "Add to"} ${escapeHtml(arch.name)}"><span class="material-symbols-outlined" style="${inSelectedArchive(p.id) ? "font-variation-settings:'FILL' 1;color:#cbb3ff" : ""}">${inSelectedArchive(p.id) ? "bookmark" : "bookmark_border"}</span></button>`
                     : "";
                 const right = mine
-                    ? `<button class="dr-btn ghost" data-edit="${p.id}"><span class="material-symbols-outlined">edit</span>Edit</button>
+                    ? `<button class="dr-btn ghost" data-dl="${p.id}" title="Download as .pbn (Line 1)"><span class="material-symbols-outlined">download</span></button>
+                       <button class="dr-btn ghost" data-edit="${p.id}"><span class="material-symbols-outlined">edit</span>Edit</button>
                        <button class="dr-btn danger" data-del="${p.id}"><span class="material-symbols-outlined">delete</span></button>`
                     : `<button class="dr-btn gold" data-practice="${p.id}"><span class="material-symbols-outlined">playing_cards</span>Practise</button>`;
                 return `<div class="dr-row${p.played ? " played" : ""}"${p.played ? ` title="You finished this problem"` : ""}>
@@ -2936,27 +2955,36 @@
             function archiveOptions() {
                 return ['<option value="all">All problems</option>']
                     .concat((archives || []).map((a) =>
-                        `<option value="${a.id}"${selArchive === a.id ? " selected" : ""}>${escapeHtml(a.name)} (${(a.drillIds || []).length})</option>`)).join("");
+                        `<option value="${a.id}"${selArchive === a.id ? " selected" : ""}>${archIsMine(a) ? "" : "\u2606 "}${escapeHtml(a.name)} (${(a.drillIds || []).length}) \u00b7 ${escapeHtml(a.owner || "")}</option>`)).join("");
             }
             function libraryListHtml(list) {
                 if (list === undefined) list = filteredLibrary();
                 return list.length ? list.map((p) => problemRow(p, false)).join("")
-                    : `<div class="dr-empty">No problems match. ${selectedArchive() ? "Use \u201cAdd problems\u201d in the Archives panel to fill this archive." : (library && library.length ? "Try loosening the filters." : "Be the first to author one in the Create tab.")}</div>`;
+                    : `<div class="dr-empty">No problems match. ${selectedArchive() && archScope === "in" ? "Switch to \u201cWhole library\u201d above and tap the bookmark on problems to add them." : (library && library.length ? "Try loosening the filters." : "Be the first to author one in the Create tab.")}</div>`;
             }
             function practiceTabHtml() {
                 const list = filteredLibrary();
                 const arch = selectedArchive();
                 const authOpts = ['<option value="all">Everyone</option>']
                     .concat(authors().map((a) => `<option value="${escapeHtml(a)}"${filters.author === a ? " selected" : ""}>${escapeHtml(a)}</option>`)).join("");
+                const own = archIsMine(arch);
+                let archHint;
+                if (!arch) archHint = `Archives are public collections of problems \u2014 pick one to browse just its problems. A problem can be in several archives and always stays in the normal library too.`;
+                else if (!own) archHint = `Browsing the public archive <b>${escapeHtml(arch.name)}</b> by <b>${escapeHtml(arch.owner || "")}</b> \u2014 read-only, like anyone else's problems: only its owner can change it.`;
+                else if (archScope === "all") archHint = `Browsing the <b>whole library</b> with the usual filters \u2014 tap a problem's <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px">bookmark_border</span> to add it to <b>${escapeHtml(arch.name)}</b>.`;
+                else archHint = `Viewing your archive <b>${escapeHtml(arch.name)}</b> \u2014 the filters below search inside it; tap a problem's <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px">bookmark</span> to remove it, or browse the <b>whole library</b> to add more.`;
                 return `<div class="dr-panel">
                     <h3><span class="material-symbols-outlined" style="font-size:18px">inventory_2</span>Archives</h3>
                     <div class="dr-filters" style="align-items:center">
                         <select class="dr-input" id="drArchive" style="max-width:16rem;padding:.4rem .6rem">${archiveOptions()}</select>
                         <button class="dr-btn ghost" id="drArchNew"><span class="material-symbols-outlined">create_new_folder</span>New</button>
-                        ${arch ? `<button class="dr-btn ghost" id="drArchAdd" title="Add problems to this archive"><span class="material-symbols-outlined">playlist_add</span>Add problems</button>` : ""}
-                        ${arch ? `<button class="dr-btn danger" id="drArchDel" title="Delete this archive"><span class="material-symbols-outlined">delete</span></button>` : ""}
+                        ${own ? `<button class="dr-btn danger" id="drArchDel" title="Delete this archive"><span class="material-symbols-outlined">delete</span></button>` : ""}
                     </div>
-                    ${arch ? `<div class="dr-hint">Viewing the archive <b>${escapeHtml(arch.name)}</b> \u2014 the filters below search inside it; use the bookmark buttons or \u201cAdd problems\u201d to fill it.</div>` : `<div class="dr-hint">Pick an archive to search just its problems; every problem also stays in the full library, and can be in several archives.</div>`}
+                    ${own ? `<div class="dr-filters">
+                        <button class="dr-chip${archScope === "in" ? " on" : ""}" data-archscope="in" title="Show the archive's problems">In this archive</button>
+                        <button class="dr-chip${archScope === "all" ? " on" : ""}" data-archscope="all" title="Browse the full library and bookmark problems into this archive">Whole library</button>
+                    </div>` : ""}
+                    <div class="dr-hint">${archHint}</div>
                 </div>
                 <div class="dr-panel">
                     <h3><span class="material-symbols-outlined" style="font-size:18px">tune</span>Filters</h3>
@@ -2980,7 +3008,7 @@
                     </div>
                 </div>
                 <div class="dr-panel">
-                    <h3><span class="material-symbols-outlined" style="font-size:18px">library_books</span>${arch ? escapeHtml(arch.name) : "Library"} <span class="dr-sub" id="drLibCount">(${list.length})</span></h3>
+                    <h3><span class="material-symbols-outlined" style="font-size:18px">library_books</span>${arch && archScope === "in" ? escapeHtml(arch.name) : "Library"} <span class="dr-sub" id="drLibCount">(${list.length})</span></h3>
                     <div id="drLibList">${libraryListHtml(list)}</div>
                 </div>`;
             }
@@ -3181,6 +3209,12 @@
             }
             function wizStepSetup() {
                 return `
+                <div class="dr-field"><label class="dr-label">Import a deal (.pbn)</label>
+                    <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+                        <button class="dr-btn ghost" id="wizPbnBtn"><span class="material-symbols-outlined">upload_file</span>Upload .pbn</button>
+                        <span class="dr-hint" style="flex:1">Takes the deal, the auction and the card play from the file as Line 1 \u2014 then edit everything like any other problem.</span>
+                        <input type="file" id="wizPbnFile" accept=".pbn,text/plain" style="display:none">
+                    </div></div>
                 <div class="dr-field"><label class="dr-label">Title (optional)</label>
                     <input class="dr-input" id="wizTitle" maxlength="60" placeholder="e.g. Strip squeeze, board 4" value="${escapeHtml(wiz.title)}"></div>
                 <div class="dr-field"><label class="dr-label">Difficulty</label>
@@ -3389,7 +3423,10 @@
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.6rem">
                             <button class="dr-btn ghost" id="wizCancel"><span class="material-symbols-outlined">close</span>${wiz.id ? "Close" : "Cancel"}</button>
                             <h3 style="margin:0">${wiz.id ? "Edit problem" : "New problem"}</h3>
-                            <button class="dr-btn gold" id="wizSave" ${playOk() ? "" : "disabled"}><span class="material-symbols-outlined">save</span>Save</button>
+                            <span style="display:flex;gap:.4rem">
+                                <button class="dr-btn ghost" id="wizPbnDl" title="Download Line 1 as a .pbn file"><span class="material-symbols-outlined">download</span>PBN</button>
+                                <button class="dr-btn gold" id="wizSave" ${playOk() ? "" : "disabled"}><span class="material-symbols-outlined">save</span>Save</button>
+                            </span>
                         </div>
                         <div class="dr-steps">${steps}</div>
                         ${body}
@@ -3399,6 +3436,251 @@
                         </div>
                     </div>
                 </div>`;
+            }
+
+            // ---- PBN import / export ----
+            // Import fills the wizard from a .pbn file: the deal, the auction
+            // and the card play become Line 1, and everything is then edited
+            // exactly like a hand-authored problem (hero plays start without
+            // hints -- tap them in the summary to add reasoning). Export writes
+            // Line 1 of a problem back out in the same shape.
+            const PBN_RESULT = /^(1-0|0-1|1\/2-1\/2|\*)$/;
+            function pbnTokens(s) {
+                return String(s || "")
+                    .replace(/\{[^}]*\}/g, " ")   // brace comments
+                    .replace(/;[^\n]*/g, " ")     // rest-of-line comments
+                    .replace(/\([^()]*\)/g, " ")  // variations
+                    .replace(/\$\d+/g, " ")       // NAGs
+                    .split(/\s+/)
+                    .filter((t) => t && !/^\d*\.+$/.test(t) && !PBN_RESULT.test(t));
+            }
+            function pbnCall(tok) {
+                const t = tok.toUpperCase();
+                if (t === "PASS" || t === "P") return "P";
+                if (t === "X" || t === "DOUBLE") return "X";
+                if (t === "XX" || t === "REDOUBLE") return "XX";
+                const m = t.match(/^([1-7])(C|D|H|S|NT?)$/);
+                return m ? m[1] + (m[2][0] === "N" ? "N" : m[2]) : null;
+            }
+            function pbnCard(tok) {
+                const t = tok.toUpperCase();
+                let m = t.match(/^([SHDC])(10|[AKQJT2-9])$/);   // PBN standard: suit+rank
+                if (m) return (m[2] === "10" ? "T" : m[2]) + m[1];
+                m = t.match(/^(10|[AKQJT2-9])([SHDC])$/);       // rank+suit is accepted too
+                if (m) return (m[1] === "10" ? "T" : m[1]) + m[2];
+                return null;
+            }
+            function pbnVuln(tag) {
+                const v = String(tag || "").trim().toUpperCase().replace(/[-\s]/g, "");
+                if (v === "NS") return 1;
+                if (v === "EW") return 2;
+                if (v === "ALL" || v === "BOTH") return 3;
+                return 0; // None / Love / missing
+            }
+            // [Deal "N:AKQ JT9 ..."]: four 'S.H.D.C' hands from the rotation
+            // letter onwards; returns them as [N,E,S,W] or null when invalid
+            function pbnDeal(tag) {
+                const m = String(tag || "").match(/^\s*([NESW])\s*:([\s\S]*)$/i);
+                if (!m) return null;
+                const rot = "NESW".indexOf(m[1].toUpperCase());
+                const parts = m[2].trim().split(/\s+/);
+                if (parts.length !== 4) return null;
+                const hands = ["", "", "", ""], seen = new Set();
+                for (let i = 0; i < 4; i++) {
+                    const suits = (parts[i] === "-" ? "..." : parts[i]).split(".");
+                    if (suits.length !== 4) return null;
+                    const hand = suits.map((s) =>
+                        s.replace(/10/g, "T").replace(/[^AKQJT2-9akqjt]/g, "").toUpperCase()).join(".");
+                    const cards = handToCards(hand);
+                    if (cards.length !== 13) return null;
+                    for (const c of cards) { if (seen.has(c)) return null; seen.add(c); }
+                    hands[(rot + i) % 4] = hand;
+                }
+                return seen.size === 52 ? hands : null;
+            }
+            // consume auction tokens; returns the calls and how many tokens they used
+            function pbnAuction(toks) {
+                const calls = [];
+                let i = 0;
+                for (; i < toks.length; i++) {
+                    if (/^AP$/i.test(toks[i])) {           // "all pass" fills the tail
+                        i++;
+                        while (!auctionOver(calls) && calls.length < 100) calls.push("P");
+                        break;
+                    }
+                    const c = pbnCall(toks[i]);
+                    if (c === null) break;
+                    calls.push(c);
+                    if (auctionOver(calls)) { i++; break; }
+                }
+                return { calls, used: i };
+            }
+            // play tokens -> scripted plays, validated against the deal (a seat
+            // must hold the card and follow suit); stops at the first token
+            // that is not a legal next play (claim marker, junk, or a revoke)
+            function pbnPlays(toks, hands, leader, trump) {
+                const rem = hands.map((h) => new Set(handToCards(h)));
+                const plays = [];
+                let seat = leader;
+                for (const tok of toks) {
+                    if (plays.length === 52) break;
+                    const card = tok === "-" ? null : pbnCard(tok);
+                    if (!card || !rem[seat].has(card)) break;
+                    if (plays.length % 4) {
+                        const led = plays[Math.floor(plays.length / 4) * 4].card[1];
+                        if (card[1] !== led && [...rem[seat]].some((c) => c[1] === led)) break;
+                    }
+                    rem[seat].delete(card);
+                    plays.push({ seat, card, msg: "", alts: [] });
+                    seat = plays.length % 4 === 0 ? trickWinnerJS(plays.slice(-4), trump) : (seat + 1) % 4;
+                }
+                return plays;
+            }
+            function parsePBN(text) {
+                const src = String(text || "").replace(/\r\n?/g, "\n");
+                const tags = {}, marks = [];
+                const tagRe = /\[\s*(\w+)\s*"([^"]*)"\s*\]/g;
+                let m;
+                while ((m = tagRe.exec(src))) {
+                    tags[m[1].toLowerCase()] = m[2];
+                    marks.push({ key: m[1].toLowerCase(), val: m[2], start: m.index, end: tagRe.lastIndex });
+                }
+                if (!marks.length) throw new Error("That file has no PBN tags");
+                const hands = pbnDeal(tags.deal);
+                if (!hands) throw new Error("Missing or invalid [Deal] tag");
+                const dealer = Math.max(0, "NESW".indexOf(String(tags.dealer || "N").trim().toUpperCase()[0]));
+                const vuln = pbnVuln(tags.vulnerable);
+                // [Auction] / [Play] tags delimit their sections; without them
+                // the movetext is scanned: auction tokens first, then cards
+                const aucMark = marks.find((x) => x.key === "auction");
+                const playMark = marks.find((x) => x.key === "play");
+                const afterTags = marks.reduce((e, x) =>
+                    (x === aucMark || x === playMark) ? e : Math.max(e, x.end), 0);
+                const secStart = aucMark ? Math.max(afterTags, aucMark.end) : afterTags;
+                const secEnd = playMark && playMark.start >= secStart ? playMark.start : src.length;
+                const secToks = pbnTokens(src.slice(secStart, secEnd));
+                const r = pbnAuction(secToks);
+                const calls = r.calls;
+                const playToks = playMark
+                    ? pbnTokens(src.slice(Math.max(afterTags, playMark.end)))
+                    : secToks.slice(r.used).filter((t) => !/^AP$/i.test(t));
+                if (!auctionOver(calls)) throw new Error("Could not read a complete auction");
+                const contract = contractFromCalls(dealer, calls);
+                if (!contract) throw new Error("The auction passes out \u2014 there is no play to import");
+                const opener = (contract.declarer + 1) % 4;
+                let leader = opener;
+                if (playMark) {
+                    leader = "NESW".indexOf(String(playMark.val || "").trim().toUpperCase()[0]);
+                    if (leader < 0) throw new Error("Invalid [Play] leader");
+                }
+                if (leader !== opener) throw new Error("Only a play from the opening lead can be imported");
+                const plays = pbnPlays(playToks, hands, leader, contract.denom);
+                return { title: String(tags.event || "").trim(), dealer, vuln, hands, calls, plays, contract };
+            }
+            function importPBN(text) {
+                let p;
+                try { p = parsePBN(text); }
+                catch (e) { showToast((e && e.message) || "Could not parse that PBN", true); return; }
+                const dirty = Object.keys(wiz.assign).length || wiz.calls.length ||
+                    wiz.lines.some((l) => l.plays.length);
+                if (dirty && !confirm("Replace the current draft with the imported PBN?")) return;
+                wiz.dealer = p.dealer;
+                wiz.vuln = p.vuln;
+                wiz.assign = assignFromHands(p.hands);
+                wiz.calls = p.calls.slice();
+                if (p.title && !wiz.title) wiz.title = p.title;
+                const line = { plays: p.plays, claim: null, bot: null };
+                wiz.lines = [line];
+                wiz.lineIdx = 0;
+                wiz.heroSeat = (p.contract.declarer + 1) % 4;   // the opening leader; adjust in Hero
+                if (p.plays.length === 52) {
+                    const decl = recDeclTricks(p.contract, line);
+                    wiz.target = wiz.role === "declarer" ? decl : 13 - decl;
+                } else wiz.target = 0;
+                render();
+                showToast(p.plays.length === 52
+                    ? "PBN imported \u2014 the whole play is Line 1"
+                    : "PBN imported \u2014 the play stopped early: finish Line 1 with a claim or a bot end");
+            }
+            function pbnCallTok(c) {
+                if (c === "P") return "Pass";
+                if (c === "X") return "Double";
+                if (c === "XX") return "Redouble";
+                return isBid(c) ? c[0] + (c[1] === "N" ? "NT" : c[1]) : c;
+            }
+            function pbnCardTok(c) { return c[1] + (c[0] === "T" ? "10" : c[0]); }
+            function pbnChunk(list) {
+                const out = [];
+                for (let i = 0; i < list.length; i += 4) out.push(list.slice(i, i + 4).join(" "));
+                return out;
+            }
+            // a problem -> PBN text: deal, auction and Line 1's card play. A
+            // claim / bot ending cannot be expressed in PBN, so it becomes a
+            // trailing brace comment (and [Result] carries the claim's tricks).
+            function buildPBN(prob) {
+                const calls = prob.calls || [];
+                const c = contractFromCalls(prob.dealer, calls);
+                const line = (prob.lines && prob.lines.length ? prob.lines[0] : null) ||
+                    { plays: [], claim: null, bot: null };
+                const plays = line.plays || [];
+                const seatL = (s) => "NESW"[(s + 4) % 4];
+                const L = [];
+                L.push(`[Event "${String(prob.title || "System Writer drill").replace(/[\[\]"]/g, "")}"]`);
+                L.push(`[Site "-"]`);
+                L.push(`[Date "${String(prob.created || "").slice(0, 10) || new Date().toISOString().slice(0, 10)}"]`);
+                L.push(`[Round "-"]`);
+                L.push(`[Board "1"]`);
+                L.push(`[Dealer "${seatL(prob.dealer)}"]`);
+                L.push(`[Vulnerable "${["None", "NS", "EW", "All"][prob.vuln] || "None"}"]`);
+                L.push(`[Deal "N:${(prob.hands || []).join(" ")}"]`);
+                if (c) {
+                    L.push(`[Declarer "${seatL(c.declarer)}"]`);
+                    L.push(`[Contract "${c.level}${c.denom === "N" ? "NT" : c.denom}${["", "X", "XX"][c.penalty]}"]`);
+                    const tricks = line.claim ? line.claim.tricks
+                        : (plays.length === 52 ? recDeclTricks(c, line) : null);
+                    if (tricks !== null) L.push(`[Result "${tricks}"]`);
+                }
+                L.push("");
+                L.push(`[Auction "${seatL(prob.dealer)}"]`);
+                L.push(...pbnChunk(calls.map(pbnCallTok)));
+                if (c && plays.length) {
+                    L.push("");
+                    L.push(`[Play "${seatL((c.declarer + 1) % 4)}"]`);
+                    L.push(...pbnChunk(plays.map((p) => pbnCardTok(p.card))));
+                    if (line.claim) L.push(`{${SEAT_NAMES[c.declarer]} claims ${line.claim.tricks} tricks}`);
+                    else if (line.bot) L.push(`{the bots finish the hand}`);
+                }
+                L.push("");
+                return L.join("\n");
+            }
+            function downloadText(name, text) {
+                const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+                const a = document.createElement("a");
+                a.href = url; a.download = name;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+            }
+            function pbnFileName(prob) {
+                const slug = String(prob.title || "").toLowerCase()
+                    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+                return (slug || prob.id || "drill") + ".pbn";
+            }
+            function wizDownloadPBN() {
+                if (!handsOk() || !wizContract()) { showToast("Deal the hands and complete the auction first", true); return; }
+                downloadText(pbnFileName(wiz), buildPBN({
+                    title: wiz.title, dealer: wiz.dealer, vuln: wiz.vuln,
+                    hands: handsFromAssign(wiz.assign), calls: wiz.calls, lines: wiz.lines,
+                }));
+                showToast("Line 1 downloaded as .pbn");
+            }
+            async function problemDownloadPBN(id) {
+                try {
+                    const r = await api("GET", `/api/drills/${id}`);
+                    if (!r.ok) { showToast((r.data && r.data.error) || "Cannot open the problem", true); return; }
+                    downloadText(pbnFileName(r.data), buildPBN(r.data));
+                    showToast("Line 1 downloaded as .pbn");
+                } catch (e) { /* auth handled by api() */ }
             }
 
             // ---- modal state (shared by wizard + lobby) ----
@@ -3476,7 +3758,7 @@
                 if (modal.kind === "archive") {
                     return `<div class="dr-overlay"><div class="dr-modal">
                         <h3>New archive</h3>
-                        <div class="dr-hint" style="margin-bottom:.5rem">An archive is a collection of problems you can search on its own. A problem can be in several archives and always stays in the normal library.</div>
+                        <div class="dr-hint" style="margin-bottom:.5rem">An archive is a public collection of problems: everyone can browse it, but only you can change it. A problem can be in several archives and always stays in the normal library. Right after creating it you browse the whole library \u2014 tap a problem's bookmark to add it.</div>
                         <input class="dr-input" id="archName" maxlength="80" placeholder="Archive name">
                         <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn gold" id="archOk"><span class="material-symbols-outlined">create_new_folder</span>Create</button></div>
                     </div></div>`;
@@ -3486,24 +3768,6 @@
                         <h3>Delete this archive?</h3>
                         <div class="dr-hint">Only the collection is removed \u2014 every problem stays in the library and in its other archives.</div>
                         <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn danger" id="archDelOk"><span class="material-symbols-outlined">delete</span>Delete</button></div>
-                    </div></div>`;
-                }
-                if (modal.kind === "archiveAdd") {
-                    const arch = selectedArchive();
-                    const inArch = new Set((arch && arch.drillIds) || []);
-                    const list = (library || []).filter((p) => !inArch.has(p.id));
-                    const chips = list.length
-                        ? list.map((p) => {
-                            const on = modal.sel.has(p.id);
-                            const label = escapeHtml(p.title || p.contract || "untitled");
-                            return `<button class="dr-chip${on ? " on" : ""}" data-archpick="${p.id}" style="text-transform:none;letter-spacing:0" title="${on ? "Remove from the selection" : "Select"} ${label}">${on ? "<span class=\"material-symbols-outlined\" style=\"font-size:14px\">check</span>" : ""}${label} <span style="opacity:.65">${escapeHtml(p.owner)}</span></button>`;
-                        }).join("")
-                        : `<div class="dr-hint">Every problem in the library is already in this archive.</div>`;
-                    return `<div class="dr-overlay"><div class="dr-modal">
-                        <h3>Add problems to ${escapeHtml(arch ? arch.name : "the archive")}</h3>
-                        <div class="dr-hint" style="margin-bottom:.5rem">Tap the problems to choose them, then add them all at once. They stay in the library and in any other archives too.</div>
-                        <div class="dr-filters" style="max-height:16rem;overflow-y:auto">${chips}</div>
-                        <div class="dr-modalfoot"><button class="dr-btn ghost" data-modal-cancel>Cancel</button><button class="dr-btn gold" id="archAddOk" ${modal.sel.size ? "" : "disabled"}><span class="material-symbols-outlined">playlist_add</span>${modal.sel.size ? "Add " + modal.sel.size : "Add"}</button></div>
                     </div></div>`;
                 }
                 return "";
@@ -3802,7 +4066,9 @@
                     if (!r.ok) { showToast((r.data && r.data.error) || "Could not create the archive", true); render(); return; }
                     modal = null;
                     await loadArchives();
-                    if (r.data && r.data.id) selArchive = r.data.id;
+                    // start in whole-library scope so the author can immediately
+                    // bookmark problems into the fresh archive
+                    if (r.data && r.data.id) { selArchive = r.data.id; archScope = "all"; }
                     showToast("Archive created");
                     render();
                 } catch (e) { busy = false; render(); }
@@ -3813,28 +4079,13 @@
                     const r = await api("DELETE", `/api/drill-archives/${id}`);
                     busy = false;
                     if (!r.ok) { showToast((r.data && r.data.error) || "Delete failed", true); render(); return; }
-                    modal = null; selArchive = "all";
+                    modal = null; selArchive = "all"; archScope = "in";
                     await loadArchives();
                     showToast("Archive deleted");
                     render();
                 } catch (e) { busy = false; render(); }
             }
-            // add several problems to the selected archive in one go
-            async function addDrillsToArchive(ids) {
-                const arch = selectedArchive();
-                if (!arch || !ids.length) return;
-                busy = true; render();
-                try {
-                    for (const id of ids) {
-                        const r = await api("POST", `/api/drill-archives/${arch.id}/drills`, { drillId: id, action: "add" });
-                        if (!r.ok) { showToast((r.data && r.data.error) || "Could not update the archive", true); break; }
-                    }
-                    await loadArchives();
-                    modal = null;
-                    showToast("Added to the archive");
-                } catch (e) { /* auth handled */ }
-                busy = false; render();
-            }
+            // add/remove one problem via its row bookmark while browsing
             async function toggleArchiveDrill(drillId) {
                 const arch = selectedArchive();
                 if (!arch) return;
@@ -3862,6 +4113,9 @@
                 });
                 document.querySelectorAll("[data-edit]").forEach((el) => {
                     el.onclick = () => editProblem(el.getAttribute("data-edit"));
+                });
+                document.querySelectorAll("[data-dl]").forEach((el) => {
+                    el.onclick = () => problemDownloadPBN(el.getAttribute("data-dl"));
                 });
                 document.querySelectorAll("[data-del]").forEach((el) => {
                     el.onclick = () => { modal = { kind: "delete", id: el.getAttribute("data-del") }; render(); };
@@ -3964,10 +4218,12 @@
                 const auth = $("drAuthor");
                 if (auth) auth.onchange = () => { filters.author = auth.value; render(); };
                 const archSel = $("drArchive");
-                if (archSel) archSel.onchange = () => { selArchive = archSel.value; render(); };
+                if (archSel) archSel.onchange = () => { selArchive = archSel.value; archScope = "in"; render(); };
                 on("drArchNew", () => { modal = { kind: "archive" }; render(); });
-                on("drArchAdd", () => { modal = { kind: "archiveAdd", sel: new Set() }; render(); });
                 on("drArchDel", () => { modal = { kind: "archiveDel", id: selArchive }; render(); });
+                document.querySelectorAll("[data-archscope]").forEach((el) => {
+                    el.onclick = () => { archScope = el.dataset.archscope; render(); };
+                });
                 const archName = $("archName");
                 if (archName) {
                     archName.onkeydown = (e) => { if (e.key === "Enter") { const ok = $("archOk"); if (ok) ok.click(); } };
@@ -3980,6 +4236,18 @@
                 // wizard nav
                 on("wizCancel", () => { wiz = null; modal = null; view = "lobby"; render(); });
                 on("wizSave", () => saveWiz());
+                on("wizPbnBtn", () => { const f = $("wizPbnFile"); if (f) f.click(); });
+                on("wizPbnDl", () => wizDownloadPBN());
+                const pbnFile = $("wizPbnFile");
+                if (pbnFile) pbnFile.onchange = () => {
+                    const f = pbnFile.files && pbnFile.files[0];
+                    pbnFile.value = "";
+                    if (!f) return;
+                    const rd = new FileReader();
+                    rd.onload = () => importPBN(String(rd.result || ""));
+                    rd.onerror = () => showToast("Could not read that file", true);
+                    rd.readAsText(f);
+                };
                 on("wizBack", () => { if (wiz.step > 0) { wiz.step--; render(); } });
                 on("wizNext", () => { if (stepOk(wiz.step) && wiz.step < WIZ_STEPS.length - 1) { wiz.step++; render(); } });
                 document.querySelectorAll("[data-goto]").forEach((el) => {
@@ -4088,17 +4356,6 @@
                     if (!name) { showToast("Give the archive a name", true); return; }
                     createArchive(name);
                 });
-                document.querySelectorAll("[data-archpick]").forEach((el) => {
-                    el.onclick = () => {
-                        if (!modal || modal.kind !== "archiveAdd") return;
-                        const id = el.getAttribute("data-archpick");
-                        if (modal.sel.has(id)) modal.sel.delete(id); else modal.sel.add(id);
-                        render();
-                    };
-                });
-                on("archAddOk", () => {
-                    if (modal && modal.kind === "archiveAdd") addDrillsToArchive([...modal.sel]);
-                });
                 on("archDelOk", () => { if (modal && modal.id) deleteArchive(modal.id); });
                 const ct = $("claimTricks");
                 if (ct) ct.oninput = () => refreshClaimPreview();
@@ -4131,7 +4388,7 @@
                     if (sid) resumeSession(sid);
                 } else {
                     view = "lobby"; state = null; wiz = null; modal = null;
-                    archives = null; selArchive = "all";
+                    archives = null; selArchive = "all"; archScope = "in";
                     localStorage.removeItem(SESSION_KEY);
                     render();
                 }

@@ -96,7 +96,11 @@ uv run python -m bidding_dt.bid --ckpt runs/small/best.pt \
 #    models ([name=]path); the first is the default.
 #    Card play adds /play/choose /play/result /play/drop: /play/choose picks a
 #    bot's card by double-dummy simulation over a pool of hidden-hand candidates
-#    consistent with the auction and the play so far (see play_bot.py).
+#    consistent with the auction and the play so far (see play_bot.py). The
+#    optional "dd_hands" body key (the real deal, sent by the drills page) makes
+#    it the drills bot: options are ranked the same way, but the card returned
+#    is the best-ranked one that gives away no trick double-dummy on the real
+#    deal.
 #    Needs torch (cpu/cuda extra) and endplay (rl extra), so repeat the
 #    extras here. `runs/` is gitignored: copy a checkpoint to the server.
 uv run --extra cpu --extra rl python -m bidding_dt.play_server \
@@ -523,7 +527,9 @@ src/bidding_dt/
   train.py eval.py bid.py
   play_server.py         # HTTP sidecar: bots + par scoring for the website
   play_bot.py            # card-play bot: DD simulation over auction-consistent
-                         # hidden-hand pools (used by /play/choose)
+                         # hidden-hand pools (used by /play/choose; choose_drill
+                         # adds the real-deal "never give away a trick" filter
+                         # for the drills page)
 ```
 
 ## RL design notes

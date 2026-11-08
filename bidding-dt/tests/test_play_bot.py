@@ -186,9 +186,10 @@ def test_generated_hands_respect_lead_denial():
 
 # ---- full hand plays out legally -------------------------------------------
 
-def _play_out(model, cfg, seed):
+def _play_out(model, cfg, seed, drill=False):
     dummy = (DECLARER + 2) % 4
     trump = T.Denom((3, 2, 1, 0, 4)[DENOM_H])
+    true = {i: DEAL[i] for i in range(4)}
     ds = PlaySession("d", 0, 0, CALLS, DECLARER, DENOM_H,
                      {DECLARER: DEAL[DECLARER], dummy: DEAL[dummy]}, model=model,
                      cfg=cfg, rng=np.random.default_rng(seed))
@@ -200,7 +201,8 @@ def _play_out(model, cfg, seed):
     plays, to_act, decl_tricks = [], (DECLARER + 1) % 4, 0
     for i in range(52):
         sess = ds if to_act in (DECLARER, dummy) else xs[to_act]
-        card = sess.choose(plays, to_act)
+        card = (sess.choose_drill(plays, to_act, true) if drill
+                else sess.choose(plays, to_act))
         assert card in rem[to_act], f"seat {to_act} played a card it does not hold"
         if i % 4:
             lead = suit_of(plays[(i // 4) * 4][1])
@@ -234,6 +236,47 @@ def test_full_hand_model():
     assert 0 <= tricks <= 13
 
 
+# ---- drills bot (double-dummy safe on the real deal) --------------------------
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_choose_drill_picks_a_double_dummy_best_card():
+    from endplay.dds.solve import SolveMode, solve_board
+    s = def_session(1, seed=3)
+    true = {i: DEAL[i] for i in range(4)}
+    card = s.choose_drill([], 1, true)          # East opens
+    assert card in HANDS[1]
+    # independently: solve the real deal and check the card is DD-best among
+    # the leads East is actually allowed (the honour lead rule constrains them)
+    legal = s._apply_lead_rule(s._legal_cards(HANDS[1], []), HANDS[1], True, True)
+    deal = T.Deal.from_pbn("N:" + " ".join(DEAL))
+    deal.trump = T.Denom((3, 2, 1, 0, 4)[DENOM_H])
+    deal.first = T.Player(1)
+    res = {c: t for c, t in solve_board(deal, SolveMode.Default)}
+    ep = T.Card(suit=T.Denom(card % 4), rank=T.Rank.find(RANKS[card // 4]))
+    allowed = [T.Card(suit=T.Denom(c % 4), rank=T.Rank.find(RANKS[c // 4]))
+               for c in legal]
+    assert res[ep] == max(res[c] for c in allowed)
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_choose_drill_mid_trick_stays_safe_and_legal():
+    s = decl_session(seed=5)
+    true = {i: DEAL[i] for i in range(4)}
+    # East leads a spade, South (dummy) follows; North (declarer) must act
+    plays = [(1, cid("J", "S")), (2, cid("2", "S"))]
+    card = s.choose_drill(plays, 0, true)
+    assert card in HANDS[0] and suit_of(card) == 0     # must follow suit
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_full_hand_drill_reaches_double_dummy():
+    # with every seat playing safe on the real deal, declarer can never end
+    # below the deal's double-dummy value (10 tricks, see play_result test)
+    cfg = PlayConfig(decl_pool=8, def_pool=6, min_floor=2)
+    tricks = _play_out(None, cfg, seed=2, drill=True)
+    assert tricks >= 10
+
+
 # ---- sidecar endpoints -----------------------------------------------------
 
 @pytest.fixture(scope="module")
@@ -254,6 +297,31 @@ def test_play_choose_endpoint(svc):
     # a passed-out auction has no play
     with pytest.raises(ServiceError):
         svc.play_choose({**body, "calls": ["P", "P", "P", "P"]})
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_play_choose_drill_endpoint(svc):
+    body = {"session": "t:drill1", "dealer": 0, "vuln": 0,
+            "calls": "1H P 4H P P P".split(),
+            "known": {"1": DEAL[1], "2": DEAL[2]}, "plays": [], "to_act": 1,
+            "dd_hands": DEAL}
+    out = svc.play_choose(body)
+    assert out["seat"] == 1 and str_to_card(out["card"]) in HANDS[1]
+    # the real deal must agree with what the bot already sees
+    swapped = [DEAL[0], DEAL[3], DEAL[2], DEAL[1]]
+    with pytest.raises(ServiceError):
+        svc.play_choose({**body, "session": "t:drill2", "dd_hands": swapped})
+    # ... and with the cards actually played (East cannot play North's AS)
+    with pytest.raises(ServiceError):
+        svc.play_choose({**body, "session": "t:drill3", "plays": [[1, "AS"]],
+                         "to_act": 2})
+    # malformed dd_hands are refused
+    with pytest.raises(ServiceError):
+        svc.play_choose({**body, "session": "t:drill4", "dd_hands": DEAL[:3]})
+    # without dd_hands the request stays a plain (non-drill) one
+    plain = {k: v for k, v in body.items() if k != "dd_hands"}
+    out = svc.play_choose({**plain, "session": "t:plain1"})
+    assert out["seat"] == 1 and str_to_card(out["card"]) in HANDS[1]
 
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")

@@ -41,18 +41,35 @@
                 treesCache = trees;
                 const content = document.getElementById("main-content");
 
+                // "New Collection" rendered as the first entry of the list,
+                // styled like a system row rather than a sidebar button.
+                const newItem = `
+                    <button onclick="createTree()" title="Create a new collection" class="tree-list-item game-panel game-panel-hover w-full flex items-center gap-3.5 p-4 text-left cursor-pointer">
+                        <span class="flex items-center justify-center w-11 h-11 rounded-2xl bg-gradient-to-b from-gold-light to-gold shadow-[0_3px_0_rgba(0,0,0,0.22)] shrink-0">
+                            <span class="material-symbols-outlined text-xl text-on-gold">add</span>
+                        </span>
+                        <span class="min-w-0">
+                            <span class="font-headline font-extrabold text-on-surface truncate block">New Collection</span>
+                            <span class="text-xs text-on-surface-variant font-label">Deal yourself a fresh bidding system</span>
+                        </span>
+                    </button>
+                `;
+
                 if (trees.length === 0) {
                     content.innerHTML = `
-                        <div class="game-panel pop-in py-14 px-6 text-center">
-                            <div class="card-fan-deco">
-                                <span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span>
+                        <div class="space-y-3">
+                            ${newItem}
+                            <div class="game-panel pop-in py-14 px-6 text-center">
+                                <div class="card-fan-deco">
+                                    <span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span><span class="card-back"></span>
+                                </div>
+                                <p class="text-on-surface-variant text-lg font-headline font-bold mt-2">No collections yet.</p>
+                                <p class="text-on-surface-variant text-sm font-body mt-2 max-w-sm mx-auto leading-relaxed">${
+                                    window.currentUser
+                                        ? 'Hit "New Collection" above to deal your first system.'
+                                        : "Create an account to build your first system."
+                                }</p>
                             </div>
-                            <p class="text-on-surface-variant text-lg font-headline font-bold mt-2">No collections yet.</p>
-                            <p class="text-on-surface-variant text-sm font-body mt-2 max-w-sm mx-auto leading-relaxed">${
-                                window.currentUser
-                                    ? 'Hit "New Collection" to deal your first system.'
-                                    : "Create an account to build your first system."
-                            }</p>
                         </div>
                     `;
                     return;
@@ -60,6 +77,7 @@
 
                 content.innerHTML = `
                     <div class="space-y-3">
+                        ${newItem}
                         ${trees
                             .map(
                                 (t) => `

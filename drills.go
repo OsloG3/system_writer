@@ -1041,8 +1041,12 @@ func (s *DrillSession) advanceLocked() error {
 	return nil
 }
 
-// botChooseLocked asks the sidecar for the card a bot seat should play, with
-// the same request shape as the play-a-hand table (see play.go botChoose).
+// botChooseLocked asks the sidecar for the card a bot seat should play. The
+// request is the play-a-hand table's shape (see play.go botChoose) plus the
+// real deal in "dd_hands": drills bots rank their options exactly like the
+// normal card-play bot -- with only the information a real game gives -- but
+// then take the best-ranked card that gives away no trick double-dummy on the
+// scripted deal, so the bots never sabotage the problem.
 func (s *DrillSession) botChooseLocked(seat int) (string, error) {
 	p := &s.Problem
 	dummy := (s.contract.Declarer + 2) % 4
@@ -1060,13 +1064,14 @@ func (s *DrillSession) botChooseLocked(seat int) (string, error) {
 		plays = append(plays, [2]any{dp.Seat, dp.Card})
 	}
 	body := map[string]any{
-		"session": session,
-		"dealer":  p.Dealer,
-		"vuln":    p.Vuln,
-		"calls":   callsOrEmpty(p.Calls),
-		"known":   known,
-		"plays":   plays,
-		"to_act":  seat,
+		"session":  session,
+		"dealer":   p.Dealer,
+		"vuln":     p.Vuln,
+		"calls":    callsOrEmpty(p.Calls),
+		"known":    known,
+		"plays":    plays,
+		"to_act":   seat,
+		"dd_hands": []string{p.Hands[0], p.Hands[1], p.Hands[2], p.Hands[3]},
 	}
 	var out struct {
 		Seat int    `json:"seat"`

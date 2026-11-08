@@ -263,26 +263,37 @@ func TestDrillArchives(t *testing.T) {
 		t.Fatalf("multi-archive add: %d", rr.Code)
 	}
 
-	// listings are per owner and carry the member IDs
-	rr = httptest.NewRecorder()
-	handleDrillArchivesList(rr, drillReq(t, "GET", "/api/drill-archives", "", alice))
+	// listings are public: everyone sees every archive, with its owner
 	var la struct {
 		Archives []struct {
 			ID       string   `json:"id"`
 			Name     string   `json:"name"`
+			Owner    string   `json:"owner"`
 			DrillIDs []string `json:"drillIds"`
 			Count    int      `json:"count"`
 		} `json:"archives"`
 	}
-	json.Unmarshal(rr.Body.Bytes(), &la)
-	if len(la.Archives) != 1 || la.Archives[0].Count != 2 ||
-		!slices.Equal(la.Archives[0].DrillIDs, sortedIDs(d1, d2)) {
-		t.Fatalf("bad alice listing: %s", rr.Body.String())
-	}
-	rr = httptest.NewRecorder()
-	handleDrillArchivesList(rr, drillReq(t, "GET", "/api/drill-archives", "", bob))
-	if !strings.Contains(rr.Body.String(), "Bob's favs") || strings.Contains(rr.Body.String(), "Endplays") {
-		t.Fatalf("listings must be per owner: %s", rr.Body.String())
+	for _, tok := range []string{alice, bob} {
+		la.Archives = nil
+		rr = httptest.NewRecorder()
+		handleDrillArchivesList(rr, drillReq(t, "GET", "/api/drill-archives", "", tok))
+		json.Unmarshal(rr.Body.Bytes(), &la)
+		if len(la.Archives) != 2 {
+			t.Fatalf("every archive must be public: %s", rr.Body.String())
+		}
+		byName := map[string]int{}
+		for i, a := range la.Archives {
+			byName[a.Name] = i
+		}
+		e, ok := byName["Endplays"]
+		if !ok || la.Archives[e].Owner != "alice" || la.Archives[e].Count != 2 ||
+			!slices.Equal(la.Archives[e].DrillIDs, sortedIDs(d1, d2)) {
+			t.Fatalf("bad Endplays entry: %s", rr.Body.String())
+		}
+		b, ok := byName["Bob's favs"]
+		if !ok || la.Archives[b].Owner != "bob" || la.Archives[b].Count != 1 {
+			t.Fatalf("bad Bob's favs entry: %s", rr.Body.String())
+		}
 	}
 
 	// rename

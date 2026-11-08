@@ -21,7 +21,10 @@ see, drawn from the auction with the hand VQ encoder/decoder (hand/model.py):
 
 The card itself is picked by running endplay's double-dummy `solve_board` over
 every surviving candidate and taking the card with the best expected tricks for
-the acting side.
+the acting side. `choose_drill` is the variant the card-problems page uses: it
+ranks the options the same way (with only the information a real game gives),
+but returns the best-ranked card that also costs no trick double-dummy on the
+*real* deal, which the drill server supplies.
 
 Defender leads are constrained: leading an honour above the nine denies the card
 directly above it (from touching honours you lead the top one). The bot obeys
@@ -406,51 +409,117 @@ class PlaySession:
             deal.play(ep_card(cid), from_hand=False)
         return deal
 
+    @staticmethod
+    def _norm_plays(plays):
+        return [(int(s), str_to_card(c) if isinstance(c, str) else int(c))
+                for s, c in plays]
+
+    def _ensure_pool(self, info):
+        target = self.pool_size()
+        if len(self.pool) < self._min_pool(info["n_done"]):
+            self._topup(target - len(self.pool), info)
+
+    def _legal_for(self, info, to_act):
+        """The acting seat's still-held cards and its legal choices."""
+        known_rem = {s: set(self.known_cards[s]) - set(info["played_by_seat"][s])
+                     for s in self.known_seats}
+        rem_act = known_rem[to_act]
+        legal = self._legal_cards(rem_act, info["cur"])
+        is_defender = to_act not in (self.declarer, self.dummy)
+        legal = self._apply_lead_rule(legal, rem_act, is_defender,
+                                      len(info["cur"]) == 0)
+        if not legal:
+            legal = self._legal_cards(rem_act, info["cur"]) or set(rem_act)
+        return known_rem, legal
+
+    def _pool_rank(self, info, known_rem, legal):
+        """Expected double-dummy tricks per legal card, averaged over the
+        candidate pool -- the ranking the normal bot picks by."""
+        deals = []
+        for cand in self.pool:
+            remaining = dict(known_rem)
+            remaining.update(cand.hands)
+            deals.append(self._build_deal(remaining, info["leader"], info["cur"]))
+        solved = solve_all_boards(deals, SolveMode.Default)
+        total = {c: 0 for c in legal}
+        count = {c: 0 for c in legal}
+        for board in solved:
+            for card, tricks in board:
+                cid = ep_to_card(card)
+                if cid in total:
+                    total[cid] += tricks
+                    count[cid] += 1
+        return {c: (total[c] / count[c] if count[c] else 0.0) for c in legal}
+
+    @staticmethod
+    def _best_ranked(avg, cards):
+        best, best_key = None, None
+        for c in sorted(cards):
+            key = (-avg[c], c)
+            if best_key is None or key < best_key:
+                best_key, best = key, c
+        return best
+
+    def _dd_safe(self, info, legal, true_hands):
+        """The legal cards that cost no trick double-dummy on the REAL deal.
+
+        `true_hands` maps every seat to its whole original 'S.H.D.C' hand (the
+        drill server knows all four hands); the returned set holds the cards
+        whose double-dummy trick count on the actual deal equals the best any
+        legal card achieves. Empty when the real deal cannot be solved.
+        """
+        try:
+            remaining = {s: set(str_to_cards(true_hands[s]).tolist())
+                         - set(info["played_by_seat"][s]) for s in range(4)}
+            deal = self._build_deal(remaining, info["leader"], info["cur"])
+            results = solve_board(deal, SolveMode.Default)
+        except Exception:
+            return set()
+        dd = {}
+        for card, tricks in results:
+            cid = ep_to_card(card)
+            if cid in legal:
+                dd[cid] = int(tricks)
+        if not dd:
+            return set()
+        best = max(dd.values())
+        return {c for c, t in dd.items() if t == best}
+
     def choose(self, plays, to_act):
         """Return the card id `to_act` should play given the play so far."""
-        plays = [(int(s), str_to_card(c) if isinstance(c, str) else int(c))
-                 for s, c in plays]
+        plays = self._norm_plays(plays)
         self._process_new_plays(plays)
         info = self._analyze(plays)
         to_act = int(to_act)
         with self._lock:
-            target = self.pool_size()
-            if len(self.pool) < self._min_pool(info["n_done"]):
-                self._topup(target - len(self.pool), info)
-
-            known_rem = {s: set(self.known_cards[s]) - set(info["played_by_seat"][s])
-                         for s in self.known_seats}
-            rem_act = known_rem[to_act]
-            legal = self._legal_cards(rem_act, info["cur"])
-            is_defender = to_act not in (self.declarer, self.dummy)
-            legal = self._apply_lead_rule(legal, rem_act, is_defender,
-                                          len(info["cur"]) == 0)
-            if not legal:
-                legal = self._legal_cards(rem_act, info["cur"]) or set(rem_act)
+            self._ensure_pool(info)
+            known_rem, legal = self._legal_for(info, to_act)
             if not self.pool:
                 return min(legal)
+            avg = self._pool_rank(info, known_rem, legal)
+            return self._best_ranked(avg, legal)
 
-            deals = []
-            for cand in self.pool:
-                remaining = dict(known_rem)
-                remaining.update(cand.hands)
-                deals.append(self._build_deal(remaining, info["leader"], info["cur"]))
-            solved = solve_all_boards(deals, SolveMode.Default)
-            total = {c: 0 for c in legal}
-            count = {c: 0 for c in legal}
-            for board in solved:
-                for card, tricks in board:
-                    cid = ep_to_card(card)
-                    if cid in total:
-                        total[cid] += tricks
-                        count[cid] += 1
-            best, best_key = None, None
-            for c in sorted(legal):
-                avg = total[c] / count[c] if count[c] else 0.0
-                key = (-avg, c)
-                if best_key is None or key < best_key:
-                    best_key, best = key, c
-            return best
+    def choose_drill(self, plays, to_act, true_hands):
+        """Drill variant of `choose`, for the card problems' bots-finish.
+
+        Options are ranked exactly like the normal bot ranks them -- with only
+        the information a real game gives (the pool of auction-consistent
+        hidden hands) -- but the card actually returned is the best-ranked one
+        that does not give away a trick double-dummy on the real deal, so the
+        drill bots defend/declare honestly yet never sabotage the problem.
+        """
+        plays = self._norm_plays(plays)
+        self._process_new_plays(plays)
+        info = self._analyze(plays)
+        to_act = int(to_act)
+        with self._lock:
+            self._ensure_pool(info)
+            known_rem, legal = self._legal_for(info, to_act)
+            safe = self._dd_safe(info, legal, true_hands) or set(legal)
+            if not self.pool:
+                return min(safe)
+            avg = self._pool_rank(info, known_rem, legal)
+            return self._best_ranked(avg, safe)
 
 
 class PlayBot:

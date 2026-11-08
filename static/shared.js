@@ -768,11 +768,6 @@ function renderLayout(options) {
             <span class="material-symbols-outlined text-sm">casino</span>
             New Board
         </button>
-    ` : mode === 'index' ? `
-        <button onclick="createTree(); closeSidebar();" class="mt-5 w-full py-2.5 bg-gradient-to-b from-gold-light to-gold text-on-gold rounded-xl font-label text-xs font-bold tracking-widest uppercase flex items-center justify-center gap-2 shadow-[0_3px_0_rgba(0,0,0,0.45)] hover:brightness-105 transition-all active:translate-y-0.5 active:shadow-none">
-            <span class="material-symbols-outlined text-sm">add</span>
-            New Collection
-        </button>
     ` : mode === 'edit' ? `
         <button onclick="addNewRoot(); closeSidebar();" data-edit-required style="display:none;" class="mt-5 w-full py-2.5 bg-gradient-to-b from-gold-light to-gold text-on-gold rounded-xl font-label text-xs font-bold tracking-widest uppercase flex items-center justify-center gap-2 shadow-[0_3px_0_rgba(0,0,0,0.45)] hover:brightness-105 transition-all active:translate-y-0.5 active:shadow-none">
             <span class="material-symbols-outlined text-sm">add</span>

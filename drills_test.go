@@ -840,8 +840,9 @@ func TestDrillLoadFromDisk(t *testing.T) {
 // ---- Bot-finished lines ----
 
 type fakePlayBot struct {
-	calls int32
-	drops int32
+	calls   int32
+	drops   int32
+	ddHands int32
 }
 
 // newFakePlayServer mimics the bidding-dt sidecar's /play/choose with a
@@ -855,13 +856,17 @@ func newFakePlayServer(t *testing.T) (*httptest.Server, *fakePlayBot) {
 		case "/play/choose":
 			atomic.AddInt32(&fb.calls, 1)
 			var body struct {
-				Known map[string]string `json:"known"`
-				Plays [][]any           `json:"plays"`
-				ToAct int               `json:"to_act"`
+				Known   map[string]string `json:"known"`
+				Plays   [][]any           `json:"plays"`
+				ToAct   int               `json:"to_act"`
+				DDHands []string          `json:"dd_hands"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				http.Error(w, err.Error(), 400)
 				return
+			}
+			if len(body.DDHands) == 4 {
+				atomic.AddInt32(&fb.ddHands, 1)
 			}
 			played := map[string]bool{}
 			for _, pl := range body.Plays {
@@ -995,6 +1000,11 @@ func TestDrillBotFinish(t *testing.T) {
 	}
 	if atomic.LoadInt32(&fb.drops) == 0 {
 		t.Fatal("the sidecar sessions were never dropped")
+	}
+	// every drills bot call must carry the real deal so the sidecar can keep
+	// its picks double-dummy safe
+	if n, dd := atomic.LoadInt32(&fb.calls), atomic.LoadInt32(&fb.ddHands); n == 0 || n != dd {
+		t.Fatalf("expected dd_hands on every /play/choose call: %d/%d", dd, n)
 	}
 
 	// the same deterministic bots replayed with the target set to what the

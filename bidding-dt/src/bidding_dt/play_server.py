@@ -21,7 +21,13 @@ Endpoints (all JSON):
                        {"session": stable per-bot key, "dealer", "vuln",
                         "calls": [...], "known": {seat: 'S.H.D.C'},
                         "plays": [[seat, "AS"], ...], "to_act": seat,
-                        optional "pool"/"min_floor"}
+                        optional "pool"/"min_floor",
+                        optional "dd_hands": [N,E,S,W 'S.H.D.C']}
+                     "dd_hands" is the drills mode: it carries the REAL deal
+                     (the card-problems server scripts all four hands). The
+                     bot still ranks its options with only the information a
+                     normal game gives, but returns the best-ranked card that
+                     costs no trick double-dummy on the real deal.
     POST /play/result -> {"contract", "tricks", "dd_tricks", "par_ns",
                           "score_ns", "imps"}  score the *actually played*
                      tricks vs double-dummy par. Body: /score body + "tricks".
@@ -62,7 +68,7 @@ except ImportError as e:  # torch / endplay / numpy not installed
         "   copy a checkpoint first: runs/ is gitignored)"
     ) from e
 
-from .data.hands import encode_hand
+from .data.hands import encode_hand, str_to_cards
 from .data.legal import legal_mask
 from .data.parse import MAX_CALLS
 from .data.vocab import CALL_PAD, DENOMS, VOCAB_SIZE, call_to_id, id_to_call
@@ -273,6 +279,40 @@ class Service:
                 raise ServiceError(str(e))
         return out
 
+    @staticmethod
+    def _dd_hands(body: dict, known: dict[int, str],
+                  plays: list[tuple[int, int]]) -> list[str] | None:
+        """Validate the optional drills-mode real deal ([N,E,S,W] hands).
+
+        The real deal must agree with everything the bot already sees: the
+        `known` hands and every card actually played. Returns None when the
+        request is a plain (non-drill) one.
+        """
+        raw = body.get("dd_hands")
+        if raw is None:
+            return None
+        if not isinstance(raw, list) or len(raw) != 4:
+            raise ServiceError("dd_hands must be 4 'S.H.D.C' strings (N,E,S,W)")
+        hands = []
+        for h in raw:
+            if not isinstance(h, str):
+                raise ServiceError("dd_hands must be strings")
+            try:
+                encode_hand(h)
+            except ValueError as e:
+                raise ServiceError(str(e))
+            hands.append(str(h))
+        held = [set(str_to_cards(h).tolist()) for h in hands]
+        for seat, h in known.items():
+            if held[seat] != set(str_to_cards(h).tolist()):
+                raise ServiceError(f"dd_hands[{seat}] disagrees with known[{seat}]")
+        for seat, card in plays:
+            if card not in held[seat]:
+                raise ServiceError("dd_hands disagree with plays: seat "
+                                   f"{seat} played a card it does not hold")
+            held[seat].discard(card)
+        return hands
+
     def play_choose(self, body: dict) -> dict:
         dealer, vuln, ids = self._auction(body)
         contract = contract_from_auction(dealer, ids)
@@ -296,13 +336,21 @@ class Service:
         if isinstance(floor, int) and floor >= 0:
             cfg = PlayConfig(**{**cfg.__dict__, "min_floor": floor})
 
+        dd_hands = self._dd_hands(body, known, plays)
+
         def factory():
             return PlaySession(session, dealer, vuln, ids, contract.declarer,
                                contract.denom, known, self.hand_model,
                                self.hand_device, cfg,
                                rng=np.random.default_rng())
         sess = self.play_bot.get_session(session, factory)
-        card = sess.choose(plays, to_act)
+        if dd_hands is None:
+            card = sess.choose(plays, to_act)
+        else:
+            # drills mode: rank the options with only the information a real
+            # game gives, but never give away a trick on the real deal
+            card = sess.choose_drill(plays, to_act,
+                                     {s: dd_hands[s] for s in range(4)})
         return {"seat": int(to_act), "card": card_to_str(int(card)),
                 "pool": len(sess.pool)}
 

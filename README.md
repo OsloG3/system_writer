@@ -43,8 +43,11 @@ Author fully-scripted **card-play problems** and practise the community library.
 Every rule (auction legality, follow-suit, trick winners, claim bounds,
 equivalent-card soundness) is checked locally in `drills.go`, and problems
 persist to `data/drills/<id>.json`. Only the optional **bots-finish** ending
-calls the bidding-dt sidecar (`BIDDING_DT_URL`), reusing the same `/play/choose`
-card-play bot as Play bridge. Two tabs:
+calls the bidding-dt sidecar (`BIDDING_DT_URL`), on the same `/play/choose`
+card-play bot as Play bridge but in a drills variant: it ranks its options with
+only the information a real game gives, then takes the best-ranked card that
+gives away no trick double-dummy on the scripted deal, so the bots never
+sabotage the problem. Two tabs:
 
 - **Create** — build a problem in a five-step wizard: setup (optional title,
   difficulty 1–5 ★, dealer, vulnerability, and whether it tests **Declarer** or
@@ -87,6 +90,14 @@ card-play bot as Play bridge. Two tabs:
     The result is always shown as the
     contract and its margin (e.g. **4♠−1**, **3NT=**, **4♥+2**) — no score, no
     IMPs, no par. Authors can edit or delete their own problems.
+  - **PBN import/export** — the setup step can **upload a `.pbn` file**: its
+    deal, auction and card play become line 1 (the play is checked against the
+    deal card by card and stops at the first illegal card or claim marker), and
+    the problem is then edited exactly like a hand-authored one — hero cards
+    simply start without hints. Any problem can be **downloaded as `.pbn`**
+    from the wizard header or its library row: the file carries the deal, the
+    auction and line 1's card play, with a claim/bot ending expressed as a
+    `[Result]` tag plus a trailing comment.
 - **Practice** — filter the library of everyone's problems by role, author and
   difficulty, then play one. The library and the pre-play briefing deliberately
   do **not** reveal how a hand ends (claim / bots / play-out) — that is part of
@@ -114,11 +125,17 @@ card-play bot as Play bridge. Two tabs:
 - **Played flag** — the first time you finish a problem it is stamped as played
   (`played` map on the problem file, server-side only like ratings), and the
   lobby can filter **Played / Unplayed**.
-- **Archives** — your own named collections of problems
-  (`data/drill_archives/<id>.json`, managed via `/api/drill-archives*`). A
-  problem can sit in any number of archives and always stays a normal library
-  problem; selecting an archive narrows the library (and the other filters and
-  the search box then search inside it). Members are added/removed with
+- **Archives** — public named collections of problems
+  (`data/drill_archives/<id>.json`, managed via `/api/drill-archives*`). Like
+  the problems themselves, every archive is visible to everyone (the list
+  endpoint returns them all, with their owner), but only its owner can rename
+  it, delete it or change its membership. A problem can sit in any number of
+  archives and always stays a normal library problem. Selecting an archive
+  normally narrows the library to its problems (the other filters and the
+  search box then search inside it); an archive you own also offers a
+  **Whole library** scope, where you browse the full library with the usual
+  filters and tap a row's bookmark to add that problem — the bookmark removes
+  it again while browsing the archive. Members are added/removed with
   `POST /api/drill-archives/{id}/drills` (`{drillId, action: add|remove}`);
   deleting a problem sweeps it from every archive.
 

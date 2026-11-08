@@ -14,11 +14,13 @@ import (
 
 // ---- Drill archives ----
 //
-// An archive is one user's named collection of card problems, stored per
-// archive in data/drill_archives/<id>.json. Membership is by problem ID, so
-// a problem can sit in any number of archives (and in several users') while
-// staying a normal library problem: archives only ever narrow the library
-// view, they never hide or move a problem.
+// An archive is a public named collection of card problems, stored per
+// archive in data/drill_archives/<id>.json. Archives are public like the
+// problems themselves: everyone sees and browses every archive, while only
+// its owner can rename it, delete it or change its membership. Membership is
+// by problem ID, so a problem can sit in any number of archives (and in
+// several users') while staying a normal library problem: archives only ever
+// narrow the library view, they never hide or move a problem.
 
 const drillArchiveNameMax = 80
 
@@ -106,28 +108,27 @@ func cleanArchiveName(raw string) (string, bool) {
 
 // ---- Handlers ----
 
-// GET /api/drill-archives - the caller's archives with their member IDs.
+// GET /api/drill-archives - every archive with its owner and member IDs.
+// Archives are public, like the problems themselves; only managing one
+// (rename, delete, membership) is reserved to its owner.
 func handleDrillArchivesList(w http.ResponseWriter, r *http.Request) {
-	username := requireLogin(w, r)
-	if username == "" {
+	if requireLogin(w, r) == "" {
 		return
 	}
 	drillArchMu.Lock()
 	type info struct {
 		ID       string   `json:"id"`
 		Name     string   `json:"name"`
+		Owner    string   `json:"owner"`
 		DrillIDs []string `json:"drillIds"`
 		Count    int      `json:"count"`
 		Updated  string   `json:"updated"`
 	}
 	list := []info{}
 	for _, a := range drillArchives {
-		if a.Owner != username {
-			continue
-		}
 		ids := append([]string(nil), a.DrillIDs...)
 		slices.Sort(ids)
-		list = append(list, info{ID: a.ID, Name: a.Name, DrillIDs: ids, Count: len(ids), Updated: a.Updated})
+		list = append(list, info{ID: a.ID, Name: a.Name, Owner: a.Owner, DrillIDs: ids, Count: len(ids), Updated: a.Updated})
 	}
 	drillArchMu.Unlock()
 	slices.SortFunc(list, func(x, y info) int { return strings.Compare(x.Name, y.Name) })
