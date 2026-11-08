@@ -2937,11 +2937,12 @@
                 const bm = archIsMine(arch)
                     ? `<button class="dr-btn ghost" data-arch-toggle="${p.id}" title="${inSelectedArchive(p.id) ? "Remove from" : "Add to"} ${escapeHtml(arch.name)}"><span class="material-symbols-outlined" style="${inSelectedArchive(p.id) ? "font-variation-settings:'FILL' 1;color:#cbb3ff" : ""}">${inSelectedArchive(p.id) ? "bookmark" : "bookmark_border"}</span></button>`
                     : "";
+                const dlBtn = `<button class="dr-btn ghost" data-dl="${p.id}" title="Download as .pbn (Line 1)"><span class="material-symbols-outlined">download</span></button>`;
                 const right = mine
-                    ? `<button class="dr-btn ghost" data-dl="${p.id}" title="Download as .pbn (Line 1)"><span class="material-symbols-outlined">download</span></button>
+                    ? `${dlBtn}
                        <button class="dr-btn ghost" data-edit="${p.id}"><span class="material-symbols-outlined">edit</span>Edit</button>
                        <button class="dr-btn danger" data-del="${p.id}"><span class="material-symbols-outlined">delete</span></button>`
-                    : `<button class="dr-btn gold" data-practice="${p.id}"><span class="material-symbols-outlined">playing_cards</span>Practise</button>`;
+                    : `${dlBtn}<button class="dr-btn gold" data-practice="${p.id}"><span class="material-symbols-outlined">playing_cards</span>Practise</button>`;
                 return `<div class="dr-row${p.played ? " played" : ""}"${p.played ? ` title="You finished this problem"` : ""}>
                     <div class="dr-title">${escapeHtml(title)}</div>
                     <div class="dr-actions">${bm}${right}</div>
@@ -3515,24 +3516,49 @@
                 }
                 return { calls, used: i };
             }
-            // play tokens -> scripted plays, validated against the deal (a seat
-            // must hold the card and follow suit); stops at the first token
-            // that is not a legal next play (claim marker, junk, or a revoke)
+            // play tokens -> scripted plays, validated against the deal. The
+            // tokens are grouped into tricks and each card is assigned to the
+            // seat that still holds it (unique per deal), then the trick is
+            // re-ordered clockwise from its actual leader: besides the PBN
+            // standard (every trick listed leader-first) this also reads the
+            // exports that list every trick from one fixed seat (bridgedom).
+            // Parsing stops at the first token that cannot be placed (claim
+            // marker, junk, or a revoke), keeping the tricks read so far.
             function pbnPlays(toks, hands, leader, trump) {
                 const rem = hands.map((h) => new Set(handToCards(h)));
                 const plays = [];
-                let seat = leader;
-                for (const tok of toks) {
-                    if (plays.length === 52) break;
-                    const card = tok === "-" ? null : pbnCard(tok);
-                    if (!card || !rem[seat].has(card)) break;
-                    if (plays.length % 4) {
-                        const led = plays[Math.floor(plays.length / 4) * 4].card[1];
-                        if (card[1] !== led && [...rem[seat]].some((c) => c[1] === led)) break;
+                let next = leader;   // the leader of the trick being read
+                let i = 0;
+                while (i < toks.length && plays.length < 52) {
+                    const got = [];
+                    let stop = false;
+                    while (i < toks.length && got.length < 4) {
+                        const card = toks[i] === "-" ? null : pbnCard(toks[i]);
+                        if (!card) { stop = true; break; }
+                        const seat = [0, 1, 2, 3].find((s) => rem[s].has(card));
+                        if (seat === undefined || got.some((t) => t.seat === seat)) { stop = true; break; }
+                        got.push({ seat, card, msg: "", alts: [] });
+                        i++;
                     }
-                    rem[seat].delete(card);
-                    plays.push({ seat, card, msg: "", alts: [] });
-                    seat = plays.length % 4 === 0 ? trickWinnerJS(plays.slice(-4), trump) : (seat + 1) % 4;
+                    if (!got.length) break;
+                    // re-order clockwise from the expected leader; when the
+                    // group is incomplete (junk token, end of file) keep the
+                    // longest valid clockwise prefix and stop there
+                    const trick = [];
+                    for (let k = 0; k < got.length; k++) {
+                        const t = got.find((x) => x.seat === (next + k) % 4);
+                        if (!t) break;
+                        trick.push(t);
+                    }
+                    if (!trick.length) break;
+                    // follow suit against the leader's card
+                    const led = trick[0].card[1];
+                    if (trick.some((t) => t.card[1] !== led &&
+                        [...rem[t.seat]].some((c) => c[1] === led))) break;
+                    for (const t of trick) { rem[t.seat].delete(t.card); plays.push(t); }
+                    if (trick.length < 4) break;   // a partial trick ends the import
+                    next = trickWinnerJS(trick, trump);
+                    if (stop) break;
                 }
                 return plays;
             }
@@ -3608,7 +3634,9 @@
                 if (c === "XX") return "Redouble";
                 return isBid(c) ? c[0] + (c[1] === "N" ? "NT" : c[1]) : c;
             }
-            function pbnCardTok(c) { return c[1] + (c[0] === "T" ? "10" : c[0]); }
+            // PBN play record: suit+rank, with the ten written 'T' (never
+            // "10"), exactly like the ranks in the exported [Deal] hands
+            function pbnCardTok(c) { return c[1] + c[0]; }
             function pbnChunk(list) {
                 const out = [];
                 for (let i = 0; i < list.length; i += 4) out.push(list.slice(i, i + 4).join(" "));
@@ -3674,11 +3702,13 @@
                 }));
                 showToast("Line 1 downloaded as .pbn");
             }
+            // download any library problem as PBN: the server renders it (the
+            // export is public like practising, and it never carries hints)
             async function problemDownloadPBN(id) {
                 try {
-                    const r = await api("GET", `/api/drills/${id}`);
-                    if (!r.ok) { showToast((r.data && r.data.error) || "Cannot open the problem", true); return; }
-                    downloadText(pbnFileName(r.data), buildPBN(r.data));
+                    const r = await api("GET", `/api/drills/${id}/pbn`);
+                    if (!r.ok) { showToast((r.data && r.data.error) || "Cannot export the problem", true); return; }
+                    downloadText((r.data && r.data.filename) || (id + ".pbn"), (r.data && r.data.pbn) || "");
                     showToast("Line 1 downloaded as .pbn");
                 } catch (e) { /* auth handled by api() */ }
             }

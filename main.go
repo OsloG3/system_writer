@@ -214,6 +214,7 @@ func main() {
 	http.HandleFunc("GET /api/drills", handleDrillsList)
 	http.HandleFunc("POST /api/drills", handleDrillCreate)
 	http.HandleFunc("GET /api/drills/{id}", handleDrillGet)
+	http.HandleFunc("GET /api/drills/{id}/pbn", handleDrillPBN)
 	http.HandleFunc("PUT /api/drills/{id}", handleDrillPut)
 	http.HandleFunc("DELETE /api/drills/{id}", handleDrillDelete)
 	http.HandleFunc("POST /api/drills/{id}/rate", handleDrillRate)

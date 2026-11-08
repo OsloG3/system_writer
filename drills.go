@@ -1386,6 +1386,159 @@ func handleDrillGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, p)
 }
 
+// ---- PBN export ----
+
+// drillPBNFilename derives a download name from the problem's title (or ID).
+func drillPBNFilename(p *DrillProblem) string {
+	var b strings.Builder
+	prevDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(p.Title)) {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			prevDash = false
+		case !prevDash && b.Len() > 0:
+			b.WriteByte('-')
+			prevDash = true
+		}
+	}
+	slug := strings.TrimRight(b.String(), "-")
+	if len(slug) > 40 {
+		slug = strings.TrimRight(slug[:40], "-")
+	}
+	if slug == "" {
+		return p.ID + ".pbn"
+	}
+	return slug + ".pbn"
+}
+
+// pbnWords writes tokens four per line, as PBN move sections do.
+func pbnWords(b *strings.Builder, toks []string) {
+	for i := 0; i < len(toks); i += 4 {
+		b.WriteString(strings.Join(toks[i:min(i+4, len(toks))], " ") + "\n")
+	}
+}
+
+// buildDrillPBN renders a problem as PBN: the deal, the auction and line 1's
+// card play. Play tokens are suit+rank with the ten as 'T' ("ST"), exactly
+// like the ranks in the [Deal] tag. A claim / bot ending cannot be expressed
+// in PBN, so it becomes a trailing brace comment and [Result] carries the
+// declarer's trick count. Hints, comments and the explanation never travel:
+// the export holds only the deal, the auction and the script, which makes it
+// safe to offer to every user, not just the author.
+func buildDrillPBN(p *DrillProblem) (string, error) {
+	contract := contractFromCalls(p.Dealer, p.Calls)
+	if contract == nil {
+		return "", errors.New("the problem's auction has no contract")
+	}
+	if len(p.Lines) == 0 {
+		return "", errors.New("the problem has no line to export")
+	}
+	l := p.Lines[0]
+	title := strings.TrimSpace(p.Title)
+	if title == "" {
+		title = "System Writer drill"
+	}
+	title = strings.NewReplacer(`"`, "'", "[", "", "]", "").Replace(title)
+	date := time.Now().UTC().Format("2006.01.02")
+	if d, err := time.Parse(time.RFC3339, p.Created); err == nil {
+		date = d.Format("2006.01.02")
+	}
+	pen := [3]string{"", "X", "XX"}[min(contract.Penalty, 2)]
+	denom := contract.Denom
+	if denom == "N" {
+		denom = "NT"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "[Event %q]\n", title)
+	b.WriteString("[Site \"-\"]\n")
+	fmt.Fprintf(&b, "[Date %q]\n", date)
+	b.WriteString("[Round \"-\"]\n")
+	b.WriteString("[Board \"1\"]\n")
+	fmt.Fprintf(&b, "[Dealer %q]\n", seatName(p.Dealer))
+	fmt.Fprintf(&b, "[Vulnerable %q]\n", []string{"None", "NS", "EW", "All"}[p.Vuln])
+	fmt.Fprintf(&b, "[Deal %q]\n", "N:"+strings.Join(p.Hands[:], " "))
+	fmt.Fprintf(&b, "[Declarer %q]\n", seatName(contract.Declarer))
+	fmt.Fprintf(&b, "[Contract %q]\n", fmt.Sprintf("%d%s%s", contract.Level, denom, pen))
+	tricks := -1
+	switch {
+	case l.Claim != nil:
+		tricks = l.Claim.Tricks
+	case len(l.Plays) == 52:
+		if _, dt, err := simulateLine(p, contract, l.Plays); err == nil {
+			tricks = dt
+		}
+	}
+	if tricks >= 0 {
+		fmt.Fprintf(&b, "[Result %q]\n", strconv.Itoa(tricks))
+	}
+	fmt.Fprintf(&b, "\n[Auction %q]\n", seatName(p.Dealer))
+	calls := make([]string, 0, len(p.Calls))
+	for _, raw := range p.Calls {
+		switch c := normalizeCall(raw); c {
+		case "P":
+			calls = append(calls, "Pass")
+		case "X":
+			calls = append(calls, "Double")
+		case "XX":
+			calls = append(calls, "Redouble")
+		default:
+			d := c[1:]
+			if d == "N" {
+				d = "NT"
+			}
+			calls = append(calls, c[:1]+d)
+		}
+	}
+	pbnWords(&b, calls)
+	if len(l.Plays) > 0 {
+		fmt.Fprintf(&b, "\n[Play %q]\n", seatName((contract.Declarer+1)%4))
+		toks := make([]string, 0, len(l.Plays))
+		for _, dp := range l.Plays {
+			c := normalizeCard(dp.Card)
+			if c == "" {
+				return "", fmt.Errorf("line 1 holds an invalid card %q", dp.Card)
+			}
+			toks = append(toks, string(c[1])+string(c[0])) // suit+rank, ten stays 'T'
+		}
+		pbnWords(&b, toks)
+		switch {
+		case l.Claim != nil:
+			fmt.Fprintf(&b, "{%s claims %d tricks}\n",
+				[]string{"North", "East", "South", "West"}[contract.Declarer], l.Claim.Tricks)
+		case l.Bot != nil:
+			b.WriteString("{the bots finish the hand}\n")
+		}
+	}
+	return b.String(), nil
+}
+
+// GET /api/drills/{id}/pbn - download line 1 of a problem as a PBN file.
+// Public like practising (any logged-in user, not just the author): the
+// export is built server-side from the deal, auction and script only, so it
+// never leaks the hero hints or the explanation.
+func handleDrillPBN(w http.ResponseWriter, r *http.Request) {
+	if requireLogin(w, r) == "" {
+		return
+	}
+	id := r.PathValue("id")
+	if !validID(id) {
+		jsonError(w, http.StatusBadRequest, "invalid problem ID")
+		return
+	}
+	p := lookupDrill(id)
+	if p == nil {
+		jsonError(w, http.StatusNotFound, "no such problem")
+		return
+	}
+	pbn, err := buildDrillPBN(p)
+	if err != nil {
+		jsonError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"filename": drillPBNFilename(p), "pbn": pbn})
+}
+
 // decodeDrillBody reads and validates a create/edit payload.
 func decodeDrillBody(w http.ResponseWriter, r *http.Request) (*DrillProblem, *PlayContract, bool) {
 	limitBody(w, r, maxBodyAuth)

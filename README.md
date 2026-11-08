@@ -91,13 +91,20 @@ sabotage the problem. Two tabs:
     contract and its margin (e.g. **4♠−1**, **3NT=**, **4♥+2**) — no score, no
     IMPs, no par. Authors can edit or delete their own problems.
   - **PBN import/export** — the setup step can **upload a `.pbn` file**: its
-    deal, auction and card play become line 1 (the play is checked against the
-    deal card by card and stops at the first illegal card or claim marker), and
-    the problem is then edited exactly like a hand-authored one — hero cards
-    simply start without hints. Any problem can be **downloaded as `.pbn`**
-    from the wizard header or its library row: the file carries the deal, the
-    auction and line 1's card play, with a claim/bot ending expressed as a
-    `[Result]` tag plus a trailing comment.
+    deal, auction and card play become line 1, and the problem is then edited
+    exactly like a hand-authored one — hero cards simply start without hints.
+    The play is checked against the deal card by card and stops at the first
+    illegal card or claim marker; both the standard leader-first play record
+    and exports that list every trick from one fixed seat (e.g. bridgedom)
+    are read, since each card is matched to the seat that holds it and every
+    trick is re-ordered into the true playing order. Any problem can be **downloaded as `.pbn`** by
+    **every** user, not just its author: the library rows and the wizard header
+    export line 1 (`GET /api/drills/{id}/pbn` renders it server-side; the
+    wizard exports the current draft itself). The file carries the deal, the
+    auction and line 1's card play — play tokens are suit+rank with the ten as
+    `T` (`ST`), exactly like the ranks in the `[Deal]` hands — and a claim/bot
+    ending becomes a `[Result]` tag plus a trailing comment. Hints, comments
+    and the explanation never travel with the export.
 - **Practice** — filter the library of everyone's problems by role, author and
   difficulty, then play one. The library and the pre-play briefing deliberately
   do **not** reveal how a hand ends (claim / bots / play-out) — that is part of

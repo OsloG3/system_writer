@@ -1243,3 +1243,93 @@ func TestDrillRating(t *testing.T) {
 		t.Fatalf("ratings lost on edit: %+v", p.Ratings)
 	}
 }
+
+func TestDrillPBN(t *testing.T) {
+	drillTestEnv(t)
+	alice, bob := drillLogin(t, "alice"), drillLogin(t, "bob")
+
+	// a problem whose second trick contains a ten: the PBN play record must
+	// write it 'T', never "10", like the ranks in the [Deal] hands
+	p := drillProblem()
+	p.Title = "Ten check"
+	p.Lines[0].Plays = append(p.Lines[0].Plays,
+		DrillPlay{Seat: 3, Card: "QD"}, DrillPlay{Seat: 0, Card: "2D"},
+		DrillPlay{Seat: 1, Card: "8D"}, DrillPlay{Seat: 2, Card: "TD"})
+	body, _ := json.Marshal(p)
+	rr := httptest.NewRecorder()
+	handleDrillCreate(rr, drillReq(t, "POST", "/api/drills", string(body), alice))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", rr.Code, rr.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	json.Unmarshal(rr.Body.Bytes(), &created)
+	id := created.ID
+
+	// logged out there is no export
+	rr = httptest.NewRecorder()
+	req := drillReq(t, "GET", "/api/drills/"+id+"/pbn", "", "")
+	req.SetPathValue("id", id)
+	handleDrillPBN(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("logged out: %d", rr.Code)
+	}
+
+	// any logged-in user can export: the PBN is public like practising
+	rr = httptest.NewRecorder()
+	req = drillReq(t, "GET", "/api/drills/"+id+"/pbn", "", bob)
+	req.SetPathValue("id", id)
+	handleDrillPBN(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("bob export: %d %s", rr.Code, rr.Body.String())
+	}
+	var out struct {
+		Filename string `json:"filename"`
+		PBN      string `json:"pbn"`
+	}
+	json.Unmarshal(rr.Body.Bytes(), &out)
+	if out.Filename != "ten-check.pbn" {
+		t.Fatalf("filename: %q", out.Filename)
+	}
+	for _, want := range []string{
+		`[Event "Ten check"]`,
+		`[Dealer "N"]`,
+		`[Vulnerable "None"]`,
+		`[Deal "N:AT7.KT943.A42.K8 J6543.75.K8.AQJT K982.AQ6.T73.952 Q.J82.QJ965.7643"]`,
+		`[Declarer "N"]`,
+		`[Contract "4H"]`,
+		`[Result "10"]`,
+		`[Auction "N"]`,
+		"1H Pass 4H Pass\nPass Pass",
+		`[Play "E"]`,
+		"S5 S2 SQ S7",
+		"DQ D2 D8 DT",
+		"{North claims 10 tricks}",
+	} {
+		if !strings.Contains(out.PBN, want) {
+			t.Fatalf("PBN missing %q:\n%s", want, out.PBN)
+		}
+	}
+	// tens are 'T' in the play record, never "10" (the [Result] tag may be 10)
+	for _, bad := range []string{"S10", "H10", "D10", "C10"} {
+		if strings.Contains(out.PBN, bad) {
+			t.Fatalf("play record wrote a ten as %q:\n%s", bad, out.PBN)
+		}
+	}
+	// hints and comments never travel with the export
+	for _, leak := range []string{"the obvious lead", "Standard opening", "Udca"} {
+		if strings.Contains(out.PBN, leak) {
+			t.Fatalf("PBN leaks %q", leak)
+		}
+	}
+
+	// an unknown problem is refused
+	rr = httptest.NewRecorder()
+	req = drillReq(t, "GET", "/api/drills/deadbeefdeadbeef/pbn", "", bob)
+	req.SetPathValue("id", "deadbeefdeadbeef")
+	handleDrillPBN(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("unknown problem: %d", rr.Code)
+	}
+}

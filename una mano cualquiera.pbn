@@ -1,0 +1,39 @@
+% PBN 2.1
+% EXPORT
+%Content-type: text/x-pbn; charset=ISO-8859-1
+%Creator: Bridgedom (https://bridgedom.com)
+
+[Event "una mano cualquiera"]
+[Site "bridgedom.com"]
+[Date ""]
+[Board "1"]
+[West ""]
+[North ""]
+[East ""]
+[South ""]
+[Dealer "N"]
+[Vulnerable "None"]
+[Deal "N:9865.A83.JT632.8 T432.6.Q984.A963 .KJT7.AK7.QJ7542 AKQJ7.Q9542.5.KT"]
+[Scoring ""]
+[Declarer "N"]
+[Contract "5DX"]
+[Result ""]
+[Auction "N"]
+Pass Pass 1C 2C
+Pass 4S X Pass
+5D Pass Pass X
+Pass Pass Pass
+[Play "E"]
+C3 C2 CT C8
+DQ DA D5 DT
+C6 C4 CK D2
+H6 HK H2 H3
+CA CQ S7 S5
+C9 CJ SJ S6
+D8 C7 H4 S8
+S3 D7 SQ S9
+D4 DK H5 D3
+D9 HJ HQ HA
+S2 C5 SK D6
+S4 HT SA DJ
+ST H7 H9 H8
