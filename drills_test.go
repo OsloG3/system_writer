@@ -1304,7 +1304,9 @@ func TestDrillPBN(t *testing.T) {
 		"1H Pass 4H Pass\nPass Pass",
 		`[Play "E"]`,
 		"S5 S2 SQ S7",
-		"DQ D2 D8 DT",
+		// trick 2 was led by West, but the record lists every trick in the
+		// fixed order: opener (E), dummy (S), other defender (W), declarer (N)
+		"D8 DT DQ D2",
 		"{North claims 10 tricks}",
 	} {
 		if !strings.Contains(out.PBN, want) {

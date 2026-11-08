@@ -3642,9 +3642,11 @@
                 for (let i = 0; i < list.length; i += 4) out.push(list.slice(i, i + 4).join(" "));
                 return out;
             }
-            // a problem -> PBN text: deal, auction and Line 1's card play. A
-            // claim / bot ending cannot be expressed in PBN, so it becomes a
-            // trailing brace comment (and [Result] carries the claim's tricks).
+            // a problem -> PBN text: deal, auction and Line 1's card play.
+            // Every trick is listed in the fixed notation order (opening
+            // leader, dummy, the other defender, declarer). A claim / bot
+            // ending cannot be expressed in PBN, so it becomes a trailing
+            // brace comment (and [Result] carries the claim's tricks).
             function buildPBN(prob) {
                 const calls = prob.calls || [];
                 const c = contractFromCalls(prob.dealer, calls);
@@ -3672,9 +3674,22 @@
                 L.push(`[Auction "${seatL(prob.dealer)}"]`);
                 L.push(...pbnChunk(calls.map(pbnCallTok)));
                 if (c && plays.length) {
+                    const opener = (c.declarer + 1) % 4;
                     L.push("");
-                    L.push(`[Play "${seatL((c.declarer + 1) % 4)}"]`);
-                    L.push(...pbnChunk(plays.map((p) => pbnCardTok(p.card))));
+                    L.push(`[Play "${seatL(opener)}"]`);
+                    // every trick is listed in the fixed notation order --
+                    // opening leader, dummy, the other defender, declarer
+                    // (the clockwise seat cycle from the opener), not from
+                    // the trick's own leader
+                    const toks = [];
+                    for (let i = 0; i < plays.length; i += 4) {
+                        const trick = plays.slice(i, i + 4);
+                        for (let j = 0; j < 4; j++) {
+                            const t = trick.find((x) => x.seat === (opener + j) % 4);
+                            if (t) toks.push(pbnCardTok(t.card));
+                        }
+                    }
+                    L.push(...pbnChunk(toks));
                     if (line.claim) L.push(`{${SEAT_NAMES[c.declarer]} claims ${line.claim.tricks} tricks}`);
                     else if (line.bot) L.push(`{the bots finish the hand}`);
                 }

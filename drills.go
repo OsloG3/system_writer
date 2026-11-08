@@ -1420,12 +1420,14 @@ func pbnWords(b *strings.Builder, toks []string) {
 }
 
 // buildDrillPBN renders a problem as PBN: the deal, the auction and line 1's
-// card play. Play tokens are suit+rank with the ten as 'T' ("ST"), exactly
-// like the ranks in the [Deal] tag. A claim / bot ending cannot be expressed
-// in PBN, so it becomes a trailing brace comment and [Result] carries the
-// declarer's trick count. Hints, comments and the explanation never travel:
-// the export holds only the deal, the auction and the script, which makes it
-// safe to offer to every user, not just the author.
+// card play. Every trick of the play record is listed in the fixed notation
+// order -- opening leader, dummy, the other defender, declarer (the clockwise
+// seat cycle from the opener) -- and play tokens are suit+rank with the ten
+// as 'T' ("ST"), exactly like the ranks in the [Deal] tag. A claim / bot
+// ending cannot be expressed in PBN, so it becomes a trailing brace comment
+// and [Result] carries the declarer's trick count. Hints, comments and the
+// explanation never travel: the export holds only the deal, the auction and
+// the script, which makes it safe to offer to every user, not just the author.
 func buildDrillPBN(p *DrillProblem) (string, error) {
 	contract := contractFromCalls(p.Dealer, p.Calls)
 	if contract == nil {
@@ -1492,14 +1494,26 @@ func buildDrillPBN(p *DrillProblem) (string, error) {
 	}
 	pbnWords(&b, calls)
 	if len(l.Plays) > 0 {
-		fmt.Fprintf(&b, "\n[Play %q]\n", seatName((contract.Declarer+1)%4))
+		opener := (contract.Declarer + 1) % 4
+		fmt.Fprintf(&b, "\n[Play %q]\n", seatName(opener))
+		// every trick is written in the fixed notation order -- opening
+		// leader, dummy, the other defender, declarer (the clockwise seat
+		// cycle from the opener) -- not starting from the trick's leader
 		toks := make([]string, 0, len(l.Plays))
-		for _, dp := range l.Plays {
-			c := normalizeCard(dp.Card)
-			if c == "" {
-				return "", fmt.Errorf("line 1 holds an invalid card %q", dp.Card)
+		for i := 0; i < len(l.Plays); i += 4 {
+			trick := l.Plays[i:min(i+4, len(l.Plays))]
+			for j := 0; j < 4; j++ {
+				for _, dp := range trick {
+					if dp.Seat != (opener+j)%4 {
+						continue
+					}
+					c := normalizeCard(dp.Card)
+					if c == "" {
+						return "", fmt.Errorf("line 1 holds an invalid card %q", dp.Card)
+					}
+					toks = append(toks, string(c[1])+string(c[0])) // suit+rank, ten stays 'T'
+				}
 			}
-			toks = append(toks, string(c[1])+string(c[0])) // suit+rank, ten stays 'T'
 		}
 		pbnWords(&b, toks)
 		switch {
