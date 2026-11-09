@@ -29,16 +29,18 @@ out card by card** — you click your cards (and dummy's when you declare), whil
 a card-play bot fills the other seats. The bot keeps a pool of hidden-hand
 candidates consistent with the auction and the play so far, scores every
 candidate for likelihood (the hand model re-reads the auction plus everything
-the play has ruled out), and merges candidates that differ only in low cards
-that cannot beat anything the visible hands hold. The declarer side then plans
-a **strategy** over those weighted layouts — a conditional line of play valued
-by how many layouts (weighted by likelihood) it works on, like a
-suit-combination solver — while defenders rank cards by their weighted
-double-dummy expectation. Everything runs inside per-decision solve/time
-budgets with graceful fallbacks (see
-`bidding-dt/src/bidding_dt/play_bot.py` and `play_strategy.py`). The board is
-then scored on the tricks actually taken versus double-dummy par. Your
-per-account history (boards, total and average IMPs/board) is kept in
+the play has ruled out, and observed plays that were bad double-dummy — plays
+a holder of that hand wouldn't make — discount the layouts they cost tricks
+under), and merges candidates that differ only in low cards that cannot beat
+anything the visible hands hold. The declarer side then plans a **strategy**
+over those weighted layouts — a conditional line of play valued by how many
+layouts (weighted by likelihood) it works on, like a suit-combination solver —
+while defenders rank cards by their weighted double-dummy expectation. Cards
+that tie in score are chosen at random rather than defaulting to the highest.
+Everything runs inside per-decision solve/time budgets with graceful fallbacks
+(see `bidding-dt/src/bidding_dt/play_bot.py` and `play_strategy.py`). The
+board is then scored on the tricks actually taken versus double-dummy par.
+Your per-account history (boards, total and average IMPs/board) is kept in
 `data/game/play_stats.json`; recent boards can be reviewed with all four hands,
 the full auction and the play.
 

@@ -191,7 +191,7 @@ class StrategySearch:
                  def_depth: int = 2, def_branch: int = 4,
                  solve_budget: int = 300, time_budget: float = 3.0,
                  objective: str = "both", make_bonus: float = 1.0,
-                 target: int | None = None):
+                 target: int | None = None, rng=None):
         self.trump = trump
         self.declarer = int(declarer)
         self.dummy = int(dummy)
@@ -207,12 +207,17 @@ class StrategySearch:
         self.objective = objective if objective in ("ev", "make", "both") else "both"
         self.make_bonus = float(make_bonus)
         self.target = int(target) if target is not None else None
+        self.rng = rng            # breaks score ties at random (see solve())
         self.deadline = time.monotonic() + float(time_budget)
         self.solves = 0
         self.nodes = 0
         self.exhausted = False
         self.root_done = 0
         self._t0 = time.monotonic()
+
+    def _rand(self) -> float:
+        """Random tie-break key; 0.0 without an rng keeps the old card order."""
+        return float(self.rng.random()) if self.rng is not None else 0.0
 
     # ---- public entry -------------------------------------------------------
 
@@ -241,17 +246,29 @@ class StrategySearch:
             return legal[0], self._stats(len(root.layouts), None)
 
         onestep = self._onestep_decl_cards(root, legal)
-        order = sorted(legal, key=lambda c: (-onestep[c], c))
-        best_card, best_val = order[0], None
+        # score-tied cards are shuffled, not ordered by rank: always taking the
+        # highest of equals is predictable and (for the defence especially)
+        # wastes honours; which tied card gets a beam slot is now random too
+        order = sorted(legal, key=lambda c: (-onestep[c], self._rand()))
+        vals: dict = {}
         for c in order[:self.beam]:
             val = 0.0
             for _w, child in self._advance_known(root, c):
                 val += self._naive(child) if self._over() else self._search(child)
-            if best_val is None or val > best_val + 1e-9:
-                best_val, best_card = val, c
+            vals[c] = val
             if self._over():
                 break
-        value = float(best_val) if best_val is not None else float(onestep[best_card])
+        if vals:
+            best_val = max(vals.values())
+            tied = [c for c, v in vals.items() if v >= best_val - 1e-9]
+        else:                                   # budget gone before any child
+            best_val = max(onestep.values())
+            tied = [c for c in legal if onestep[c] >= best_val - 1e-9]
+        if len(tied) > 1 and self.rng is not None:
+            best_card = tied[int(self.rng.integers(len(tied)))]
+        else:
+            best_card = min(tied)
+        value = float(best_val)
         return best_card, self._stats(len(root.layouts), value)
 
     def _stats(self, layouts: int, value):

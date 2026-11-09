@@ -25,7 +25,10 @@ exclusion the play has produced (cards seen, show-outs, honour leads denying
 the card above), so layouts the play made implausible count less; layouts that
 differ only in low cards that cannot beat anything the visible hands still
 hold are merged into one macro layout whose weight is the sum (see
-play_strategy.suit_relevance / merge_layouts).
+play_strategy.suit_relevance / merge_layouts). On top of that, every observed
+hidden play is scored by its double-dummy cost under each hypothesis: a player
+would not have made a clearly bad play from their hand, so layouts under which
+the observed play gave away tricks are discounted by exp(-cost/play_temp).
 
 The card itself is picked from those weighted layouts:
 
@@ -35,6 +38,9 @@ The card itself is picked from those weighted layouts:
     plan works on, within solve/time budgets;
   * defenders (and any fallback) rank each legal card by its expected
     double-dummy tricks weighted by layout likelihood (endplay `solve_board`).
+
+Cards that tie in score are chosen AT RANDOM among the tied set (the bot used
+to always play the highest, which is predictable and wastes honours).
 
 `choose_drill` is the variant the card-problems page uses: it ranks the options
 the same way (with only the information a real game gives), but returns the
@@ -162,12 +168,27 @@ class PlayConfig:
     #                          # weighted share of layouts making the contract,
     #                          # or the sum (see play_strategy._objective)
     strat_make_bonus: float = 1.0   # weight of P(make) inside "both"
+    # ---- play-quality inference ("a player wouldn't have made a bad play") ----
+    play_temp: float = 1.0     # temperature turning each observed hidden play's
+    #                          # double-dummy cost into a likelihood factor
+    #                          # exp(-cost/play_temp); 0 disables the inference
+    play_pen_cap: float = 2.0  # per-play cost cap in tricks (a 5-trick blunder
+    #                          # should not annihilate a layout on its own)
+    play_review: int = 8       # fresh top-up candidates are retro-scored against
+    #                          # this many recent hidden plays
 
 
 @dataclass
 class _Candidate:
-    """One hypothesis: the still-held cards of each hidden seat."""
+    """One hypothesis: the still-held cards of each hidden seat.
+
+    `play_pen` accumulates the double-dummy cost (in tricks) of the plays its
+    hidden seats actually made: a layout under which an observed play was a
+    clear mistake is less likely than one under which it was fine (see
+    PlaySession._quality_pens).
+    """
     hands: dict[int, set] = field(default_factory=dict)
+    play_pen: float = 0.0
 
 
 class PlaySession:
@@ -215,6 +236,7 @@ class PlaySession:
 
         self.pool: list[_Candidate] = []
         self.processed = 0                                    # plays folded in
+        self._plays: list = []                # last normalised play list seen
         self.showouts: dict[int, set] = {s: set() for s in self.hidden_seats}
         self.lead_denials: dict[int, set] = {s: set() for s in self.hidden_seats}
         self.last_search: dict | None = None      # diagnostics of the last plan
@@ -283,8 +305,13 @@ class PlaySession:
             "tricks_decl": tricks_decl,
         }
 
-    def _apply_play(self, seat, cid, lead_suit, is_lead):
-        """Fold one observed play into the pool, dropping inconsistent hands."""
+    def _apply_play(self, seat, cid, lead_suit, is_lead, pens=None):
+        """Fold one observed play into the pool, dropping inconsistent hands.
+
+        `pens` (optional) is a per-candidate list aligned with the pool: the
+        double-dummy cost this play had under each hypothesis, added to the
+        candidate's accumulated play penalty (see _quality_pens).
+        """
         seat = int(seat)
         cid = int(cid)
         if seat in self.known_seats:
@@ -296,7 +323,7 @@ class PlaySession:
                 self.lead_denials[seat].add(above)
         denied = self.lead_denials[seat]
         keep = []
-        for cand in self.pool:
+        for j, cand in enumerate(self.pool):
             rem = cand.hands[seat]
             if cid not in rem:
                 continue                              # cannot have played it
@@ -308,16 +335,113 @@ class PlaySession:
                 self.showouts[seat].add(lead_suit)      # showed out -> void
             nxt = _Candidate(hands=dict(cand.hands))
             nxt.hands[seat] = rem - {cid}
+            nxt.play_pen = cand.play_pen + (pens[j] if pens is not None else 0.0)
             keep.append(nxt)
         self.pool = keep
 
+    def _quality_pens(self, seat, cid, idx, plays, hidden_hands):
+        """The double-dummy cost of one observed hidden-seat play, per layout.
+
+        For play index `idx` (seat `seat` played card `cid`) each candidate's
+        pre-play position is solved; the penalty is how many tricks the played
+        card costs versus the double-dummy best card from that same hand
+        (both measured on the acting side, so the units cancel across
+        layouts). The inference: a player would not have made a clearly bad
+        play from their hand, so layouts under which the observed play was
+        bad become less likely. `hidden_hands` is a list aligned with it
+        giving each candidate's hidden-seat hands AT THAT MOMENT (the pool's
+        current hands for live plays, reconstructed ones for retro-scoring
+        fresh candidates). Returns a list of penalties, or None when the
+        inference is off or not applicable.
+        """
+        if seat in self.known_seats or self.cfg.play_temp <= 0 or not hidden_hands:
+            return None
+        n_done = idx // 4
+        cur = [(int(s), int(c)) for s, c in plays[4 * n_done:idx]]
+        if cur:
+            leader = cur[0][0]
+        elif n_done == 0:
+            leader = self.opener
+        else:
+            last = plays[4 * (n_done - 1):4 * n_done]
+            leader = int(trick_winner([ep_card(int(c)) for _, c in last],
+                                      ept.Player(int(last[0][0])), self.trump))
+        played_before = {s: set() for s in range(4)}
+        for s, c in plays[:idx]:
+            played_before[int(s)].add(int(c))
+        # at a mid-trick position the seats that already played legitimately
+        # hold one card fewer; anything else means an injected/synthetic pool
+        base = 13 - n_done
+        cur_seats = {s for s, _ in cur}
+        deals = []
+        for hh in hidden_hands:
+            remaining = {s: self.known_cards[s] - played_before[s]
+                         for s in self.known_seats}
+            remaining.update(hh)
+            if any(len(v) != base - (s in cur_seats)
+                   for s, v in remaining.items()):
+                return None
+            deals.append(self._build_deal(remaining, leader, cur))
+        try:
+            solved = solve_all_boards(deals, SolveMode.Default)
+        except Exception:
+            return None                  # scoring must never break play folding
+        is_defender = seat not in (self.declarer, self.dummy)
+        cap = float(self.cfg.play_pen_cap)
+        pens = []
+        for hh, board in zip(hidden_hands, solved):
+            scores = {ep_to_card(c): int(t) for c, t in board}
+            obs = scores.get(int(cid))
+            rem = hh[seat]
+            legal = self._legal_cards(rem, cur)
+            allowed = self._apply_lead_rule(legal, rem, is_defender, not cur)
+            best = max((scores[c] for c in allowed if c in scores), default=None)
+            if obs is None or best is None:
+                pens.append(0.0)                        # cannot judge: no penalty
+            else:
+                pens.append(min(max(best - obs, 0.0), cap))
+        return pens
+
+    def _retro_score(self, fresh):
+        """Score freshly topped-up candidates against the recent hidden plays.
+
+        Live scoring only covers plays that happen while a candidate sits in
+        the pool; without this, top-ups (which merely satisfy the hard
+        constraints) would come out systematically likelier than penalised
+        veterans. Bounded by cfg.play_review recent hidden plays.
+        """
+        plays = self._plays
+        if (not fresh or not plays or self.cfg.play_temp <= 0
+                or self.cfg.play_review <= 0):
+            return
+        hidden = set(self.hidden_seats)
+        idxs = [i for i, (s, _) in enumerate(plays[:self.processed])
+                if int(s) in hidden]
+        for idx in idxs[-int(self.cfg.play_review):]:
+            seat, cid = int(plays[idx][0]), int(plays[idx][1])
+            # each fresh candidate held, at idx, its current cards plus every
+            # card its seat played from idx onwards
+            after = {s: set() for s in self.hidden_seats}
+            for s, c in plays[idx:self.processed]:
+                if int(s) in after:
+                    after[int(s)].add(int(c))
+            hands = [{s: set(cand.hands[s]) | after[s] for s in self.hidden_seats}
+                     for cand in fresh]
+            pens = self._quality_pens(seat, cid, idx, plays, hands)
+            if pens:
+                for cand, p in zip(fresh, pens):
+                    cand.play_pen += p
+
     def _process_new_plays(self, plays):
         with self._lock:
+            self._plays = plays
             for i in range(self.processed, len(plays)):
                 seat, cid = int(plays[i][0]), int(plays[i][1])
                 first = plays[(i // 4) * 4][1]
                 lead_suit = None if i % 4 == 0 else suit_of(int(first))
-                self._apply_play(seat, cid, lead_suit, i % 4 == 0)
+                pens = self._quality_pens(
+                    seat, cid, i, plays, [c.hands for c in self.pool])
+                self._apply_play(seat, cid, lead_suit, i % 4 == 0, pens)
             self.processed = len(plays)
 
     # ---- candidate generation ---------------------------------------------
@@ -421,13 +545,17 @@ class PlaySession:
 
     def _topup(self, need, info):
         rng = self.rng
+        fresh = []
         for _ in range(max(0, need)):
             # alternate which hidden seat is generated first: half the pool
             # is dealt from one seat with the other taking the remainder,
             # half the other way round, so neither seat's generator order
             # dominates the candidates
             first = self.hidden_seats[len(self.pool) % 2]
-            self.pool.append(self._gen_candidate(info, rng, first))
+            cand = self._gen_candidate(info, rng, first)
+            self.pool.append(cand)
+            fresh.append(cand)
+        self._retro_score(fresh)
 
     def _min_pool(self, n_done):
         base = self.cfg.decl_pool if self._is_decl_side else self.cfg.def_pool
@@ -570,6 +698,12 @@ class PlaySession:
                 weights = self._model_weights(info)
             except Exception:                  # any model failure -> flat pool
                 weights = np.ones(n)
+        if self.cfg.play_temp > 0:
+            # "a player wouldn't have made a bad play from their hand": every
+            # observed hidden play cost some tricks double-dummy under each
+            # hypothesis; the accumulated cost discounts the layout
+            pens = np.array([c.play_pen for c in self.pool], dtype=np.float64)
+            weights = weights * np.exp(-pens / float(self.cfg.play_temp))
         known_live = set()
         for s in self.known_seats:
             known_live |= set(known_rem[s])
@@ -625,7 +759,8 @@ class PlaySession:
                 def_branch=self.cfg.strat_def_branch,
                 solve_budget=self.cfg.strat_solves, time_budget=self.cfg.strat_time,
                 objective=self.cfg.strat_objective,
-                make_bonus=self.cfg.strat_make_bonus, target=self.target)
+                make_bonus=self.cfg.strat_make_bonus, target=self.target,
+                rng=self.rng)
             fresh = [Layout(rem=dict(L.rem), weight=L.weight) for L in layouts]
             card, diag = search.solve(
                 known_rem, fresh, info["leader"], info["cur"],
@@ -636,14 +771,21 @@ class PlaySession:
         except Exception:
             return None
 
-    @staticmethod
-    def _best_ranked(avg, cards):
-        best, best_key = None, None
-        for c in sorted(cards):
-            key = (-avg[c], c)
-            if best_key is None or key < best_key:
-                best_key, best = key, c
-        return best
+    def _best_ranked(self, avg, cards):
+        """The best-scoring card, chosen AT RANDOM among score ties.
+
+        Ties used to go to the lowest card id -- the highest rank -- which
+        made the bot predictable and happy to waste an honour where an equal
+        low card did the same job.
+        """
+        cards = sorted(cards)
+        if not cards:
+            return None
+        best = max(avg[c] for c in cards)
+        tied = [c for c in cards if avg[c] >= best - 1e-9]
+        if len(tied) == 1 or self.rng is None:
+            return tied[0]
+        return tied[int(self.rng.integers(len(tied)))]
 
     def _dd_safe(self, info, legal, true_hands):
         """The legal cards that cost no trick double-dummy on the REAL deal.

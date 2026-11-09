@@ -120,7 +120,8 @@ def test_objective_aggregates_ev_and_make():
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
 def test_layouts_merge_and_weights_normalize():
-    s = decl_session(cfg=PlayConfig(decl_pool=4, min_floor=0, strategy=False))
+    s = decl_session(cfg=PlayConfig(decl_pool=4, min_floor=0, strategy=False,
+                                    play_temp=0.0))
     true_c = _Candidate(hands={1: set(HANDS[1]), 3: set(HANDS[3])})
     # the true layout three times + the diamond swap once -> weights 3:1
     s.pool = [true_c, true_c, true_c, swapped_diamond_candidate()]
@@ -138,7 +139,8 @@ def test_layouts_merge_and_weights_normalize():
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
 def test_pool_rank_is_the_weighted_expectation():
-    s = decl_session(cfg=PlayConfig(decl_pool=4, min_floor=0, strategy=False))
+    s = decl_session(cfg=PlayConfig(decl_pool=4, min_floor=0, strategy=False,
+                                    play_temp=0.0))
     true_c = _Candidate(hands={1: set(HANDS[1]), 3: set(HANDS[3])})
     s.pool = [true_c, true_c, true_c, swapped_diamond_candidate()]
     s.processed = 0
@@ -174,7 +176,8 @@ STRAT_FAST = PlayConfig(decl_pool=1, min_floor=0, strategy=True,
                         strat_layouts=4, strat_beam=13, strat_depth=1,
                         strat_def_depth=1, strat_def_branch=4,
                         strat_solves=2000, strat_time=60.0,
-                        strat_objective="ev", weight_temp=0.0)
+                        strat_objective="ev", weight_temp=0.0,
+                        play_temp=0.0)
 
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
@@ -279,6 +282,28 @@ def test_search_refuses_a_defender_root():
     with pytest.raises(ValueError):
         search.solve({DECLARER: HANDS[DECLARER], 2: HANDS[2]}, [layout],
                      1, [], 0, 0, 1, {cid("6", "S")}, frozenset())
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_search_randomizes_tied_best_cards():
+    """Two equal honours with equal plan values must not always pick the
+    higher one: the tie is broken at random (per-decision rng)."""
+    a_s, k_s = cid("A", "S"), cid("K", "S")
+    known_rem = {0: {a_s, k_s}, 2: {cid("3", "S"), cid("2", "S")}}
+    rem = {1: {cid("6", "S"), cid("5", "S")}, 3: {cid("8", "S"), cid("7", "S")}}
+    picks = set()
+    for seed in range(12):
+        search = StrategySearch(T.Denom.nt, 0, 2, [0, 2], [1, 3],
+                                beam=4, depth=2, def_depth=2,
+                                solve_budget=500, time_budget=30.0,
+                                objective="ev", rng=np.random.default_rng(seed))
+        lay = Layout(rem={s: set(rem[s]) for s in rem}, weight=1.0)
+        card, info = search.solve(known_rem, [lay], 0, [], 11, 9, 0,
+                                  {a_s, k_s}, frozenset())
+        assert card in {a_s, k_s}
+        assert info["value"] == pytest.approx(11.0)   # both cards take the rest
+        picks.add(card)
+    assert picks == {a_s, k_s}
 
 
 # ---- model-based weighting --------------------------------------------------------

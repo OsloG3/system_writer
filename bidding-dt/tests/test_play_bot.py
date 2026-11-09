@@ -212,6 +212,97 @@ def test_analyze_tracks_declarer_tricks():
     assert info2["leader"] == 3
 
 
+# ---- tie randomization + play-quality inference -----------------------------
+
+def _true_candidate():
+    from bidding_dt.play_bot import _Candidate
+    return _Candidate(hands={1: set(HANDS[1]), 3: set(HANDS[3])})
+
+
+def _alt_candidate():
+    """A second layout: E's CA and W's H8 exchanged (plus the 8D/9D diamond
+    spots), macro-distinct from the truth and consistent with a spade lead."""
+    from bidding_dt.play_bot import _Candidate
+    e = (set(HANDS[1]) - {cid("A", "C"), cid("8", "D")}
+         | {cid("8", "H"), cid("9", "D")})
+    w = (set(HANDS[3]) - {cid("8", "H"), cid("9", "D")}
+         | {cid("A", "C"), cid("8", "D")})
+    return _Candidate(hands={1: e, 3: w})
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_best_ranked_randomizes_ties():
+    s = decl_session(seed=3)
+    avg = {10: 5.0, 20: 5.0, 30: 1.0}
+    picks = {s._best_ranked(avg, {10, 20, 30}) for _ in range(40)}
+    assert picks == {10, 20}          # tied pair, chosen at random; 30 never
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_quality_pen_matches_double_dummy_cost():
+    from endplay.dds.solve import SolveMode, solve_board
+    s = decl_session(seed=1, cfg=PlayConfig(decl_pool=4, min_floor=0,
+                                            strategy=False, play_temp=1.0))
+    cand = _true_candidate()
+    s.pool = [cand]
+    # independent solve of East's opening lead on the real deal
+    deal = s._build_deal({i: set(HANDS[i]) for i in range(4)}, 1, [])
+    scores = {RANKS.index(c.rank.abbr) * 4 + int(c.suit): int(t)
+              for c, t in solve_board(deal, SolveMode.Default)}
+    legal = s._legal_cards(set(HANDS[1]), [])
+    allowed = s._apply_lead_rule(legal, set(HANDS[1]), True, True)
+    base = max(scores[c] for c in allowed)
+    best = min(c for c in allowed if scores[c] == base)
+    worst = min(allowed, key=lambda c: scores[c])
+    # the DD-best allowed lead costs nothing...
+    assert s._quality_pens(1, best, 0, [(1, best)], [cand.hands]) == [0.0]
+    # ...and the worst one costs exactly its DD shortfall (capped)
+    pen = s._quality_pens(1, worst, 0, [(1, worst)], [cand.hands])[0]
+    assert pen == pytest.approx(min(s.cfg.play_pen_cap, base - scores[worst]))
+    assert pen > 0                    # this deal has a strictly worse lead
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_bad_play_discounts_the_layout():
+    s = decl_session(seed=1, cfg=PlayConfig(decl_pool=4, min_floor=0,
+                                            strategy=False, play_temp=1.0))
+    s.pool = [_true_candidate(), _alt_candidate()]
+    lead = cid("6", "S")
+    p1, p2 = s._quality_pens(1, lead, 0, [(1, lead)],
+                             [c.hands for c in s.pool])
+    s._process_new_plays([(1, lead)])
+    assert len(s.pool) == 2
+    assert [c.play_pen for c in s.pool] == [p1, p2]     # folded into candidates
+    info = s._analyze([(1, lead)])
+    known_rem, _legal = s._legal_for(info, DECLARER)
+    layouts = s._weighted_layouts(info, known_rem)
+    assert len(layouts) == 2
+    ca = cid("A", "C")
+    wt = next(L.weight for L in layouts if ca in L.rem[1])   # the true layout
+    wa = next(L.weight for L in layouts if ca not in L.rem[1])
+    # the weight ratio is exactly the play-quality likelihood ratio
+    assert wt / wa == pytest.approx(np.exp(-(p1 - p2) / s.cfg.play_temp))
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_topup_candidates_are_retro_scored():
+    s = decl_session(seed=1, cfg=PlayConfig(decl_pool=12, min_floor=0,
+                                            strategy=False, play_temp=1.0,
+                                            play_review=8))
+    plays = [(1, cid("6", "S")), (2, cid("2", "S")),
+             (3, cid("Q", "S")), (0, cid("A", "S"))]
+    s._process_new_plays(plays)          # empty pool: nothing to score
+    s._ensure_pool(s._analyze(plays))    # 12 fresh candidates
+    assert len(s.pool) == 12
+    # fresh candidates never saw the plays live, yet some of them judge the
+    # observed 6S lead (or the QS follow) a bad one from their hand
+    assert any(c.play_pen > 0 for c in s.pool)
+    # and every candidate respects the hard constraints of those plays
+    for c in s.pool:
+        assert cid("6", "S") not in c.hands[1]
+        assert cid("Q", "S") not in c.hands[3]
+
+
 # ---- full hand plays out legally -------------------------------------------
 
 def _play_out(model, cfg, seed, drill=False):

@@ -498,8 +498,12 @@ def main():
                          "then picks by the weighted per-card double-dummy rank")
     ap.add_argument("--strat-layouts", type=int, default=12,
                     help="merged macro layouts the strategy search evaluates per node")
-    ap.add_argument("--strat-time", type=float, default=3.0,
+    ap.add_argument("--strat-time", type=float, default=2.0,
                     help="wall-clock seconds the strategy search may spend per decision")
+    ap.add_argument("--play-temp", type=float, default=1.0,
+                    help="temperature discounting layouts under which an observed "
+                         "hidden play cost tricks double-dummy (0 disables the "
+                         "play-quality inference)")
     args = ap.parse_args()
 
     ckpts = parse_ckpt_specs(args.ckpt)
@@ -507,7 +511,8 @@ def main():
                           min_floor=args.min_floor,
                           strategy=not args.no_strategy,
                           strat_layouts=args.strat_layouts,
-                          strat_time=args.strat_time)
+                          strat_time=args.strat_time,
+                          play_temp=args.play_temp)
     svc = Service(ckpts, dd_cache=args.dd_cache or None, temp=args.temp,
                   hand_ckpt=args.hand_ckpt, play_cfg=play_cfg)
     httpd = ThreadingHTTPServer((args.host, args.port), _Handler)

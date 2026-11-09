@@ -102,15 +102,17 @@ uv run python -m bidding_dt.bid --ckpt runs/small/best.pt \
 #    Card play adds /play/choose /play/result /play/drop: /play/choose picks a
 #    bot's card over a pool of hidden-hand candidates consistent with the
 #    auction and the play so far. Candidates are re-scored for likelihood with
-#    the hand model (given every exclusion the play produced) and merged into
-#    weighted macro layouts that ignore interchangeable low cards; the
-#    declarer side then beam-searches a conditional strategy valued by how
-#    many (weighted) layouts the plan works on, and the other seats rank cards
-#    by their weighted double-dummy expectation (see play_bot.py and
-#    play_strategy.py). The optional "dd_hands" body key (the real deal, sent
-#    by the drills page) makes it the drills bot: options are ranked the same
-#    way, but the card returned is the best-ranked one that gives away no
-#    trick double-dummy on the real deal.
+#    the hand model (given every exclusion the play produced) and discounted
+#    when an observed play cost tricks double-dummy under them (a player
+#    wouldn't make a bad play from their hand), then merged into weighted
+#    macro layouts that ignore interchangeable low cards; the declarer side
+#    beam-searches a conditional strategy valued by how many (weighted)
+#    layouts the plan works on, and the other seats rank cards by their
+#    weighted double-dummy expectation, breaking score ties at random (see
+#    play_bot.py and play_strategy.py). The optional "dd_hands" body key (the
+#    real deal, sent by the drills page) makes it the drills bot: options are
+#    ranked the same way, but the card returned is the best-ranked one that
+#    gives away no trick double-dummy on the real deal.
 #    Needs torch (cpu/cuda extra) and endplay (rl extra), so repeat the
 #    extras here. `runs/` is gitignored: copy a checkpoint to the server.
 uv run --extra cpu --extra rl python -m bidding_dt.play_server \
@@ -136,6 +138,10 @@ uv run --extra cpu --extra rl python -m bidding_dt.play_server \
 #                                         seconds it may spend per decision
 #                                         (it degrades gracefully when the
 #                                         budget runs out)
+#   --play-temp T                         play-quality inference temperature:
+#                                         a layout under which an observed
+#                                         hidden play cost N tricks DD is
+#                                         discounted by exp(-N/T); 0 disables
 
 # tests
 uv run pytest
