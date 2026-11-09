@@ -15,13 +15,17 @@ Endpoints (all JSON):
                      body: /legal body + "hands", optional "model", "temp"
     POST /score   -> {"imps", "par_ns", "score_ns", "tricks", "contract"}
                      body: /bid body; IMPs are N-S view vs double-dummy par
-    POST /play/choose -> {"seat", "card", "pool"}  a bot's card, chosen by
-                     double-dummy simulation over auction-consistent hidden
-                     hands (see play_bot.py). Body:
+    POST /play/choose -> {"seat", "card", "pool", "strat"}  a bot's card,
+                     chosen over the pool of hidden hands consistent with the
+                     auction and the play so far: the declarer side plans a
+                     strategy on likelihood-weighted, low-card-merged layouts,
+                     the other seats rank cards by their weighted double-dummy
+                     expectation (see play_bot.py / play_strategy.py; "strat"
+                     carries the plan's diagnostics, or null). Body:
                        {"session": stable per-bot key, "dealer", "vuln",
                         "calls": [...], "known": {seat: 'S.H.D.C'},
                         "plays": [[seat, "AS"], ...], "to_act": seat,
-                        optional "pool"/"min_floor",
+                        optional "pool"/"min_floor"/"strategy"/"strat_time",
                         optional "dd_hands": [N,E,S,W 'S.H.D.C']}
                      "dd_hands" is the drills mode: it carries the REAL deal
                      (the card-problems server scripts all four hands). The
@@ -341,6 +345,12 @@ class Service:
         floor = body.get("min_floor")
         if isinstance(floor, int) and floor >= 0:
             cfg = PlayConfig(**{**cfg.__dict__, "min_floor": floor})
+        strategy = body.get("strategy")
+        if isinstance(strategy, bool):
+            cfg = PlayConfig(**{**cfg.__dict__, "strategy": strategy})
+        stime = body.get("strat_time")
+        if isinstance(stime, (int, float)) and not isinstance(stime, bool) and stime >= 0:
+            cfg = PlayConfig(**{**cfg.__dict__, "strat_time": float(stime)})
 
         dd_hands = self._dd_hands(body, known, plays)
 
@@ -358,7 +368,7 @@ class Service:
             card = sess.choose_drill(plays, to_act,
                                      {s: dd_hands[s] for s in range(4)})
         return {"seat": int(to_act), "card": card_to_str(int(card)),
-                "pool": len(sess.pool)}
+                "pool": len(sess.pool), "strat": sess.last_search}
 
     def play_result(self, body: dict) -> dict:
         dealer, vuln, ids = self._auction(body)
@@ -483,11 +493,21 @@ def main():
                     help="candidate hidden deals a defender bot simulates")
     ap.add_argument("--min-floor", type=int, default=6,
                     help="the candidate pool never shrinks below this")
+    ap.add_argument("--no-strategy", action="store_true",
+                    help="disable the declarer-side strategy search; every seat "
+                         "then picks by the weighted per-card double-dummy rank")
+    ap.add_argument("--strat-layouts", type=int, default=12,
+                    help="merged macro layouts the strategy search evaluates per node")
+    ap.add_argument("--strat-time", type=float, default=3.0,
+                    help="wall-clock seconds the strategy search may spend per decision")
     args = ap.parse_args()
 
     ckpts = parse_ckpt_specs(args.ckpt)
     play_cfg = PlayConfig(decl_pool=args.decl_pool, def_pool=args.def_pool,
-                          min_floor=args.min_floor)
+                          min_floor=args.min_floor,
+                          strategy=not args.no_strategy,
+                          strat_layouts=args.strat_layouts,
+                          strat_time=args.strat_time)
     svc = Service(ckpts, dd_cache=args.dd_cache or None, temp=args.temp,
                   hand_ckpt=args.hand_ckpt, play_cfg=play_cfg)
     httpd = ThreadingHTTPServer((args.host, args.port), _Handler)

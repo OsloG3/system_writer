@@ -184,6 +184,34 @@ def test_generated_hands_respect_lead_denial():
         assert cid("K", "C") not in cand.hands[1]      # East never holds the K
 
 
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_surviving_candidates_drop_lead_denied_cards():
+    s = decl_session(seed=7)
+    s._topup(24, s._analyze([]))                  # a pool at trick one
+    q_clubs, k_clubs = cid("Q", "C"), cid("K", "C")
+    s._apply_play(1, q_clubs, None, is_lead=True)  # East leads the Q: denies K
+    for cand in s.pool:
+        assert k_clubs not in cand.hands[1]        # the denied K is filtered out
+        assert q_clubs not in cand.hands[1]        # and the Q itself is gone
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_analyze_tracks_declarer_tricks():
+    s = decl_session(seed=1)
+    # trick one: East leads low, South and West follow, North wins with the AS
+    plays = [(1, cid("6", "S")), (2, cid("2", "S")),
+             (3, cid("Q", "S")), (0, cid("A", "S"))]
+    info = s._analyze(plays)
+    assert info["n_done"] == 1 and info["tricks_decl"] == 1
+    assert info["leader"] == 0 and info["to_act"] == 0   # North leads trick two
+    # trick two: North leads a heart, everyone follows, West's JH wins
+    plays += [(0, cid("3", "H")), (1, cid("5", "H")),
+              (2, cid("6", "H")), (3, cid("J", "H"))]
+    info2 = s._analyze(plays)
+    assert info2["n_done"] == 2 and info2["tricks_decl"] == 1
+    assert info2["leader"] == 3
+
+
 # ---- full hand plays out legally -------------------------------------------
 
 def _play_out(model, cfg, seed, drill=False):
@@ -224,16 +252,36 @@ def _play_out(model, cfg, seed, drill=False):
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
 def test_full_hand_fallback():
-    cfg = PlayConfig(decl_pool=8, def_pool=6, min_floor=2)
+    cfg = PlayConfig(decl_pool=8, def_pool=6, min_floor=2, strategy=False)
     tricks = _play_out(None, cfg, seed=2)
     assert 0 <= tricks <= 13
 
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
 def test_full_hand_model():
-    cfg = PlayConfig(decl_pool=8, def_pool=6, min_floor=2)
+    cfg = PlayConfig(decl_pool=8, def_pool=6, min_floor=2, strategy=False)
     tricks = _play_out(tiny_model(), cfg, seed=2)
     assert 0 <= tricks <= 13
+
+
+STRAT_CFG = PlayConfig(decl_pool=6, def_pool=4, min_floor=2,
+                       strategy=True, strat_layouts=4, strat_beam=2,
+                       strat_depth=2, strat_def_depth=1, strat_def_branch=3,
+                       strat_solves=60, strat_time=0.5, weight_temp=0.0)
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_full_hand_strategy_search_plays_legally():
+    tricks = _play_out(None, STRAT_CFG, seed=2)
+    assert 0 <= tricks <= 13
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_full_hand_drill_strategy_reaches_double_dummy():
+    # the dd-safe gate still bounds the strategy search: declarer can never
+    # end below the deal's double-dummy value (10 tricks)
+    tricks = _play_out(None, STRAT_CFG, seed=2, drill=True)
+    assert tricks >= 10
 
 
 # ---- drills bot (double-dummy safe on the real deal) --------------------------
@@ -272,7 +320,7 @@ def test_choose_drill_mid_trick_stays_safe_and_legal():
 def test_full_hand_drill_reaches_double_dummy():
     # with every seat playing safe on the real deal, declarer can never end
     # below the deal's double-dummy value (10 tricks, see play_result test)
-    cfg = PlayConfig(decl_pool=8, def_pool=6, min_floor=2)
+    cfg = PlayConfig(decl_pool=8, def_pool=6, min_floor=2, strategy=False)
     tricks = _play_out(None, cfg, seed=2, drill=True)
     assert tricks >= 10
 
@@ -324,6 +372,26 @@ def test_play_choose_endpoint(svc):
     # a passed-out auction has no play
     with pytest.raises(ServiceError):
         svc.play_choose({**body, "calls": ["P", "P", "P", "P"]})
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_play_choose_declarer_strategy_endpoint(svc):
+    # East led a spade, South and West followed: declarer (North) acts fourth
+    body = {"session": "t:strat1", "dealer": 0, "vuln": 0,
+            "calls": "1H P 4H P P P".split(),
+            "known": {"0": DEAL[0], "2": DEAL[2]},
+            "plays": [[1, "6S"], [2, "2S"], [3, "QS"]], "to_act": 0,
+            "pool": 6, "strat_time": 0.5}
+    out = svc.play_choose(body)
+    assert out["seat"] == 0
+    card = str_to_card(out["card"])
+    assert card in HANDS[0] and suit_of(card) == 0    # must follow spades
+    # the declarer side planned a strategy: diagnostics come back on the wire
+    assert out["strat"] is not None and out["strat"]["layouts"] >= 1
+    assert out["strat"]["solves"] >= 0 and "value" in out["strat"]
+    # strategy can be switched off per request -> plain weighted rank, no diag
+    off = svc.play_choose({**body, "session": "t:strat2", "strategy": False})
+    assert off["strat"] is None and str_to_card(off["card"]) in HANDS[0]
 
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")

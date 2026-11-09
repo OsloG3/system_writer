@@ -1,5 +1,5 @@
 """Card-play bot: choose a card by double-dummy simulation over a pool of
-hidden-hand candidates.
+hidden-hand candidates, planned as a weighted strategy over merged layouts.
 
 One bot plays a *side*, not a seat: the declarer-side bot owns declarer AND
 dummy (it sees both those hands and models the two defenders), and each defender
@@ -19,18 +19,34 @@ see, drawn from the auction with the hand VQ encoder/decoder (hand/model.py):
   * the declarer-side pool is larger than a defender's (declarer sees two hands
     and controls the play, so it can afford more simulations).
 
-The card itself is picked by running endplay's double-dummy `solve_board` over
-every surviving candidate and taking the card with the best expected tricks for
-the acting side. `choose_drill` is the variant the card-problems page uses: it
-ranks the options the same way (with only the information a real game gives),
-but returns the best-ranked card that also costs no trick double-dummy on the
-*real* deal, which the drill server supplies.
+At every decision the pool is turned into a WEIGHTED set of MACRO LAYOUTS:
+each candidate is re-scored under the hand model given the auction and every
+exclusion the play has produced (cards seen, show-outs, honour leads denying
+the card above), so layouts the play made implausible count less; layouts that
+differ only in low cards that cannot beat anything the visible hands still
+hold are merged into one macro layout whose weight is the sum (see
+play_strategy.suit_relevance / merge_layouts).
+
+The card itself is picked from those weighted layouts:
+
+  * the declarer side runs the beam strategy search in play_strategy.py -- a
+    suit-combination-solver-style plan that chooses declarer's card at each
+    reachable information set and is valued by how many (weighted) layouts the
+    plan works on, within solve/time budgets;
+  * defenders (and any fallback) rank each legal card by its expected
+    double-dummy tricks weighted by layout likelihood (endplay `solve_board`).
+
+`choose_drill` is the variant the card-problems page uses: it ranks the options
+the same way (with only the information a real game gives), but returns the
+best-ranked card that also costs no trick double-dummy on the *real* deal,
+which the drill server supplies.
 
 Defender leads are constrained: leading an honour above the nine denies the card
 directly above it (from touching honours you lead the top one). The bot obeys
 this when it leads, and every other bot folds it into hand generation by
-blocking that higher card from the leader's candidates, which is a real
-bridge inference (leading the K denies the A).
+blocking that higher card from the leader's candidates -- and drops surviving
+candidates that still hold a denied card -- which is a real bridge inference
+(leading the K denies the A).
 """
 
 from __future__ import annotations
@@ -50,8 +66,10 @@ except ImportError:  # pragma: no cover - guarded by play_server's own check
 from .data.dataset import BiddingDataset
 from .data.hands import cards_to_str, indicator_from_cards, str_to_cards
 from .data.parse import MAX_CALLS
+from .dd.reward import contract_from_auction
 from .dd.solver import _PROJ_DENOM_TO_ENDPLAY
 from .hand.data import rotated_tokens
+from .play_strategy import Layout, StrategySearch, merge_layouts, suit_relevance
 
 # Card ids follow env/deals.py: card = rank*4 + suit, rank A=0 .. 2=12, suit
 # S,H,D,C = 0..3. A card *string* on the wire is rank+suit, e.g. "AS", "9S".
@@ -123,6 +141,27 @@ class PlayConfig:
     codes: bool = True         # sample the VQ codes (more hand variety)
     topup_tries: int = 6       # model attempts per candidate before uniform
     seed: int = 0
+    # ---- layout weighting (both sides) ----
+    weight_temp: float = 1.0   # softmax temperature on model log-probs;
+    #                          # 0 disables weighting (every layout counts 1)
+    # ---- declarer-side strategy search (play_strategy.py) ----
+    strategy: bool = True      # plan a conditional line, not a per-card vote
+    strat_layouts: int = 12    # macro layouts the search evaluates per node
+    strat_beam: int = 3        # declarer cards expanded per decision node
+    strat_depth: int = 4       # tricks planned ahead with full branching;
+    #                          # deeper positions get a clairvoyant DD leaf
+    strat_def_depth: int = 2   # tricks where defenders are modelled DD-best
+    #                          # (a cheap no-solve heuristic beyond that)
+    strat_def_branch: int = 4  # defender branches expanded per node
+    strat_solves: int = 6000   # safety cap on DDS boards per decision (the
+    #                          # wall-clock budget below is the real limiter;
+    #                          # one root ranking already costs layouts x
+    #                          # legal cards boards)
+    strat_time: float = 2.0    # wall-clock seconds per decision
+    strat_objective: str = "both"   # "ev" | "make" | "both": expected tricks,
+    #                          # weighted share of layouts making the contract,
+    #                          # or the sum (see play_strategy._objective)
+    strat_make_bonus: float = 1.0   # weight of P(make) inside "both"
 
 
 @dataclass
@@ -178,6 +217,16 @@ class PlaySession:
         self.processed = 0                                    # plays folded in
         self.showouts: dict[int, set] = {s: set() for s in self.hidden_seats}
         self.lead_denials: dict[int, set] = {s: set() for s in self.hidden_seats}
+        self.last_search: dict | None = None      # diagnostics of the last plan
+        # the contract's trick target (level + 6) drives the "works on the
+        # highest number of layouts" objective of the strategy search
+        self.target = None
+        try:
+            contract = contract_from_auction(self.dealer, self.calls_ids)
+            if contract is not None:
+                self.target = 6 + int(contract.level)
+        except Exception:                            # unknown/passed-out form
+            self.target = None
         self._enc = {}                                        # target -> (mem, mask)
         self._encode_hidden()
 
@@ -209,6 +258,12 @@ class PlaySession:
         n = len(plays)
         n_done = n // 4
         cur = [(int(s), int(c)) for s, c in plays[4 * n_done:]]
+        tricks_decl = 0
+        for t in range(n_done):
+            trick = plays[4 * t:4 * t + 4]
+            w = trick_winner([ep_card(int(c)) for _, c in trick],
+                             ept.Player(int(trick[0][0])), self.trump)
+            tricks_decl += int(w) in (self.declarer, self.dummy)
         if cur:
             leader = cur[0][0]
         elif n_done == 0:
@@ -225,6 +280,7 @@ class PlaySession:
             "leader": leader,
             "to_act": (leader + len(cur)) % 4,
             "played_all": [int(c) for _, c in plays],
+            "tricks_decl": tricks_decl,
         }
 
     def _apply_play(self, seat, cid, lead_suit, is_lead):
@@ -238,11 +294,14 @@ class PlaySession:
             above = card_above(cid)
             if above is not None:
                 self.lead_denials[seat].add(above)
+        denied = self.lead_denials[seat]
         keep = []
         for cand in self.pool:
             rem = cand.hands[seat]
             if cid not in rem:
                 continue                              # cannot have played it
+            if denied & rem:
+                continue                              # holds a lead-denied card
             if lead_suit is not None and suit_of(cid) != lead_suit:
                 if any(suit_of(x) == lead_suit for x in rem):
                     continue                          # held the suit, did not follow
@@ -439,24 +498,143 @@ class PlaySession:
             legal = self._legal_cards(rem_act, info["cur"]) or set(rem_act)
         return known_rem, legal
 
-    def _pool_rank(self, info, known_rem, legal):
-        """Expected double-dummy tricks per legal card, averaged over the
-        candidate pool -- the ranking the normal bot picks by."""
+    # ---- layout weighting ----------------------------------------------------
+
+    def _model_weights(self, info):
+        """Per-candidate likelihood weights from the VQ hand model.
+
+        The encoder is re-run with each hidden seat's CURRENT exclusion mask
+        (seen, gone, voided and lead-denied cards), so the score reflects the
+        auction *and* everything the play so far has shown: layouts the play
+        made implausible come out low. The two hidden seats are scored as
+        independent marginals (their hands are complementary, so this is an
+        approximation) and the decoder log-probs of each candidate's
+        still-held cards are summed. Candidates holding an excluded card get
+        ~0 (the banned softmax slot). Returns a (len(pool),) float array.
+        """
+        import torch
+        n = len(self.pool)
+        logp = np.zeros(n)
+        if n == 0 or self.model is None:
+            return np.ones(max(n, 0))
+        played = info["played_all"]
+        dev = self.device
+        n_cards = self.model.cfg.n_cards
+        for s in self.hidden_seats:
+            R = 13 - len(info["played_by_seat"][s])
+            if R <= 0 or not all(len(c.hands[s]) == R for c in self.pool):
+                continue                          # ragged pool: skip this seat
+            excl = indicator_from_cards(sorted(self._excl_for(s, played))).astype(np.float32)
+            tokens = rotated_tokens(self.dealer, self.calls_ids, s)[None]
+            vuln = np.array([BiddingDataset.vuln_class(self.vuln, s)],
+                            dtype=np.int64)
+            seqs = np.array([sorted(c.hands[s]) for c in self.pool], dtype=np.int64)
+            with torch.no_grad():
+                mem, mask = self.model.memory(
+                    torch.from_numpy(tokens).to(dev),
+                    torch.from_numpy(vuln).to(dev),
+                    torch.from_numpy(excl).to(dev)[None], None)
+                z, _ = self.model.quantize(mem, mask, sample=False)
+                z = z.expand(n, -1, -1)
+                inp_t = torch.from_numpy(seqs).to(dev)
+                bos = torch.full((n, 1), n_cards, dtype=torch.long, device=dev)
+                inp = torch.cat([bos, inp_t[:, :-1]], dim=1)
+                excl_b = torch.from_numpy(excl).to(dev)[None].expand(n, -1)
+                logits = self.model._decode(z, inp).float().masked_fill(
+                    self.model._banned(inp, excl_b, hand_len=R), -1e9)
+                lp = (torch.log_softmax(logits, dim=-1)
+                      .gather(-1, inp_t[..., None]).squeeze(-1).sum(1))
+            logp += lp.detach().cpu().numpy()
+        temp = float(self.cfg.weight_temp)
+        if temp <= 0:
+            return np.ones(n)
+        scaled = (logp - logp.max()) / temp
+        return np.exp(np.maximum(scaled, -60.0))
+
+    def _weighted_layouts(self, info, known_rem):
+        """The pool as merged, weighted macro layouts (play_strategy.Layout).
+
+        Candidates are re-scored under the hand model (when one is loaded),
+        zero-weight ones are dropped, layouts that differ only in irrelevant
+        low cards are merged with their weights summed, and the weights are
+        renormalised to sum to 1. The declarer-side search additionally caps
+        the layout count per node (cfg.strat_layouts); the weighted one-step
+        ranking uses the whole merged set.
+        """
+        n = len(self.pool)
+        if n == 0:
+            return []
+        weights = np.ones(n)
+        if self.model is not None and self.cfg.weight_temp > 0:
+            try:
+                weights = self._model_weights(info)
+            except Exception:                  # any model failure -> flat pool
+                weights = np.ones(n)
+        known_live = set()
+        for s in self.known_seats:
+            known_live |= set(known_rem[s])
+        ign = suit_relevance(known_live, info["played_all"])
+        layouts = [Layout(rem=dict(c.hands), weight=float(w))
+                   for c, w in zip(self.pool, weights) if w > 0.0]
+        if not layouts:
+            return []
+        layouts = merge_layouts(layouts, self.hidden_seats, ign)
+        layouts.sort(key=lambda L: -L.weight)         # stable: pool order breaks ties
+        total = sum(L.weight for L in layouts) or 1.0
+        for L in layouts:
+            L.weight /= total
+        return layouts
+
+    def _pool_rank(self, info, known_rem, legal, layouts=None):
+        """Weighted expected double-dummy tricks per legal card over the
+        merged layouts -- the ranking defenders (and fallbacks) pick by."""
+        if layouts is None:
+            layouts = self._weighted_layouts(info, known_rem)
+        if not layouts:
+            return {c: 0.0 for c in legal}
         deals = []
-        for cand in self.pool:
+        for lay in layouts:
             remaining = dict(known_rem)
-            remaining.update(cand.hands)
+            remaining.update(lay.rem)
             deals.append(self._build_deal(remaining, info["leader"], info["cur"]))
         solved = solve_all_boards(deals, SolveMode.Default)
-        total = {c: 0 for c in legal}
-        count = {c: 0 for c in legal}
-        for board in solved:
+        total = {c: 0.0 for c in legal}
+        count = {c: 0.0 for c in legal}
+        for lay, board in zip(layouts, solved):
             for card, tricks in board:
                 cid = ep_to_card(card)
                 if cid in total:
-                    total[cid] += tricks
-                    count[cid] += 1
+                    total[cid] += tricks * lay.weight
+                    count[cid] += lay.weight
         return {c: (total[c] / count[c] if count[c] else 0.0) for c in legal}
+
+    def _strategy_card(self, info, known_rem, legal, layouts, to_act):
+        """The declarer-side plan's first card, or None when the search cannot
+        run (defender to act, empty pool, internal failure) -- callers then
+        fall back to the weighted one-step ranking."""
+        if not (self.cfg.strategy and self._is_decl_side and layouts):
+            return None
+        if to_act not in (self.declarer, self.dummy):
+            return None
+        try:
+            search = StrategySearch(
+                self.trump, self.declarer, self.dummy,
+                self.known_seats, self.hidden_seats,
+                max_layouts=self.cfg.strat_layouts, beam=self.cfg.strat_beam,
+                depth=self.cfg.strat_depth, def_depth=self.cfg.strat_def_depth,
+                def_branch=self.cfg.strat_def_branch,
+                solve_budget=self.cfg.strat_solves, time_budget=self.cfg.strat_time,
+                objective=self.cfg.strat_objective,
+                make_bonus=self.cfg.strat_make_bonus, target=self.target)
+            fresh = [Layout(rem=dict(L.rem), weight=L.weight) for L in layouts]
+            card, diag = search.solve(
+                known_rem, fresh, info["leader"], info["cur"],
+                info["n_done"], info["tricks_decl"], to_act,
+                legal, frozenset(info["played_all"]))
+            self.last_search = diag
+            return int(card)
+        except Exception:
+            return None
 
     @staticmethod
     def _best_ranked(avg, cards):
@@ -499,12 +677,17 @@ class PlaySession:
         info = self._analyze(plays)
         to_act = int(to_act)
         with self._lock:
+            self.last_search = None
             self._ensure_pool(info)
             known_rem, legal = self._legal_for(info, to_act)
             if not self.pool:
                 return min(legal)
-            avg = self._pool_rank(info, known_rem, legal)
-            return self._best_ranked(avg, legal)
+            layouts = self._weighted_layouts(info, known_rem)
+            card = self._strategy_card(info, known_rem, legal, layouts, to_act)
+            if card is None:
+                avg = self._pool_rank(info, known_rem, legal, layouts)
+                card = self._best_ranked(avg, legal)
+            return card
 
     def choose_drill(self, plays, to_act, true_hands):
         """Drill variant of `choose`, for the card problems' bots-finish.
@@ -520,13 +703,18 @@ class PlaySession:
         info = self._analyze(plays)
         to_act = int(to_act)
         with self._lock:
+            self.last_search = None
             self._ensure_pool(info)
             known_rem, legal = self._legal_for(info, to_act)
             safe = self._dd_safe(info, legal, true_hands) or set(legal)
             if not self.pool:
                 return min(safe)
-            avg = self._pool_rank(info, known_rem, legal)
-            return self._best_ranked(avg, safe)
+            layouts = self._weighted_layouts(info, known_rem)
+            card = self._strategy_card(info, known_rem, safe & legal, layouts, to_act)
+            if card is None:
+                avg = self._pool_rank(info, known_rem, legal, layouts)
+                card = self._best_ranked(avg, safe)
+            return card
 
 
 class PlayBot:

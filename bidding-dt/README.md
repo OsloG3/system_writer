@@ -100,12 +100,17 @@ uv run python -m bidding_dt.bid --ckpt runs/small/best.pt \
 #    model in /play/choose (its positional embedding stops at MAX_CALLS): the
 #    hidden-hand pool falls back to the constraint-based sampler.
 #    Card play adds /play/choose /play/result /play/drop: /play/choose picks a
-#    bot's card by double-dummy simulation over a pool of hidden-hand candidates
-#    consistent with the auction and the play so far (see play_bot.py). The
-#    optional "dd_hands" body key (the real deal, sent by the drills page) makes
-#    it the drills bot: options are ranked the same way, but the card returned
-#    is the best-ranked one that gives away no trick double-dummy on the real
-#    deal.
+#    bot's card over a pool of hidden-hand candidates consistent with the
+#    auction and the play so far. Candidates are re-scored for likelihood with
+#    the hand model (given every exclusion the play produced) and merged into
+#    weighted macro layouts that ignore interchangeable low cards; the
+#    declarer side then beam-searches a conditional strategy valued by how
+#    many (weighted) layouts the plan works on, and the other seats rank cards
+#    by their weighted double-dummy expectation (see play_bot.py and
+#    play_strategy.py). The optional "dd_hands" body key (the real deal, sent
+#    by the drills page) makes it the drills bot: options are ranked the same
+#    way, but the card returned is the best-ranked one that gives away no
+#    trick double-dummy on the real deal.
 #    Needs torch (cpu/cuda extra) and endplay (rl extra), so repeat the
 #    extras here. `runs/` is gitignored: copy a checkpoint to the server.
 uv run --extra cpu --extra rl python -m bidding_dt.play_server \
@@ -123,6 +128,14 @@ uv run --extra cpu --extra rl python -m bidding_dt.play_server \
 #   --min-floor N                         the pool minimum never drops below N
 #                                         (the minimum shrinks as the hand
 #                                         advances; survivors are reused)
+#   --no-strategy                         disable the declarer-side strategy
+#                                         search; every seat then picks by the
+#                                         weighted per-card double-dummy rank
+#   --strat-layouts N / --strat-time S    macro layouts the strategy search
+#                                         evaluates per node / wall-clock
+#                                         seconds it may spend per decision
+#                                         (it degrades gracefully when the
+#                                         budget runs out)
 
 # tests
 uv run pytest
