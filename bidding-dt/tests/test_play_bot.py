@@ -288,7 +288,8 @@ def test_bad_play_discounts_the_layout():
 def test_topup_candidates_are_retro_scored():
     s = decl_session(seed=1, cfg=PlayConfig(decl_pool=12, min_floor=0,
                                             strategy=False, play_temp=1.0,
-                                            play_review=8))
+                                            play_review=8,
+                                            play_review_time=0.0))
     plays = [(1, cid("6", "S")), (2, cid("2", "S")),
              (3, cid("Q", "S")), (0, cid("A", "S"))]
     s._process_new_plays(plays)          # empty pool: nothing to score
@@ -301,6 +302,97 @@ def test_topup_candidates_are_retro_scored():
     for c in s.pool:
         assert cid("6", "S") not in c.hands[1]
         assert cid("Q", "S") not in c.hands[3]
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_retro_budget_reviews_newest_first():
+    """A tiny play_review_time bounds retro-scoring: it reviews fewer past
+    plays than the unbudgeted pass (fewer cold DDS solves) while still
+    producing a valid, non-negative penalty per candidate. The mean-completion
+    for skipped plays keeps the fresh cohort from being left systematically
+    under-penalised. (The quality effect of the budget is validated by the
+    whole-hand A/B, since it is a heuristic.)"""
+    from bidding_dt.dd import fastsolve
+    plays = [(1, cid("6", "S")), (2, cid("2", "S")),
+             (3, cid("Q", "S")), (0, cid("A", "S"))]
+    base = dict(decl_pool=12, min_floor=0, strategy=False, play_temp=1.0,
+                play_review=8)
+
+    def run(review_time):
+        # same seed -> identical pool; count only this top-up's cold solves
+        s = decl_session(seed=1,
+                         cfg=PlayConfig(**base, play_review_time=review_time))
+        s._process_new_plays(plays)
+        fastsolve.clear_cache()
+        m0 = fastsolve.stats()["misses"]
+        s._ensure_pool(s._analyze(plays))
+        return fastsolve.stats()["misses"] - m0, [c.play_pen for c in s.pool]
+
+    full_misses, full_pens = run(0.0)      # unbudgeted: both hidden plays
+    tiny_misses, tiny_pens = run(1e-9)     # budget gone at once: newest only
+    assert 0 < tiny_misses < full_misses   # reviewed something, but less
+    assert len(tiny_pens) == len(full_pens) == 12
+    assert all(p >= 0.0 for p in tiny_pens)   # valid, non-negative penalties
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_retro_budget_imputes_skipped_plays():
+    """When the budget skips informative older reviews, the fresh cohort is
+    still charged the session-average penalty for them, so top-ups are not
+    systematically over-weighted vs penalised veterans (a zero solve cost)."""
+    plays = [(1, cid("6", "S")), (2, cid("2", "S")),
+             (3, cid("Q", "S")), (0, cid("A", "S"))]
+    s = decl_session(seed=1, cfg=PlayConfig(decl_pool=12, min_floor=0,
+                                            strategy=False, play_temp=1.0,
+                                            play_review=8,
+                                            play_review_time=1e-9))
+    s._process_new_plays(plays)            # empty pool: nothing scored live
+    # pretend the session already observed plays costing 2.0 tricks each on
+    # average; the tight budget then skips the opening-lead review, but the
+    # fresh cohort must still absorb that average rather than stay at zero
+    s._pen_sum, s._pen_n = 10.0, 5
+    s._ensure_pool(s._analyze(plays))      # top-up 12 fresh, budget cuts review
+    assert len(s.pool) == 12
+    assert all(c.play_pen > 0.0 for c in s.pool)   # imputed, not left at zero
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_forced_play_is_not_solved():
+    """A hidden play with only one legal card costs nothing by definition, so
+    _quality_pens must return 0 for it WITHOUT spending a DDS solve."""
+    from bidding_dt.dd import fastsolve
+    s = decl_session(seed=1, cfg=PlayConfig(decl_pool=4, min_floor=0,
+                                            strategy=False, play_temp=1.0))
+    # trick one: West leads AC, North (known) follows KC, East plays its ONLY
+    # club (2C) -> East was forced. East: 12 spades + the 2C; West: 12 diamonds
+    # (the AC it led is gone).
+    east = {cid("2", "C")} | {cid(r, "S") for r in "AKQJT9876543"}  # 13 cards, 1 club
+    west = {cid(r, "D") for r in "AKQJT9876543"}                    # 12 diamonds
+    plays = [(3, cid("A", "C")), (0, cid("K", "C")), (1, cid("2", "C"))]
+    before = fastsolve.stats()["misses"]
+    pens = s._quality_pens(1, cid("2", "C"), 2, plays, [{1: east, 3: west}])
+    after = fastsolve.stats()["misses"]
+    assert pens == [0.0]                 # forced -> zero penalty
+    assert after == before               # and no board was solved for it
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_unforced_play_still_solves():
+    """Sanity: the skip is specific -- a free choice (the lead) still solves.
+    Uses the real fixture hands so the solved deal is a valid 52-card one."""
+    from bidding_dt.dd import fastsolve
+    s = decl_session(seed=1, cfg=PlayConfig(decl_pool=4, min_floor=0,
+                                            strategy=False, play_temp=1.0))
+    lead = cid("5", "S")                  # a low spade from East's real hand
+    assert lead in HANDS[1]
+    plays = [(1, lead)]                    # East leads trick one: a free choice
+    fastsolve.clear_cache()                # other tests may have cached this spot
+    before = fastsolve.stats()["misses"]
+    pens = s._quality_pens(1, lead, 0, plays,
+                           [{1: set(HANDS[1]), 3: set(HANDS[3])}])
+    after = fastsolve.stats()["misses"]
+    assert pens is not None and len(pens) == 1
+    assert after > before                  # a real solve happened
 
 
 # ---- full hand plays out legally -------------------------------------------

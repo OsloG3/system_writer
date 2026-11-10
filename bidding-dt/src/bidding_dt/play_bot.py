@@ -29,6 +29,11 @@ play_strategy.suit_relevance / merge_layouts). On top of that, every observed
 hidden play is scored by its double-dummy cost under each hypothesis: a player
 would not have made a clearly bad play from their hand, so layouts under which
 the observed play gave away tricks are discounted by exp(-cost/play_temp).
+That inference is kept cheap where it is free: a play that was FORCED (its
+only legal card) carries no information and is never solved, and the
+retro-scoring of fresh top-up candidates reviews recent plays NEWEST FIRST
+under a wall-clock budget (cfg.play_review_time) instead of unconditionally
+re-solving large early positions.
 
 The card itself is picked from those weighted layouts:
 
@@ -42,7 +47,9 @@ The card itself is picked from those weighted layouts:
 All double-dummy work goes through dd/fastsolve.py: positions are built as
 raw DDS structs with integer maths and solved in memoised batches (the same
 public position recurs constantly within and across decisions), which is what
-keeps the per-card budgets affordable.
+keeps the per-card budgets affordable. Every decision also records its phase
+times and DDS solve count in session.last_timing (surfaced on the wire as
+"timing") for latency tuning.
 
 Cards that tie in score are chosen AT RANDOM among the tied set (the bot used
 to always play the highest, which is predictable and wastes honours).
@@ -63,6 +70,7 @@ candidates that still hold a denied card -- which is a real bridge inference
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -150,6 +158,15 @@ class PlayConfig:
     old one, and in a 12-deal A/B the declarer side reached its double-dummy
     trick count on 12/12 hands (worst hand exactly DD) versus 10/12 (worst
     -2 tricks) at the old caps.
+
+    strat_time and play_review_time were then tuned DOWN for whole-hand
+    latency (the pool-maintenance retro-scoring, not the search, was the
+    biggest uncapped cost): a whole hand plays ~24% faster on an idle
+    machine and more under CPU contention (the review budget bounds the
+    top-up spikes that used to balloon there), while a 12-deal A/B kept the
+    declarer side at its double-dummy trick count on 12/12 hands. Both knobs
+    are CLI flags, so the quality-first settings (2.0 and 0) are one
+    restart away.
     """
     decl_pool: int = 64        # candidate deals kept by the declarer-side bot
     def_pool: int = 40         # candidate deals kept by a defender bot
@@ -176,7 +193,13 @@ class PlayConfig:
     #                          # caps; the wall-clock budget below is the real
     #                          # limiter -- one root ranking already costs
     #                          # layouts x legal cards boards)
-    strat_time: float = 2.0    # wall-clock seconds per decision
+    strat_time: float = 1.5    # wall-clock seconds per decision. Lowered from
+    #                          # 2.0 together with the fastsolve cache: a
+    #                          # decision now fits ~2x the positions the old
+    #                          # solver did per second, and quality A/B runs
+    #                          # at 1.0-1.5s matched the unbudgeted bot's
+    #                          # double-dummy results, so 1.5 keeps depth
+    #                          # headroom while cutting whole-hand latency.
     strat_objective: str = "both"   # "ev" | "make" | "both": expected tricks,
     #                          # weighted share of layouts making the contract,
     #                          # or the sum (see play_strategy._objective)
@@ -189,6 +212,15 @@ class PlayConfig:
     #                          # should not annihilate a layout on its own)
     play_review: int = 8       # fresh top-up candidates are retro-scored against
     #                          # this many recent hidden plays
+    play_review_time: float = 0.5  # wall-clock seconds one top-up's retro-scoring
+    #                          # may spend, newest play first (0 = unbudgeted).
+    #                          # Early-hand top-ups used to re-solve up to
+    #                          # review x fresh-candidates LARGE past positions
+    #                          # every decision -- the single biggest latency
+    #                          # source in a hand; the budget bounds it while
+    #                          # keeping the most relevant (recent) reviews.
+    #                          # Skipped reviews are imputed at the session's
+    #                          # mean penalty (solve-free, mean-preserving).
 
 
 @dataclass
@@ -250,10 +282,20 @@ class PlaySession:
 
         self.pool: list[_Candidate] = []
         self.processed = 0                                    # plays folded in
+        # running mean of the double-dummy cost per (observed play, candidate)
+        # pair, accumulated from every real _quality_pens solve: the estimator
+        # _retro_score imputes budget-skipped reviews with (guarded by _lock)
+        self._pen_sum = 0.0
+        self._pen_n = 0
         self._plays: list = []                # last normalised play list seen
         self.showouts: dict[int, set] = {s: set() for s in self.hidden_seats}
         self.lead_denials: dict[int, set] = {s: set() for s in self.hidden_seats}
         self.last_search: dict | None = None      # diagnostics of the last plan
+        # per-phase wall-clock accounting (seconds): `timing` accumulates over
+        # the session's life, `last_timing` describes the most recent decision;
+        # both ride along in the sidecar response for latency tuning
+        self.timing: dict = {"decisions": 0}
+        self.last_timing: dict = {}
         # the contract's trick target (level + 6) drives the "works on the
         # highest number of layouts" objective of the strategy search
         self.target = None
@@ -390,32 +432,49 @@ class PlaySession:
         # the visible seats' hands are the same for every candidate
         known_now = {s: self.known_cards[s] - played_before[s]
                      for s in self.known_seats}
-        positions = []
-        for hh in hidden_hands:
+        is_defender = seat not in (self.declarer, self.dummy)
+        cap = float(self.cfg.play_pen_cap)
+        pens = [0.0] * len(hidden_hands)
+        todo = []                     # (pen slot, allowed, remaining) to solve
+        for j, hh in enumerate(hidden_hands):
             remaining = dict(known_now)
             remaining.update(hh)
             if any(len(v) != base - (s in cur_seats)
                    for s, v in remaining.items()):
                 return None
-            positions.append((remaining, leader, cur_cids))
-        try:
-            solved = fastsolve.solve_positions(positions, self.trump_int)
-        except Exception:
-            return None                  # scoring must never break play folding
-        is_defender = seat not in (self.declarer, self.dummy)
-        cap = float(self.cfg.play_pen_cap)
-        pens = []
-        for hh, scores in zip(hidden_hands, solved):
-            obs = scores.get(int(cid))
             rem = hh[seat]
             legal = self._legal_cards(rem, cur)
             allowed = self._apply_lead_rule(legal, rem, is_defender, not cur)
+            if allowed == {cid}:
+                continue              # forced play: costs nothing by definition
+            todo.append((j, allowed, remaining))
+        if not todo:
+            self._accrue_pens(pens)       # every play here was forced (pen 0)
+            return pens
+        try:
+            solved = fastsolve.solve_positions(
+                [(rem, leader, cur_cids) for _j, _a, rem in todo],
+                self.trump_int)
+        except Exception:
+            return None                  # scoring must never break play folding
+        for (j, allowed, _rem), scores in zip(todo, solved):
+            obs = scores.get(int(cid))
             best = max((scores[c] for c in allowed if c in scores), default=None)
             if obs is None or best is None:
-                pens.append(0.0)                        # cannot judge: no penalty
-            else:
-                pens.append(min(max(best - obs, 0.0), cap))
+                continue                            # cannot judge: no penalty
+            pens[j] = min(max(best - obs, 0.0), cap)
+        self._accrue_pens(pens)
         return pens
+
+    def _accrue_pens(self, pens):
+        """Fold a scored penalty list into the session-wide running mean of
+        double-dummy cost per (observed play, candidate) pair. _retro_score
+        imputes budget-skipped reviews at this mean, so it draws on every
+        play scored live across the whole hand -- including the informative
+        early leads -- rather than only the (often forced, near-zero) recent
+        plays a tight budget happened to review."""
+        self._pen_sum += sum(pens)
+        self._pen_n += len(pens)
 
     def _retro_score(self, fresh):
         """Score freshly topped-up candidates against the recent hidden plays.
@@ -423,7 +482,18 @@ class PlaySession:
         Live scoring only covers plays that happen while a candidate sits in
         the pool; without this, top-ups (which merely satisfy the hard
         constraints) would come out systematically likelier than penalised
-        veterans. Bounded by cfg.play_review recent hidden plays.
+        veterans. Bounded by cfg.play_review recent hidden plays AND a
+        cfg.play_review_time wall-clock budget per top-up (0 = unbudgeted):
+        plays are reviewed NEWEST FIRST, because the most recent plays are
+        both the most decision-relevant and the cheapest to solve (fewer
+        cards), so an exhausted budget drops the oldest, largest positions.
+        Reviews the budget cuts are charged to the fresh cohort at the
+        session-wide average penalty per (play, candidate) pair (see
+        _accrue_pens) -- a mean-preserving completion that costs no solves
+        and keeps top-ups from coming out systematically likelier than the
+        penalised veterans; only the per-candidate discrimination of the
+        skipped plays is lost. (Unbudgeted early-hand top-ups used to cost
+        seconds of re-solved history every decision.)
         """
         plays = self._plays
         if (not fresh or not plays or self.cfg.play_temp <= 0
@@ -432,7 +502,13 @@ class PlaySession:
         hidden = set(self.hidden_seats)
         idxs = [i for i, (s, _) in enumerate(plays[:self.processed])
                 if int(s) in hidden]
-        for idx in idxs[-int(self.cfg.play_review):]:
+        budget = float(self.cfg.play_review_time)
+        deadline = time.monotonic() + budget if budget > 0 else None
+        review = idxs[-int(self.cfg.play_review):]
+        done = 0
+        for idx in reversed(review):
+            if deadline is not None and done and time.monotonic() >= deadline:
+                break
             seat, cid = int(plays[idx][0]), int(plays[idx][1])
             # each fresh candidate held, at idx, its current cards plus every
             # card its seat played from idx onwards
@@ -446,6 +522,19 @@ class PlaySession:
             if pens:
                 for cand, p in zip(fresh, pens):
                     cand.play_pen += p
+            done += 1
+        # Mean-preserving completion: charge each skipped review at the
+        # session-wide average penalty per (play, candidate) pair, so fresh
+        # candidates are not left systematically under-penalised (over-weighted
+        # vs the veterans) when the budget cuts reviews -- that bias measured
+        # ~0.2 tricks/hand of declarer error. Costs no solves; only the
+        # per-candidate discrimination of the skipped plays is lost.
+        skipped = len(review) - done
+        if skipped > 0 and fresh and self._pen_n > 0:
+            add = skipped * (self._pen_sum / self._pen_n)
+            if add > 0.0:
+                for cand in fresh:
+                    cand.play_pen += add
 
     def _process_new_plays(self, plays):
         with self._lock:
@@ -827,23 +916,47 @@ class PlaySession:
         best = max(dd.values())
         return {c for c, t in dd.items() if t == best}
 
+    def _record_timing(self, marks: dict):
+        """Fold one decision's phase times into the session counters."""
+        self.last_timing = marks
+        t = self.timing
+        t["decisions"] += 1
+        for k, v in marks.items():
+            if k != "decisions":
+                t[k] = t.get(k, 0.0) + v
+
     def choose(self, plays, to_act):
         """Return the card id `to_act` should play given the play so far."""
+        t0 = time.monotonic()
+        m0 = fastsolve.stats()["misses"]
         plays = self._norm_plays(plays)
         self._process_new_plays(plays)
+        t1 = time.monotonic()
         info = self._analyze(plays)
         to_act = int(to_act)
         with self._lock:
             self.last_search = None
             self._ensure_pool(info)
+            t2 = time.monotonic()
             known_rem, legal = self._legal_for(info, to_act)
             if not self.pool:
+                self._record_timing({"process": t1 - t0, "pool": t2 - t1,
+                                     "weights": 0.0, "search": 0.0,
+                                     "rank": 0.0, "total": t2 - t0,
+                                     "solves": fastsolve.stats()["misses"] - m0})
                 return min(legal)
             layouts = self._weighted_layouts(info, known_rem)
+            t3 = time.monotonic()
             card = self._strategy_card(info, known_rem, legal, layouts, to_act)
+            t4 = time.monotonic()
             if card is None:
                 avg = self._pool_rank(info, known_rem, legal, layouts)
                 card = self._best_ranked(avg, legal)
+            t5 = time.monotonic()
+            self._record_timing({"process": t1 - t0, "pool": t2 - t1,
+                                 "weights": t3 - t2, "search": t4 - t3,
+                                 "rank": t5 - t4, "total": t5 - t0,
+                                 "solves": fastsolve.stats()["misses"] - m0})
             return card
 
     def choose_drill(self, plays, to_act, true_hands):
@@ -855,22 +968,34 @@ class PlaySession:
         that does not give away a trick double-dummy on the real deal, so the
         drill bots defend/declare honestly yet never sabotage the problem.
         """
+        t0 = time.monotonic()
         plays = self._norm_plays(plays)
         self._process_new_plays(plays)
+        t1 = time.monotonic()
         info = self._analyze(plays)
         to_act = int(to_act)
         with self._lock:
             self.last_search = None
             self._ensure_pool(info)
+            t2 = time.monotonic()
             known_rem, legal = self._legal_for(info, to_act)
             safe = self._dd_safe(info, legal, true_hands) or set(legal)
             if not self.pool:
+                self._record_timing({"process": t1 - t0, "pool": t2 - t1,
+                                     "weights": 0.0, "search": 0.0,
+                                     "rank": 0.0, "total": t2 - t0})
                 return min(safe)
             layouts = self._weighted_layouts(info, known_rem)
+            t3 = time.monotonic()
             card = self._strategy_card(info, known_rem, safe & legal, layouts, to_act)
+            t4 = time.monotonic()
             if card is None:
                 avg = self._pool_rank(info, known_rem, legal, layouts)
                 card = self._best_ranked(avg, safe)
+            t5 = time.monotonic()
+            self._record_timing({"process": t1 - t0, "pool": t2 - t1,
+                                 "weights": t3 - t2, "search": t4 - t3,
+                                 "rank": t5 - t4, "total": t5 - t0})
             return card
 
 

@@ -15,13 +15,15 @@ Endpoints (all JSON):
                      body: /legal body + "hands", optional "model", "temp"
     POST /score   -> {"imps", "par_ns", "score_ns", "tricks", "contract"}
                      body: /bid body; IMPs are N-S view vs double-dummy par
-    POST /play/choose -> {"seat", "card", "pool", "strat"}  a bot's card,
-                     chosen over the pool of hidden hands consistent with the
-                     auction and the play so far: the declarer side plans a
+    POST /play/choose -> {"seat", "card", "pool", "strat", "timing"}  a bot's
+                     card, chosen over the pool of hidden hands consistent with
+                     the auction and the play so far: the declarer side plans a
                      strategy on likelihood-weighted, low-card-merged layouts,
                      the other seats rank cards by their weighted double-dummy
                      expectation (see play_bot.py / play_strategy.py; "strat"
-                     carries the plan's diagnostics, or null). Body:
+                     carries the plan's diagnostics or null, "timing" the
+                     decision's per-phase wall-clock seconds and DDS solve
+                     count). Body:
                        {"session": stable per-bot key, "dealer", "vuln",
                         "calls": [...], "known": {seat: 'S.H.D.C'},
                         "plays": [[seat, "AS"], ...], "to_act": seat,
@@ -368,7 +370,8 @@ class Service:
             card = sess.choose_drill(plays, to_act,
                                      {s: dd_hands[s] for s in range(4)})
         return {"seat": int(to_act), "card": card_to_str(int(card)),
-                "pool": len(sess.pool), "strat": sess.last_search}
+                "pool": len(sess.pool), "strat": sess.last_search,
+                "timing": sess.last_timing}
 
     def play_result(self, body: dict) -> dict:
         dealer, vuln, ids = self._auction(body)
@@ -498,12 +501,16 @@ def main():
                          "then picks by the weighted per-card double-dummy rank")
     ap.add_argument("--strat-layouts", type=int, default=20,
                     help="merged macro layouts the strategy search evaluates per node")
-    ap.add_argument("--strat-time", type=float, default=2.0,
+    ap.add_argument("--strat-time", type=float, default=1.5,
                     help="wall-clock seconds the strategy search may spend per decision")
     ap.add_argument("--play-temp", type=float, default=1.0,
                     help="temperature discounting layouts under which an observed "
                          "hidden play cost tricks double-dummy (0 disables the "
                          "play-quality inference)")
+    ap.add_argument("--play-review-time", type=float, default=0.5,
+                    help="wall-clock seconds one pool top-up may spend retro-scoring "
+                         "fresh candidates against recent hidden plays, newest "
+                         "first (0 = review all of them unbudgeted)")
     args = ap.parse_args()
 
     ckpts = parse_ckpt_specs(args.ckpt)
@@ -512,7 +519,8 @@ def main():
                           strategy=not args.no_strategy,
                           strat_layouts=args.strat_layouts,
                           strat_time=args.strat_time,
-                          play_temp=args.play_temp)
+                          play_temp=args.play_temp,
+                          play_review_time=args.play_review_time)
     svc = Service(ckpts, dd_cache=args.dd_cache or None, temp=args.temp,
                   hand_ckpt=args.hand_ckpt, play_cfg=play_cfg)
     httpd = ThreadingHTTPServer((args.host, args.port), _Handler)
