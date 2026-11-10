@@ -1,0 +1,52 @@
+# GPU self-play run WITH system-convention enforcement: same two-table team
+# reward as rl_small.yaml, plus a per-call penalty for every bid that breaks
+# the enforced system (conventions/: 5-card majors, 15-17 1NT, strong 2C,
+# 20-21 2NT, GF 2/1, invitational jump shifts -- 6 cards, 10-11, also in
+# competition -- standard overcalls, splinter double jumps below 4H, RKCB
+# 4NT in the last suit the partnership bid, XYZ, takeout doubles, fourth-suit
+# GF, standard natural structure). Hands are evaluated in Kaplan-Rubens
+# points (rpbridge.net/8j19.htm); every range carries +-conv_params
+# .kr_tolerance slack. The penalty is conv_weight * sum(violated rule
+# weights), subtracted from each offending call's row reward.
+#   uv run python -m bidding_dt.rl.train_ppo --config configs/rl_conv.yaml \
+#       --preset small --bc-ckpt runs/small/best.pt --out runs/rl_conv
+#
+model:
+  dropout: 0.0
+rl:
+  iters: 256
+  deals_per_iter: 128
+  lr: 1.0e-4
+  warmup_iters: 64
+  minibatch_size: 124
+  ppo_epochs: 3
+  reward_scale: 0.2
+  team_weight: 1.0
+  par_weight: 0.25
+  rollout_temp: 1.5
+  gamma: 1.0
+  lam: 0.95
+  clip_eps: 0.2
+  vf_coef: 0.5
+  ent_coef: 0.01
+  ent_coef_end: 0.001
+  kl_beta: 0.1
+  kl_beta_end: 0.0
+  league_prob: 0.5
+  snapshot_every: 30
+  max_snapshots: 24
+  eval_every: 25
+  eval_deals: 128
+  cache_path: cache/dd.sqlite
+  # --- convention enforcement ------------------------------------------------
+  conv_weight: 1.0          # penalty units per rule weight (0 disables).
+                            # Typical row rewards are +-0.5..5 units, so 1.0
+                            # makes a single violation cost like losing ~5 IMPs;
+                            # lower it if conv_viol_rate stays high and IMPs
+                            # regress, raise it if the bot ignores the system.
+  # conv_rules:             # per-rule weight overrides (0 disables a rule):
+  #   gf_pass: 2.0
+  #   open_values: 0.0
+  # conv_params:            # threshold overrides (see ConventionConfig):
+  #   kr_tolerance: 0.75
+  #   js_range: [10.5, 12.5]

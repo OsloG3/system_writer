@@ -39,6 +39,11 @@ Deliberate approximations, to keep solving time manageable:
   * the defence is modelled double-dummy-pessimistic for the first
     `def_depth` tricks and by a cheap heuristic beyond, and only the top
     `def_branch` defender branches per node are expanded recursively;
+  * every solve goes through dd/fastsolve: positions become raw DDS structs
+    (no string round-trips) and a shared LRU memoises results, because the
+    same public position recurs across parents/children, beam slots and
+    decisions -- cache hits are microseconds, so the wall-clock budget buys
+    many more layouts and plies than the board count suggests;
   * a solve-count and wall-clock budget cap everything; when they run out,
     nodes fall back to a naive estimate and the root falls back to the
     weighted one-step ranking, so a slow position degrades to exactly what
@@ -54,26 +59,11 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-import endplay.types as ept
-from endplay.dds.solve import SolveMode, solve_all_boards
-from endplay.utils.play import trick_winner
-
-from .data.hands import cards_to_str
+from .dd import fastsolve
 
 # Card ids follow env/deals.py (card = rank*4 + suit, rank A=0 .. 2=12,
 # suit S,H,D,C = 0..3). The tiny helpers below mirror play_bot's on purpose:
 # play_bot imports this module, so importing them back would be circular.
-RANKS = "AKQJT98765432"
-SUITS = "SHDC"
-_RANK_IDX = {c: i for i, c in enumerate(RANKS)}
-
-
-def ep_card(cid: int):
-    return ept.Card(suit=ept.Denom(cid % 4), rank=ept.Rank.find(RANKS[cid // 4]))
-
-
-def ep_to_card(card) -> int:
-    return _RANK_IDX[card.rank.abbr] * 4 + int(card.suit)
 
 
 def card_above(cid: int) -> int | None:
@@ -193,6 +183,7 @@ class StrategySearch:
                  objective: str = "both", make_bonus: float = 1.0,
                  target: int | None = None, rng=None):
         self.trump = trump
+        self.trump_int = int(trump)      # DDS denom int for fastsolve
         self.declarer = int(declarer)
         self.dummy = int(dummy)
         self.decl_seats = (self.declarer, self.dummy)
@@ -214,6 +205,7 @@ class StrategySearch:
         self.exhausted = False
         self.root_done = 0
         self._t0 = time.monotonic()
+        self._st0 = fastsolve.stats()      # for the cache diagnostics below
 
     def _rand(self) -> float:
         """Random tie-break key; 0.0 without an rng keeps the old card order."""
@@ -272,9 +264,14 @@ class StrategySearch:
         return best_card, self._stats(len(root.layouts), value)
 
     def _stats(self, layouts: int, value):
+        st = fastsolve.stats()
         return {"layouts": layouts, "solves": self.solves, "nodes": self.nodes,
                 "time": time.monotonic() - self._t0, "exhausted": self.exhausted,
-                "value": value}
+                "value": value,
+                # how many of this search's boards the shared position cache
+                # answered without DDS, and the DDS wall time it did spend
+                "cache_hits": st["hits"] - self._st0["hits"],
+                "dds_time": st["dds_seconds"] - self._st0["dds_seconds"]}
 
     # ---- budgets ------------------------------------------------------------
 
@@ -324,8 +321,7 @@ class StrategySearch:
         if len(nxt[0].cur) == 4:
             groups: dict = {}
             for nl in nxt:
-                w = int(trick_winner([ep_card(c) for _, c in nl.cur],
-                                     ept.Player(node.leader), self.trump))
+                w = self._winner(node.leader, nl.cur)
                 groups.setdefault(w, []).append(nl)
             return [(sum(m.weight for m in ms), self._complete(node, ms, w))
                     for w, ms in groups.items()]
@@ -346,8 +342,7 @@ class StrategySearch:
                         weight=L.weight, cur=L.cur + [(seat, cid)])
             nl.rem[seat].discard(cid)
             if len(nl.cur) == 4:
-                w = int(trick_winner([ep_card(c) for _, c in nl.cur],
-                                     ept.Player(node.leader), self.trump))
+                w = self._winner(node.leader, nl.cur)
                 key = (self._card_class(cid, ign), w)
             else:
                 key = (self._card_class(cid, ign), -1)
@@ -407,8 +402,8 @@ class StrategySearch:
         first `def_depth` tricks, a cheap heuristic beyond."""
         solved = None
         if (node.tricks_done - self.root_done) < self.def_depth:
-            deals = [self._deal_for(node, L) for L in node.layouts]
-            solved = self._solve(deals)
+            positions = [self._position_for(node, L) for L in node.layouts]
+            solved = self._solve(positions)
         picks = []
         for i, L in enumerate(node.layouts):
             allowed = self._def_legal(node, L)
@@ -442,44 +437,45 @@ class StrategySearch:
 
     # ---- deal building / solving ----------------------------------------------
 
-    def _deal_for(self, node: _Node, lay: Layout, extra=None):
-        """An endplay Deal at this node's position for one layout (`extra` is
-        an additional (seat, cid) play evaluated on top). Hands exclude the
-        cards already played to the current trick, which go to currentTrick."""
+    def _winner(self, leader: int, cur) -> int:
+        """The seat that wins the completed 4-card trick `cur` (play order,
+        starting at `leader`). Integer mirror of endplay's trick_winner."""
+        return (leader + fastsolve.trick_winner(
+            [int(c) for _, c in cur], self.trump_int)) % 4
+
+    def _position_for(self, node: _Node, lay: Layout, extra=None):
+        """A fastsolve position (hands, leader, cur-cids) at this node for one
+        layout (`extra` is an additional (seat, cid) play evaluated on top).
+        Hands exclude the cards already played to the current trick, which go
+        to `cur` -- exactly the DDS convention play_bot._build_deal uses."""
         cur = lay.cur if extra is None else lay.cur + [extra]
         kplayed: dict = {}
         for s, cid in cur:
             if s in node.known_rem:
                 kplayed.setdefault(s, set()).add(cid)
-        parts = []
+        hands = {}
         for s in range(4):
             if s in node.known_rem:
-                cs = node.known_rem[s].difference(kplayed.get(s, ()))
+                hands[s] = node.known_rem[s].difference(kplayed.get(s, ()))
             else:
-                cs = lay.rem[s]
-            parts.append(cards_to_str(sorted(cs)) if cs else "-")
-        deal = ept.Deal.from_pbn("N:" + " ".join(parts))
-        deal.trump = self.trump
-        deal.first = ept.Player(node.leader)
-        for _, cid in cur:
-            deal.play(ep_card(cid), from_hand=False)
-        return deal
+                hands[s] = lay.rem[s]
+        return hands, node.leader, [int(c) for _, c in cur]
 
-    def _solve(self, deals):
+    def _solve(self, positions):
         """Batched solve -> [{card id: tricks for the side to move}]; None when
-        the budget is spent (the soft cap lets one batch overshoot)."""
-        if not deals or self._over():
+        the budget is spent (the soft cap lets one batch overshoot). Memoised
+        by fastsolve, so a repeated public position costs microseconds -- the
+        wall-clock budget, not the board count, is what the cache stretches."""
+        if not positions or self._over():
             return None
-        self.solves += len(deals)
-        solved = solve_all_boards(deals, SolveMode.Default)
-        return [{ep_to_card(c): int(t) for c, t in board} for board in solved]
+        self.solves += len(positions)
+        return fastsolve.solve_positions(positions, self.trump_int)
 
     def _after_meta(self, node: _Node, lay: Layout, extra):
         """(tricks_done, tricks_decl, winner-side-is-decl) after `extra`."""
         cur = lay.cur + [extra]
         if len(cur) == 4:
-            w = int(trick_winner([ep_card(c) for _, c in cur],
-                                 ept.Player(node.leader), self.trump))
+            w = self._winner(node.leader, cur)
             return (node.tricks_done + 1,
                     node.tricks_decl + (1 if w in self.decl_seats else 0),
                     w in self.decl_seats)
@@ -513,12 +509,12 @@ class StrategySearch:
         """Objective per candidate visible-seat card, assuming double-dummy
         (clairvoyant) play afterwards -- the beam-ranking heuristic and the
         depth-limit leaf value."""
-        deals, meta = [], []
+        positions, meta = [], []
         for c in cards:
             for i, L in enumerate(node.layouts):
-                deals.append(self._deal_for(node, L, extra=(node.to_act, c)))
+                positions.append(self._position_for(node, L, extra=(node.to_act, c)))
                 meta.append((c, i))
-        solved = self._solve(deals)
+        solved = self._solve(positions)
         if solved is None:
             return {c: self._naive(node) for c in cards}
         totals: dict = {c: [] for c in cards}
@@ -547,8 +543,8 @@ class StrategySearch:
             cards = sorted(self._legal_known(node))
             scores = self._onestep_decl_cards(node, cards)
             return max(scores.values()) if scores else self._naive(node)
-        deals = [self._deal_for(node, L) for L in node.layouts]
-        solved = self._solve(deals)
+        positions = [self._position_for(node, L) for L in node.layouts]
+        solved = self._solve(positions)
         if solved is None:
             return self._naive(node)
         rem = 13 - node.tricks_done

@@ -28,6 +28,16 @@ RL checkpoint against the models of its league:
       --out runs/rl_small2
 # --bc-ckpt accepts BC or RL checkpoints (auto-detected; arch is adopted)
 
+System conventions (rl.conv_weight > 0 / --conv-weight, see
+configs/rl_conv.yaml): every learner call is additionally checked against
+the enforced bidding system (conventions/: 5-card majors, 15-17 1NT, strong
+2C, 20-21 2NT, GF 2/1, invitational jump shifts also in competition,
+standard overcalls, splinter double jumps below 4H, RKCB 4NT in the last
+suit the partnership bid, XYZ, takeout doubles, fourth-suit GF, standard
+natural structure -- hands evaluated in Kaplan-Rubens points), and the
+weighted sum of the violated rules is subtracted from that decision's row
+reward. Per-iteration logs carry conv_pen_mean / conv_viol_rate / conv_top.
+
 CPU smoke:
   python -m bidding_dt.rl.train_ppo --preset tiny --bc-ckpt runs/smoke/best.pt \
       --config configs/rl_smoke.yaml --out runs/rl_smoke
@@ -51,12 +61,14 @@ import argparse
 import json
 import math
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
 import torch
 
+from ..conventions import ConventionConfig
 from ..env.deals import random_deals
 from ..dd.reward import warm_cache
 from ..dd.solver import TableCache
@@ -109,6 +121,11 @@ def main():
                          "capping leaves cores for the DD solver")
     ap.add_argument("--cpu-bf16", action="store_true", default=None,
                     help="bf16 autocast for CPU forwards (AVX512-BF16/AMX)")
+    ap.add_argument("--conv-weight", type=float, default=None,
+                    help="system-convention penalty weight (rl.conv_weight); "
+                         ">0 checks every learner call against the enforced "
+                         "bidding system (conventions/) and subtracts the "
+                         "weighted violations from that call's reward")
     ap.add_argument("--cache", default=None, help="DD table sqlite path")
     ap.add_argument("--resume", default=None, help="checkpoint path or 'last'")
     args = ap.parse_args()
@@ -133,6 +150,18 @@ def main():
         rl.threads = args.threads
     if args.cpu_bf16:
         rl.cpu_bf16 = True
+    if args.conv_weight is not None:
+        rl.conv_weight = args.conv_weight
+
+    # system-convention enforcement (conventions/): weighted per-call penalty
+    # for bids inconsistent with the system, subtracted from row rewards
+    conv_cfg = None
+    if rl.conv_weight > 0:
+        conv_cfg = ConventionConfig.from_overrides(rl.conv_rules,
+                                                   rl.conv_params)
+        n_on = sum(1 for w in conv_cfg.weights.values() if w > 0)
+        print(f"convention penalties on: conv_weight={rl.conv_weight} "
+              f"({n_on} rules, kr_tolerance={conv_cfg.kr_tolerance})")
 
     out_dir = Path(args.out) if args.out else Path("runs") / ("rl-" + time.strftime("%Y%m%d-%H%M%S"))
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -260,7 +289,8 @@ def main():
 
     log({"event": "init", "params": model.num_params(), "device": str(device),
          "cfg": cfg.to_dict(), "bc_ckpt": args.bc_ckpt,
-         "init_kind": init_kind, "league": league.names()})
+         "init_kind": init_kind, "league": league.names(),
+         "conv_weight": rl.conv_weight})
 
     def draw_deals():
         d = random_deals(rng, rl.deals_per_iter)
@@ -285,7 +315,8 @@ def main():
         roll = play_team_deals(model, deals, dealer, vuln, device, rng,
                                cache=cache, opponent=opp_model,
                                greedy=rl.greedy, temp=rl.rollout_temp,
-                               amp=rollout_amp, presolve=presolve)
+                               amp=rollout_amp, presolve=presolve,
+                               conv_cfg=conv_cfg)
         if member is not None:
             league.update_result(member, roll.team_imps)
 
@@ -301,7 +332,7 @@ def main():
 
         buf, env = roll.buf, roll.env
         row_r = roll.row_rewards(rl.reward_scale, rl.team_weight,
-                                 rl.par_weight)
+                                 rl.par_weight, conv_weight=rl.conv_weight)
         buf.finish(row_r, rl.gamma, rl.lam)
         tensors = buf.to_torch(device)
         stats = ppo_update(model, ref_model, tensors, opt, device, rl,
@@ -344,6 +375,12 @@ def main():
                "lr": round(sched.get_last_lr()[0], 7),
                "wall": round(time.time() - t0, 1),
                **{k: round(v, 5) for k, v in stats.items()}}
+        if roll.conv_pen is not None and buf.n:
+            cnt = Counter(code for cs in roll.conv_codes for code in cs)
+            rec["conv_pen_mean"] = round(float(roll.conv_pen.mean()), 4)
+            rec["conv_viol_rate"] = round(
+                float((roll.conv_pen > 0).mean()), 4)
+            rec["conv_top"] = cnt.most_common(3)
         log(rec)
 
         if rl.eval_every and (it + 1) % rl.eval_every == 0:

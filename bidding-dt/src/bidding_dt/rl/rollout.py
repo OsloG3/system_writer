@@ -37,6 +37,15 @@ greedy policy would (D = 0) passes the full punishment on, while very unlikely
 sampled calls shrink it toward zero. Positive rewards are never scaled, and
 averaging dev per call keeps the discount independent of auction length.
 
+When a ConventionConfig is given (rl.conv_weight > 0), every recorded call is
+also checked against the enforced bidding system (conventions/: 5-card majors,
+15-17 1NT, strong 2C, 20-21 2NT, GF 2/1, invitational jump shifts, standard
+overcalls, splinters below 4H, RKCB 4NT, XYZ, takeout doubles, fourth-suit
+GF, standard natural structure; hands evaluated in Kaplan-Rubens points).
+The per-call penalty (sum of violated rule weights) is subtracted from the
+row reward as conv_weight * penalty *after* the partner-deviation discount,
+so a partner's exploration noise never excuses the row's own system break.
+
 Every learner decision is recorded in exactly the supervised input format,
 so the PPO update reuses the BC representation. Trajectories are per
 (env-row, seat): the seat's own decisions form the MDP chain with the row
@@ -55,6 +64,8 @@ import numpy as np
 import torch
 from torch.distributions import Categorical
 
+from ..conventions import ConventionConfig, HandInfo, check_call
+from ..conventions.auction import AuctionReader
 from ..data.hands import HAND_DIM
 from ..data.vocab import VOCAB_SIZE
 from ..dd.scoring import points_to_imps
@@ -211,11 +222,59 @@ def partner_greedy_dev(buf: RolloutBuffer) -> np.ndarray:
     return mean[deal_idx * 4 + (seat + 2) % 4]
 
 
+def convention_penalties(buf: RolloutBuffer, env: AuctionBatch,
+                         cfg: ConventionConfig | None = None,
+                         ) -> tuple[np.ndarray, list[list[str]]]:
+    """(penalties (n,), violation codes per row) for a finished rollout.
+
+    Replays each recorded decision's auction prefix (env.calls up to the
+    row's call_idx) through the convention reader and weighs the hero's
+    actual call against the enforced system. Only uses information the
+    model itself sees: hero's hand + public auction + dealer/vuln. Hand
+    features (K&R count, lengths) are computed once per (deal, seat).
+    """
+    n = buf.n
+    pens = np.zeros(n, dtype=np.float64)
+    codes: list[list[str]] = [[] for _ in range(n)]
+    if n == 0:
+        return pens, codes
+    cfg = cfg or ConventionConfig()
+    hands: dict[tuple[int, int], HandInfo] = {}
+    readers: dict[int, AuctionReader] = {}
+    for i in range(n):
+        di = buf.deal_idx[i]
+        seat = buf.seat[i]
+        key = (di, seat)
+        hi = hands.get(key)
+        if hi is None:
+            hi = hands[key] = HandInfo(env.deals[di].hands[seat])
+        reader = readers.get(di)
+        if reader is None:
+            reader = readers[di] = AuctionReader(int(env.dealer[di]),
+                                                 int(env.vuln[di]))
+        # readers are keyed per env row; every row of one auction feeds calls
+        # in order, but rows of the same auction arrive interleaved by
+        # call_idx, so replay the prefix from scratch when out of order
+        ci = int(buf.call_idx[i])
+        if reader.n > ci:
+            reader = AuctionReader(int(env.dealer[di]), int(env.vuln[di]))
+            readers[di] = reader
+        while reader.n < ci:
+            reader.feed(int(env.calls[di, reader.n]))
+        vs = check_call(reader, seat, hi, int(buf.action[i]), cfg)
+        if vs:
+            pens[i] = sum(v.weight for v in vs)
+            codes[i] = [v.code for v in vs]
+    return pens, codes
+
+
 def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
                      diverge: np.ndarray, par_imps_ns: np.ndarray,
                      reward_scale: float, team_weight: float = 1.0,
                      par_weight: float = 0.25,
-                     partner_dev: np.ndarray | None = None) -> np.ndarray:
+                     partner_dev: np.ndarray | None = None,
+                     conv_pen: np.ndarray | None = None,
+                     conv_weight: float = 0.0) -> np.ndarray:
     """Per-row terminal rewards for a two-table team rollout.
 
     team_imps[j]  = IMPs(score_NS(table0, deal j) - score_NS(table1, deal j))
@@ -230,6 +289,10 @@ def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
                     bad outcome is discounted toward zero as the partner's
                     sampled calls get less likely. Positive rewards are never
                     scaled, so the discount cannot manufacture a win.
+    conv_pen      = (n,) optional weighted system-convention penalties per
+                    row (convention_penalties); conv_weight * conv_pen is
+                    subtracted after the partner-dev scaling so the row owns
+                    its own system breaks in full.
     """
     deal_idx = np.asarray(buf.deal_idx)          # env row in [0, 2B)
     seat = np.asarray(buf.seat)
@@ -246,6 +309,8 @@ def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
         scale = np.exp(-np.clip(np.asarray(partner_dev, dtype=np.float64),
                                 0.0, None))
         r = np.where(r < 0.0, r * scale, r)
+    if conv_pen is not None and conv_weight:
+        r = r - conv_weight * np.asarray(conv_pen, dtype=np.float64)
     return r
 
 
@@ -261,13 +326,18 @@ class TeamRollout:
     par_imps_ns: np.ndarray    # (2B,) par-diff IMPs per table auction
     score_ns: np.ndarray       # (2B,) achieved score, N-S view
     partner_dev: np.ndarray | None = None   # (n,) mean partner greedy deviation
+    conv_pen: np.ndarray | None = None      # (n,) convention penalty per row
+    conv_codes: list | None = None          # (n,) violated rule codes per row
 
     def row_rewards(self, reward_scale: float, team_weight: float = 1.0,
-                    par_weight: float = 0.25) -> np.ndarray:
+                    par_weight: float = 0.25,
+                    conv_weight: float = 0.0) -> np.ndarray:
         return team_row_rewards(self.buf, self.n_deals, self.team_imps,
                                 self.diverge, self.par_imps_ns, reward_scale,
                                 team_weight, par_weight,
-                                partner_dev=self.partner_dev)
+                                partner_dev=self.partner_dev,
+                                conv_pen=self.conv_pen,
+                                conv_weight=conv_weight)
 
 
 def _act(mdl, tokens, hand, vuln_cls, row_len, masks, device, greedy,
@@ -436,7 +506,7 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
                     rng: np.random.Generator | None = None, cache=None,
                     opponent=None, greedy: bool = False, temp: float = 1.0,
                     record: bool = True, amp: bool = False,
-                    presolve=None) -> TeamRollout:
+                    presolve=None, conv_cfg=None) -> TeamRollout:
     """Play every deal at two tables (team match) and score the comparison.
 
     opponent given (league): the learner team is N-S at table 0 and E-W at
@@ -450,6 +520,10 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
     rewards (see team_row_rewards).
     amp: bf16 autocast for the rollout forwards (CPU speed knob).
     presolve: optional warm_cache future to join before scoring.
+    conv_cfg: optional ConventionConfig -- when given (and rows are
+    recorded), every learner decision is checked against the enforced
+    bidding system and roll.conv_pen/conv_codes carry the weighted
+    per-call penalties (subtracted in row_rewards via conv_weight).
     """
     b = len(deals)
     dealer2 = np.concatenate([dealer, dealer]).astype(np.int64)
@@ -468,7 +542,11 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
                           for j in range(b)], dtype=np.float64)
     diverge, diverged = _divergence(env, b)
     partner_dev = partner_greedy_dev(buf) if buf is not None else None
+    conv_pen = conv_codes = None
+    if buf is not None and conv_cfg is not None:
+        conv_pen, conv_codes = convention_penalties(buf, env, conv_cfg)
     return TeamRollout(buf=buf, env=env, n_deals=b, team_imps=team_imps,
                        diverge=diverge, diverged=diverged,
                        par_imps_ns=par_imps, score_ns=score_ns,
-                       partner_dev=partner_dev)
+                       partner_dev=partner_dev,
+                       conv_pen=conv_pen, conv_codes=conv_codes)

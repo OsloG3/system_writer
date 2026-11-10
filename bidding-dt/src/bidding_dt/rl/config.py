@@ -29,6 +29,19 @@ class RLConfig:
                                    # seat samples -- negative rewards are
                                    # discounted by the partner's sampled
                                    # deviation from greedy play (rollout.py)
+    # system-convention enforcement (conventions/): every learner call is
+    # checked against the enforced system (5-card majors, 15-17 1NT, strong
+    # 2C, 20-21 2NT, GF 2/1, invitational jump shifts, standard overcalls,
+    # splinters below 4H, RKCB 4NT, XYZ, takeout doubles, fourth-suit GF,
+    # standard natural structure) with hands evaluated in Kaplan-Rubens
+    # points; each violation's weight is summed and conv_weight * penalty
+    # is subtracted from that decision's row reward (after the partner-dev
+    # discount, so a partner's noise never excuses a system break).
+    conv_weight: float = 0.0       # 0 disables the convention penalty
+    conv_rules: dict = field(default_factory=dict)   # rule code -> weight
+                                   # override (0 disables one rule)
+    conv_params: dict = field(default_factory=dict)  # ConventionConfig
+                                   # threshold overrides (e.g. kr_tolerance)
     # ppo
     lr: float = 1e-4
     weight_decay: float = 0.01

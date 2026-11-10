@@ -37,7 +37,12 @@ The card itself is picked from those weighted layouts:
     reachable information set and is valued by how many (weighted) layouts the
     plan works on, within solve/time budgets;
   * defenders (and any fallback) rank each legal card by its expected
-    double-dummy tricks weighted by layout likelihood (endplay `solve_board`).
+    double-dummy tricks weighted by layout likelihood.
+
+All double-dummy work goes through dd/fastsolve.py: positions are built as
+raw DDS structs with integer maths and solved in memoised batches (the same
+public position recurs constantly within and across decisions), which is what
+keeps the per-card budgets affordable.
 
 Cards that tie in score are chosen AT RANDOM among the tied set (the bot used
 to always play the highest, which is predictable and wastes honours).
@@ -64,14 +69,13 @@ import numpy as np
 
 try:  # endplay lives in the `rl` extra; play_server already requires it
     import endplay.types as ept
-    from endplay.dds.solve import SolveMode, solve_all_boards, solve_board
-    from endplay.utils.play import trick_winner
 except ImportError:  # pragma: no cover - guarded by play_server's own check
     ept = None
 
 from .data.dataset import BiddingDataset
-from .data.hands import cards_to_str, indicator_from_cards, str_to_cards
+from .data.hands import indicator_from_cards, str_to_cards
 from .data.parse import MAX_CALLS
+from .dd import fastsolve
 from .dd.reward import contract_from_auction
 from .dd.solver import _PROJ_DENOM_TO_ENDPLAY
 from .hand.data import rotated_tokens
@@ -213,6 +217,7 @@ class PlaySession:
         self.dummy = (self.declarer + 2) % 4
         self.opener = (self.declarer + 1) % 4
         self.trump = ep_denom(int(denom))
+        self.trump_int = int(self.trump)     # DDS denom int for fastsolve
         self.model = model
         # the VQ hand model reads auctions up to MAX_CALLS (its positional
         # embedding has no room beyond that); the site allows longer ones, so
@@ -283,18 +288,17 @@ class PlaySession:
         tricks_decl = 0
         for t in range(n_done):
             trick = plays[4 * t:4 * t + 4]
-            w = trick_winner([ep_card(int(c)) for _, c in trick],
-                             ept.Player(int(trick[0][0])), self.trump)
-            tricks_decl += int(w) in (self.declarer, self.dummy)
+            w = (int(trick[0][0]) + fastsolve.trick_winner(
+                [int(c) for _, c in trick], self.trump_int)) % 4
+            tricks_decl += w in (self.declarer, self.dummy)
         if cur:
             leader = cur[0][0]
         elif n_done == 0:
             leader = self.opener
         else:
             last = plays[4 * (n_done - 1):4 * n_done]
-            winner = trick_winner([ep_card(int(c)) for _, c in last],
-                                  ept.Player(int(last[0][0])), self.trump)
-            leader = int(winner)
+            leader = (int(last[0][0]) + fastsolve.trick_winner(
+                [int(c) for _, c in last], self.trump_int)) % 4
         return {
             "played_by_seat": played_by_seat,
             "n_done": n_done,
@@ -364,8 +368,8 @@ class PlaySession:
             leader = self.opener
         else:
             last = plays[4 * (n_done - 1):4 * n_done]
-            leader = int(trick_winner([ep_card(int(c)) for _, c in last],
-                                      ept.Player(int(last[0][0])), self.trump))
+            leader = (int(last[0][0]) + fastsolve.trick_winner(
+                [int(c) for _, c in last], self.trump_int)) % 4
         played_before = {s: set() for s in range(4)}
         for s, c in plays[:idx]:
             played_before[int(s)].add(int(c))
@@ -373,24 +377,26 @@ class PlaySession:
         # hold one card fewer; anything else means an injected/synthetic pool
         base = 13 - n_done
         cur_seats = {s for s, _ in cur}
-        deals = []
+        cur_cids = [int(c) for _, c in cur]
+        # the visible seats' hands are the same for every candidate
+        known_now = {s: self.known_cards[s] - played_before[s]
+                     for s in self.known_seats}
+        positions = []
         for hh in hidden_hands:
-            remaining = {s: self.known_cards[s] - played_before[s]
-                         for s in self.known_seats}
+            remaining = dict(known_now)
             remaining.update(hh)
             if any(len(v) != base - (s in cur_seats)
                    for s, v in remaining.items()):
                 return None
-            deals.append(self._build_deal(remaining, leader, cur))
+            positions.append((remaining, leader, cur_cids))
         try:
-            solved = solve_all_boards(deals, SolveMode.Default)
+            solved = fastsolve.solve_positions(positions, self.trump_int)
         except Exception:
             return None                  # scoring must never break play folding
         is_defender = seat not in (self.declarer, self.dummy)
         cap = float(self.cfg.play_pen_cap)
         pens = []
-        for hh, board in zip(hidden_hands, solved):
-            scores = {ep_to_card(c): int(t) for c, t in board}
+        for hh, scores in zip(hidden_hands, solved):
             obs = scores.get(int(cid))
             rem = hh[seat]
             legal = self._legal_cards(rem, cur)
@@ -592,15 +598,15 @@ class PlaySession:
         return allowed or legal
 
     def _build_deal(self, remaining, leader, cur):
-        parts = []
-        for s in range(4):
-            cs = sorted(remaining[s])
-            parts.append(cards_to_str(cs) if cs else "-")
-        deal = ept.Deal.from_pbn("N:" + " ".join(parts))
-        deal.trump = self.trump
-        deal.first = ept.Player(leader)
-        for _, cid in cur:
-            deal.play(ep_card(cid), from_hand=False)
+        """An endplay Deal at this position, for callers that want endplay's
+        own solve functions (the hot paths use dd/fastsolve directly). Built
+        on the raw DDS struct -- 20x cheaper than Deal.from_pbn string
+        parsing. Convention: `remaining` hands EXCLUDE the current trick's
+        cards, which `cur` [(seat, cid), ...] puts on the table."""
+        d = fastsolve.make_deal(remaining, leader, self.trump_int,
+                                [int(c) for _, c in cur])
+        deal = ept.Deal.__new__(ept.Deal)   # skip __init__'s struct churn
+        deal._data = d
         return deal
 
     @staticmethod
@@ -726,17 +732,17 @@ class PlaySession:
             layouts = self._weighted_layouts(info, known_rem)
         if not layouts:
             return {c: 0.0 for c in legal}
-        deals = []
+        cur = [int(c) for _, c in info["cur"]]
+        positions = []
         for lay in layouts:
             remaining = dict(known_rem)
             remaining.update(lay.rem)
-            deals.append(self._build_deal(remaining, info["leader"], info["cur"]))
-        solved = solve_all_boards(deals, SolveMode.Default)
+            positions.append((remaining, info["leader"], cur))
+        solved = fastsolve.solve_positions(positions, self.trump_int)
         total = {c: 0.0 for c in legal}
         count = {c: 0.0 for c in legal}
         for lay, board in zip(layouts, solved):
-            for card, tricks in board:
-                cid = ep_to_card(card)
+            for cid, tricks in board.items():
                 if cid in total:
                     total[cid] += tricks * lay.weight
                     count[cid] += lay.weight
@@ -798,13 +804,13 @@ class PlaySession:
         try:
             remaining = {s: set(str_to_cards(true_hands[s]).tolist())
                          - set(info["played_by_seat"][s]) for s in range(4)}
-            deal = self._build_deal(remaining, info["leader"], info["cur"])
-            results = solve_board(deal, SolveMode.Default)
+            results = fastsolve.solve_position(
+                remaining, info["leader"], self.trump_int,
+                [int(c) for _, c in info["cur"]])
         except Exception:
             return set()
         dd = {}
-        for card, tricks in results:
-            cid = ep_to_card(card)
+        for cid, tricks in results.items():
             if cid in legal:
                 dd[cid] = int(tricks)
         if not dd:

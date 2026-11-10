@@ -1,8 +1,10 @@
 """Double-dummy scoring and reward package.
 
-- scoring.py: pure-python duplicate score + IMP conversion (no deps)
-- solver.py:  DDS wrapper (endplay/libdds, lazy import) + sqlite table cache
-- reward.py:  auction -> contract -> par-diff reward in IMPs
+- scoring.py:   pure-python duplicate score + IMP conversion (no deps)
+- solver.py:    DDS wrapper (endplay/libdds, lazy import) + sqlite table cache
+- fastsolve.py: raw-struct batched solve_board for the card-play bot, with a
+                process-wide position cache (the play bot's hot path)
+- reward.py:    auction -> contract -> par-diff reward in IMPs
 
 The RL environment deals with full 52-card deals; the policy keeps using the
 card-indicator encoding. DD solving is the throughput bottleneck (~ms/deal
