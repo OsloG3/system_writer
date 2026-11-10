@@ -82,7 +82,20 @@ def test_position_key_distinguishes_everything():
 
 def test_long_cur_is_refused():
     with pytest.raises(ValueError):
-        fastsolve.position_key(HANDS, 0, 1, [1, 2, 3, 4])
+        fastsolve.position_key(HANDS, 0, 1, [1, 2, 3, 4, 5])
+
+
+def test_completed_trick_rotates_to_the_winner():
+    """A 4-card cur means the trick just closed: the key must normalise to
+    'winner leads, empty trick' (what endplay's Deal.play does on the 4th
+    card), so both spellings of the position share one cache entry."""
+    # E leads 6S, S 2S, W QS, N AS -> North wins. Hands exclude all four.
+    four = [cid("6", "S"), cid("2", "S"), cid("Q", "S"), cid("A", "S")]
+    hands_after = {0: HANDS[0] - {cid("A", "S")}, 1: HANDS[1] - {cid("6", "S")},
+                   2: HANDS[2] - {cid("2", "S")}, 3: HANDS[3] - {cid("Q", "S")}}
+    k_completed = fastsolve.position_key(hands_after, 1, PROJ_TO_EP[2], four)
+    k_rotated = fastsolve.position_key(hands_after, 0, PROJ_TO_EP[2], [])
+    assert k_completed == k_rotated
 
 
 # ---- solving ------------------------------------------------------------------
@@ -213,8 +226,9 @@ def test_trick_winner_rules():
     assert fastsolve.trick_winner([s6, h5, sq, sa], ht) == 1
     hk, hq = cid("K", "H"), cid("Q", "H")
     assert fastsolve.trick_winner([s6, hq, sa, hk], ht) == 3
-    # off-suit discards never win; in NT only the led suit counts
+    # off-suit discards never win; in NT only the led suit counts, and the
+    # highest of it wins (SQ is the top spade here -> index 3)
     d9 = cid("9", "D")
-    assert fastsolve.trick_winner([s6, d9, s2, sq], fastsolve.NT_DENOM) == 2
+    assert fastsolve.trick_winner([s6, d9, s2, sq], fastsolve.NT_DENOM) == 3
     # leading trumps: the top trump wins, discards are irrelevant
     assert fastsolve.trick_winner([hq, hk, s6, d9], ht) == 1

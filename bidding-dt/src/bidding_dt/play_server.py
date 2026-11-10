@@ -487,16 +487,16 @@ def main():
                     help="hand-inference (VQ) checkpoint for the card-play bot's "
                          "hidden-hand pool; without it hands are dealt by a "
                          "constraint-based sampler")
-    ap.add_argument("--decl-pool", type=int, default=48,
+    ap.add_argument("--decl-pool", type=int, default=64,
                     help="candidate hidden deals the declarer-side bot simulates")
-    ap.add_argument("--def-pool", type=int, default=30,
+    ap.add_argument("--def-pool", type=int, default=40,
                     help="candidate hidden deals a defender bot simulates")
     ap.add_argument("--min-floor", type=int, default=6,
                     help="the candidate pool never shrinks below this")
     ap.add_argument("--no-strategy", action="store_true",
                     help="disable the declarer-side strategy search; every seat "
                          "then picks by the weighted per-card double-dummy rank")
-    ap.add_argument("--strat-layouts", type=int, default=12,
+    ap.add_argument("--strat-layouts", type=int, default=20,
                     help="merged macro layouts the strategy search evaluates per node")
     ap.add_argument("--strat-time", type=float, default=2.0,
                     help="wall-clock seconds the strategy search may spend per decision")

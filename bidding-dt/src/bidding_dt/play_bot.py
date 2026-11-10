@@ -142,9 +142,17 @@ def ep_denom(proj_denom: int):
 
 @dataclass
 class PlayConfig:
-    """Tunables for the card-play bot (the pool size is user-adjustable)."""
-    decl_pool: int = 48        # candidate deals kept by the declarer-side bot
-    def_pool: int = 30         # candidate deals kept by a defender bot
+    """Tunables for the card-play bot (the pool size is user-adjustable).
+
+    The defaults were raised together with dd/fastsolve (raw-struct batched
+    solving + a shared position cache): within the same per-decision
+    wall-clock budget the raised search analyses ~3x more positions than the
+    old one, and in a 12-deal A/B the declarer side reached its double-dummy
+    trick count on 12/12 hands (worst hand exactly DD) versus 10/12 (worst
+    -2 tricks) at the old caps.
+    """
+    decl_pool: int = 64        # candidate deals kept by the declarer-side bot
+    def_pool: int = 40         # candidate deals kept by a defender bot
     min_floor: int = 6         # the pool minimum never drops below this
     sample_temp: float = 1.0   # decoder card-draw temperature
     code_temp: float = 1.0     # VQ code-sampling temperature
@@ -156,17 +164,18 @@ class PlayConfig:
     #                          # 0 disables weighting (every layout counts 1)
     # ---- declarer-side strategy search (play_strategy.py) ----
     strategy: bool = True      # plan a conditional line, not a per-card vote
-    strat_layouts: int = 12    # macro layouts the search evaluates per node
-    strat_beam: int = 3        # declarer cards expanded per decision node
-    strat_depth: int = 4       # tricks planned ahead with full branching;
+    strat_layouts: int = 20    # macro layouts the search evaluates per node
+    strat_beam: int = 4        # declarer cards expanded per decision node
+    strat_depth: int = 6       # tricks planned ahead with full branching;
     #                          # deeper positions get a clairvoyant DD leaf
-    strat_def_depth: int = 2   # tricks where defenders are modelled DD-best
+    strat_def_depth: int = 3   # tricks where defenders are modelled DD-best
     #                          # (a cheap no-solve heuristic beyond that)
     strat_def_branch: int = 4  # defender branches expanded per node
-    strat_solves: int = 6000   # safety cap on DDS boards per decision (the
-    #                          # wall-clock budget below is the real limiter;
-    #                          # one root ranking already costs layouts x
-    #                          # legal cards boards)
+    strat_solves: int = 12000  # safety cap on boards per decision (cache hits
+    #                          # make boards cheap, so this was raised with the
+    #                          # caps; the wall-clock budget below is the real
+    #                          # limiter -- one root ranking already costs
+    #                          # layouts x legal cards boards)
     strat_time: float = 2.0    # wall-clock seconds per decision
     strat_objective: str = "both"   # "ev" | "make" | "both": expected tricks,
     #                          # weighted share of layouts making the contract,

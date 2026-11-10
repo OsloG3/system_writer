@@ -104,11 +104,23 @@ def pack_hand(cards) -> int:
 def position_key(hands, first: int, trump: int, cur) -> tuple:
     """Hashable identity of a DDS position (the cache key). The first four
     elements are the packed hands, so the key also carries everything needed
-    to fill a raw deal struct without touching the card sets again."""
-    if len(cur) > 3:
-        raise ValueError("a trick in progress has at most 3 cards down")
+    to fill a raw deal struct without touching the card sets again.
+
+    A 4-card `cur` means the trick just completed (the strategy search
+    evaluates the card that closes it): the position is normalised to the
+    winner leading an empty trick -- exactly what endplay's `Deal.play` does
+    on the fourth card -- so both spellings of the same position share one
+    cache entry and one struct form. `hands` must already exclude every cur
+    card (the standard convention), which makes the rotation lossless.
+    """
+    cur = tuple(cur)
+    if len(cur) == 4:
+        first = (int(first) + trick_winner(cur, trump)) % 4
+        cur = ()
+    elif len(cur) > 4:
+        raise ValueError("a trick has at most four cards")
     return (pack_hand(hands[0]), pack_hand(hands[1]), pack_hand(hands[2]),
-            pack_hand(hands[3]), int(first), int(trump), tuple(cur))
+            pack_hand(hands[3]), int(first), int(trump), cur)
 
 
 def _fill_from_key(d, key) -> None:
