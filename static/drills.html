@@ -2036,6 +2036,7 @@
             let showLastTrick = false;
             let showAuction = false;
             let showNotes = false;
+            let showClaimPanel = false; // the claim-tricks panel is open
             let hintMsg = null; // opt-in hint for the current card (Hint button)
             let hintBusy = false; // a hint fetch is in flight
             let wrongMsg = null; // red "try again" bubble after a refused pick
@@ -2518,13 +2519,38 @@
                     <span class="material-symbols-outlined">tips_and_updates</span><span class="cb-trickbtn-t">Hint</span></button>`;
             }
             // the hero's own claim: offered on the hero's turn in any phase.
-            // The server only accepts it when the hero's side takes EVERY
-            // remaining trick against every legal layout of the unseen cards;
-            // a refusal arrives as a 409 and the run simply continues.
+            // The claim states how many of the remaining tricks the hero's
+            // seats take -- 0 concedes the rest -- and the server accepts a
+            // nonzero claim only when those tricks come in a row against
+            // every legal layout of the unseen cards; a refusal arrives as a
+            // 409 and the run simply continues.
+            function claimRemainingTricksJS() {
+                const n = (state && state.plays ? state.plays : []).length;
+                return Math.ceil((52 - n) / 4);
+            }
             function claimBtnHtml() {
                 if (!playReady()) return "";
-                return `<button id="drClaimBtn" class="cb-trickbtn" title="Claim every remaining trick (refused unless it cannot fail)">
+                return `<button id="drClaimBtn" class="cb-trickbtn${showClaimPanel ? " on" : ""}" title="Claim tricks (refused unless the claim cannot fail)">
                     <span class="material-symbols-outlined">flag</span><span class="cb-trickbtn-t">Claim</span></button>`;
+            }
+            function claimPanelHtml() {
+                if (!showClaimPanel || !playReady()) return "";
+                const rem = claimRemainingTricksJS();
+                const you = state.role === "declarer" ? "You and dummy" : "You";
+                return `<div class="cb-auctionpop" style="left:0;right:0;padding:.7rem .8rem">
+                    <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.45rem">
+                        <span style="color:#e8e6e3;font-weight:700">Claim</span>
+                        <input id="drClaimTricksIn" class="dr-input" type="number" min="0" max="${rem}" value="${rem}" style="width:4.2rem;padding:.25rem .4rem;text-align:center">
+                        <span style="color:#908f8d;font-size:.85rem">of ${rem} remaining trick${rem === 1 ? "" : "s"}</span>
+                    </div>
+                    <div style="color:#908f8d;font-size:.78rem;line-height:1.45;margin-bottom:.6rem">
+                        ${you} must take these tricks <b>in a row</b>, whatever the hidden hands hold — anything less is refused and play continues. Claiming <b>0</b> concedes the rest; the run ends and is graded against the target.
+                    </div>
+                    <div style="display:flex;gap:.5rem;justify-content:flex-end">
+                        <button id="drClaimCancel" class="dr-btn ghost" style="padding:.3rem .8rem">Cancel</button>
+                        <button id="drClaimOk" class="dr-btn gold" style="padding:.3rem .8rem">Claim</button>
+                    </div>
+                </div>`;
             }
             function playTableView() {
                 // dh/dv: where the tabled dummy will lie on screen (row at the
@@ -2547,7 +2573,7 @@
                     <div class="cb-pt-s">${playSeatHtml(seatForArea(2))}</div>
                 </div>
                 <div class="cb-playbottom">
-                    ${auctionPanelHtml()}${notesPanelHtml()}${lastTrickPanelHtml()}${hintBubbleHtml()}${wrongBubbleHtml()}
+                    ${auctionPanelHtml()}${notesPanelHtml()}${lastTrickPanelHtml()}${claimPanelHtml()}${hintBubbleHtml()}${wrongBubbleHtml()}
                     <div class="cb-playrow">
                         <div class="cb-pprompt">${playPromptHtml()}</div>
                         ${auctionBtnHtml()}${notesBtnHtml()}${lastTrickBtnHtml()}${hintBtnHtml()}${claimBtnHtml()}
@@ -2606,16 +2632,17 @@
                 } catch (e) { hintBusy = false; }
                 render();
             }
-            // claim every remaining trick; an accepted claim ends the run
-            // right away (graded against the target), a refusal is just a
-            // toast and play continues
-            async function makeClaim() {
+            // claim `n` of the remaining tricks (0 concedes); an accepted
+            // claim ends the run right away (graded against the target), a
+            // refusal is just a toast and play continues
+            async function makeClaim(n) {
                 if (!state || busy || stepping || state.phase !== "play" || !playReady()) return;
                 selectedCard = null;
+                showClaimPanel = false;
                 busy = true;
                 render();
                 try {
-                    const r = await api("POST", `/api/drill/session/${state.id}/claim`);
+                    const r = await api("POST", `/api/drill/session/${state.id}/claim`, { tricks: n });
                     busy = false;
                     if (!r.ok) {
                         showToast((r.data && r.data.error) || "Claim refused", true);
@@ -2681,7 +2708,7 @@
                 if (state.id !== revealBoardId) {
                     revealBoardId = state.id;
                     revealCount = (state.plays || []).length;
-                    lastRevealTs = 0; selectedCard = null; showLastTrick = false; showAuction = false; showNotes = false;
+                    lastRevealTs = 0; selectedCard = null; showLastTrick = false; showAuction = false; showNotes = false; showClaimPanel = false;
                 }
                 const ctx = state.phase === "play" ? `${state.actSeat}|${revealCount}|${state.yourTurn}` : "";
                 if (ctx !== selectedCtx) { selectedCtx = ctx; selectedCard = null; }
@@ -4273,13 +4300,24 @@
                 });
                 on("drIntroStart", () => { showIntro = false; render(); });
                 on("drIntroClose", () => leaveSession());
-                on("drAuctionBtn", () => { showAuction = !showAuction; showNotes = false; render(); });
-                on("drNotesBtn", () => { showNotes = !showNotes; showAuction = false; render(); });
-                on("drLastTrickBtn", () => { showLastTrick = !showLastTrick; render(); });
+                on("drAuctionBtn", () => { showAuction = !showAuction; showNotes = false; showClaimPanel = false; render(); });
+                on("drNotesBtn", () => { showNotes = !showNotes; showAuction = false; showClaimPanel = false; render(); });
+                on("drLastTrickBtn", () => { showLastTrick = !showLastTrick; showClaimPanel = false; render(); });
                 on("drHintClose", () => { hintMsg = null; render(); });
                 on("drWrongClose", () => { wrongMsg = null; render(); });
                 on("drHintBtn", () => toggleHint());
-                on("drClaimBtn", () => makeClaim());
+                on("drClaimBtn", () => { showClaimPanel = !showClaimPanel; showAuction = false; showNotes = false; showLastTrick = false; render(); });
+                on("drClaimCancel", () => { showClaimPanel = false; render(); });
+                on("drClaimOk", () => {
+                    const el = document.getElementById("drClaimTricksIn");
+                    const n = el ? parseInt(el.value, 10) : NaN;
+                    const rem = claimRemainingTricksJS();
+                    if (isNaN(n) || n < 0 || n > rem) {
+                        showToast(`Claim between 0 and ${rem} tricks`, true);
+                        return;
+                    }
+                    makeClaim(n);
+                });
                 document.querySelectorAll("[data-play]").forEach((el) => {
                     el.onclick = () => onCardClick(el.getAttribute("data-play"));
                 });

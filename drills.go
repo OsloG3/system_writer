@@ -1094,13 +1094,13 @@ func (s *DrillSession) botChooseLocked(seat int) (string, error) {
 	return card, nil
 }
 
-// checkClaim verifies the hero's claim that the seats they play take every
-// remaining trick: the declarer hero claims for declarer+dummy, a defending
-// hero for themselves alone. The claim is only accepted when it holds for
-// EVERY legal layout of the unseen cards (see claim.go) -- the script's own
-// deal is one of them, so an accepted claim can never contradict the author's
-// line. It works in the scripted and in the bot phase alike.
-func (s *DrillSession) checkClaim(seat int) (bool, error) {
+// checkClaim verifies the hero's claim of `want` of the remaining tricks for
+// the seats they play: the declarer hero claims for declarer+dummy, a
+// defending hero for themselves alone. The claim is only accepted when it
+// holds for EVERY legal layout of the unseen cards (see claim.go) -- the
+// script's own deal is one of them, so an accepted claim can never contradict
+// the author's line. It works in the scripted and in the bot phase alike.
+func (s *DrillSession) checkClaim(seat, want int) (bool, error) {
 	decl := s.contract.Declarer
 	dummy := (decl + 2) % 4
 	plays := make([]PlayCard, len(s.Plays))
@@ -1117,7 +1117,7 @@ func (s *DrillSession) checkClaim(seat int) (bool, error) {
 			known[dummy] = true // the tabled dummy is public information
 		}
 	}
-	return verifyClaim(s.Problem.Hands, plays, s.trump, claim, known, seat)
+	return verifyClaim(s.Problem.Hands, plays, s.trump, claim, known, seat, want)
 }
 
 // stateLocked renders the client-visible session. During the play the hero
@@ -1938,12 +1938,15 @@ func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 	writeSessionState(w, s, username)
 }
 
-// POST /api/drill/session/{sid}/claim - the hero claims every remaining trick
-// (the declarer hero for declarer+dummy, a defending hero for themselves). It
-// may only be their turn (or their dummy's). The claim is verified against
-// every legal layout of the unseen cards (see claim.go): when it cannot fail
-// the run ends right away with the claimed trick count, graded against the
-// problem's target like any other claim ending; otherwise play continues.
+// POST /api/drill/session/{sid}/claim - the hero claims tricks for the seats
+// they play (the declarer hero for declarer+dummy, a defending hero for
+// themselves). Body: {"tricks": n} with 0 <= n <= the remaining tricks -- the
+// hero's side takes the next n tricks in a row and concedes the rest; 0 is a
+// plain concede. It may only be their turn (or their dummy's). A nonzero claim
+// is verified against every legal layout of the unseen cards (see claim.go):
+// when it cannot fail the run ends right away with the claimed trick count,
+// graded against the problem's target like any other claim ending; otherwise
+// play continues.
 func handleDrillSessionClaim(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
 	if username == "" {
@@ -1952,6 +1955,14 @@ func handleDrillSessionClaim(w http.ResponseWriter, r *http.Request) {
 	sid := r.PathValue("sid")
 	if !validID(sid) {
 		jsonError(w, http.StatusBadRequest, "invalid session ID")
+		return
+	}
+	limitBody(w, r, maxBodyAuth)
+	var body struct {
+		Tricks *int `json:"tricks"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Tricks == nil {
+		jsonError(w, http.StatusBadRequest, `the claim must carry the number of tricks, e.g. {"tricks":4}`)
 		return
 	}
 	s := lookupDrillSession(sid, username)
@@ -1970,7 +1981,12 @@ func handleDrillSessionClaim(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusConflict, "you can only claim when it is your turn (or your dummy's)")
 		return
 	}
-	ok, err := s.checkClaim(seat)
+	remaining := claimRemainingTricks(len(s.Plays))
+	if *body.Tricks < 0 || *body.Tricks > remaining {
+		jsonError(w, http.StatusBadRequest, fmt.Sprintf("you can claim between 0 and %d tricks", remaining))
+		return
+	}
+	ok, err := s.checkClaim(seat, *body.Tricks)
 	switch {
 	case errors.Is(err, errClaimTimeout):
 		jsonError(w, http.StatusConflict, "claim refused: the position is "+err.Error())
@@ -1982,11 +1998,14 @@ func handleDrillSessionClaim(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusConflict, "claim refused: the other side could still take a trick")
 		return
 	}
-	// the claim stands: the hero's seats take every remaining trick
+	// the claim stands: the hero's seats take the tricks they claimed and
+	// concede the rest to the other side
 	tricks := s.DeclTricks
 	decl := s.contract.Declarer
 	if seat == decl || seat == (decl+2)%4 {
-		tricks += claimRemainingTricks(len(s.Plays))
+		tricks += *body.Tricks
+	} else {
+		tricks += remaining - *body.Tricks
 	}
 	s.finishClaimLocked(tricks)
 	writeSessionState(w, s, username)

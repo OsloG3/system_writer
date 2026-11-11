@@ -763,13 +763,13 @@ func (b *PlayBoard) applyPlay(seat int, card string) error {
 	return nil
 }
 
-// checkClaim verifies the human's claim that the seats they play take every
-// remaining trick: the declarer claims for declarer+dummy, a defender for
+// checkClaim verifies the human's claim of `want` of the remaining tricks for
+// the seats they play: the declarer claims for declarer+dummy, a defender for
 // themselves alone. The claim is only accepted when it holds for EVERY legal
 // layout of the unseen cards -- consistent with the card counts, the cards
 // played, the voids proven by the play, and (for a defender) the tabled
 // dummy. See claim.go.
-func (b *PlayBoard) checkClaim(seat int) (bool, error) {
+func (b *PlayBoard) checkClaim(seat, want int) (bool, error) {
 	p := b.Play
 	var claim, known [4]bool
 	if seat == p.Declarer || seat == p.Dummy {
@@ -781,7 +781,7 @@ func (b *PlayBoard) checkClaim(seat int) (bool, error) {
 			known[p.Dummy] = true // the tabled dummy is public information
 		}
 	}
-	return verifyClaim(b.Hands, p.Plays, p.Trump, claim, known, seat)
+	return verifyClaim(b.Hands, p.Plays, p.Trump, claim, known, seat, want)
 }
 
 // advancePlay runs the bots until the human must play, the hand is over, or a
@@ -1299,12 +1299,14 @@ func handlePlayCard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, b.stateLocked(getPlayStats(username)))
 }
 
-// POST /api/play/{id}/claim - the human claims every remaining trick (the
-// declarer for declarer+dummy, a defender for themselves). It may only be
-// their turn (or their dummy's). The claim is verified against every legal
-// layout of the unseen cards (see claim.go): when it cannot fail the tricks
-// are awarded, the board is scored like a played-out hand and recorded once;
-// otherwise the hand simply continues.
+// POST /api/play/{id}/claim - the human claims tricks for the seats they play
+// (the declarer for declarer+dummy, a defender for themselves). Body:
+// {"tricks": n} with 0 <= n <= the remaining tricks -- the claim side takes
+// the next n tricks in a row and concedes the rest; 0 is a plain concede. It
+// may only be their turn (or their dummy's). A nonzero claim is verified
+// against every legal layout of the unseen cards (see claim.go): when it
+// cannot fail the tricks are awarded, the board is scored like a played-out
+// hand and recorded once; otherwise the hand simply continues.
 func handlePlayClaim(w http.ResponseWriter, r *http.Request) {
 	username := requireLogin(w, r)
 	if username == "" {
@@ -1313,6 +1315,14 @@ func handlePlayClaim(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !validID(id) {
 		jsonError(w, http.StatusBadRequest, "invalid board ID")
+		return
+	}
+	limitBody(w, r, maxBodyAuth)
+	var body struct {
+		Tricks *int `json:"tricks"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Tricks == nil {
+		jsonError(w, http.StatusBadRequest, `the claim must carry the number of tricks, e.g. {"tricks":4}`)
 		return
 	}
 	b := lookupPlayBoard(id, username)
@@ -1348,7 +1358,12 @@ func handlePlayClaim(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusConflict, "you can only claim when it is your turn (or your dummy's)")
 		return
 	}
-	ok, err := b.checkClaim(seat)
+	remaining := claimRemainingTricks(len(p.Plays))
+	if *body.Tricks < 0 || *body.Tricks > remaining {
+		jsonError(w, http.StatusBadRequest, fmt.Sprintf("you can claim between 0 and %d tricks", remaining))
+		return
+	}
+	ok, err := b.checkClaim(seat, *body.Tricks)
 	switch {
 	case errors.Is(err, errClaimTimeout):
 		jsonError(w, http.StatusConflict, "claim refused: the position is "+err.Error())
@@ -1360,9 +1375,12 @@ func handlePlayClaim(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusConflict, "claim refused: the other side could still take a trick")
 		return
 	}
-	// the claim stands: the claiming side takes every remaining trick
+	// the claim stands: the claiming side takes the next tricks it claimed
+	// and concedes the rest
 	if seat == p.Declarer || seat == p.Dummy {
-		p.DeclTricks += claimRemainingTricks(len(p.Plays))
+		p.DeclTricks += *body.Tricks
+	} else {
+		p.DeclTricks += remaining - *body.Tricks
 	}
 	p.Claimed = true
 	p.Done = true

@@ -337,12 +337,12 @@ func TestVerifyClaimAccepted(t *testing.T) {
 		t.Fatalf("played %d cards, want 44", len(plays))
 	}
 	claim, known := claimSide(2, 0)
-	ok, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 0)
+	ok, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 0, 2)
 	if err != nil || !ok {
 		t.Fatalf("claim refused: ok=%v err=%v", ok, err)
 	}
 	// a claim by a seat that is not on the claim side is refused outright
-	if _, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 1); err == nil {
+	if _, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 1, 2); err == nil {
 		t.Fatal("East must not be able to claim for N-S")
 	}
 }
@@ -353,12 +353,39 @@ func TestVerifyClaimRefused(t *testing.T) {
 	keep := [4][]string{{"3S", "2H"}, {"QS", "QH"}, {"4S", "5H"}, {"JS", "JH"}}
 	plays := claimTestPlays(t, claimHandsA, keep, "SHDC", 0)
 	claim, known := claimSide(2, 0)
-	ok, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 0)
+	ok, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 0, 2)
 	if ok {
 		t.Fatal("a claim the defense can beat was accepted")
 	}
 	if err != nil && !errors.Is(err, errClaimTimeout) {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// A partial claim: North keeps the spade ace and a small heart, South the
+// spade king and a club. North wins the FIRST trick with the spade ace in
+// every layout, but the heart two on the second trick loses to the defense's
+// queen or jack -- so claiming 1 is accepted and claiming 2 refused. A claim
+// of 0 (a concede) is auto-accepted, and claiming more than remains is an
+// error.
+func TestVerifyClaimPartial(t *testing.T) {
+	keep := [4][]string{{"AS", "2H"}, {"QS", "QH"}, {"KS", "KC"}, {"JS", "JH"}}
+	plays := claimTestPlaysPlanned(t, claimHandsA, keep, 0, "SDHSDCHDCDC")
+	if len(plays) != 44 {
+		t.Fatalf("played %d cards, want 44", len(plays))
+	}
+	claim, known := claimSide(2, 0)
+	if ok, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 0, 1); err != nil || !ok {
+		t.Fatalf("one-trick claim refused: ok=%v err=%v", ok, err)
+	}
+	if ok, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 0, 2); ok || err != nil {
+		t.Fatalf("two-trick claim must be refused: ok=%v err=%v", ok, err)
+	}
+	if ok, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 0, 0); err != nil || !ok {
+		t.Fatalf("a concede must be auto-accepted: ok=%v err=%v", ok, err)
+	}
+	if _, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 0, 3); err == nil {
+		t.Fatal("claiming more tricks than remain must fail")
 	}
 }
 
@@ -380,7 +407,7 @@ func TestVerifyClaimMidTrick(t *testing.T) {
 		PlayCard{Seat: 1, Card: "QS"},
 	)
 	claim, known := claimSide(2, 0)
-	ok, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 2)
+	ok, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 2, 2)
 	if err != nil || !ok {
 		t.Fatalf("mid-trick claim refused: ok=%v err=%v", ok, err)
 	}
@@ -406,7 +433,7 @@ func TestVerifyClaimWithTrumps(t *testing.T) {
 	if sv.voids[1]&(1<<suitNum('H')) == 0 {
 		t.Fatal("East's heart void was not derived from the plays")
 	}
-	ok, err := verifyClaim(claimHandsD, plays, 'H', claim, known, 2)
+	ok, err := verifyClaim(claimHandsD, plays, 'H', claim, known, 2, 2)
 	if err != nil || !ok {
 		t.Fatalf("trump claim refused: ok=%v err=%v", ok, err)
 	}
@@ -426,7 +453,7 @@ func TestVerifyClaimDefender(t *testing.T) {
 	}
 	var claim, known [4]bool
 	claim[3], known[3], known[0] = true, true, true // West claims; dummy is tabled
-	ok, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 3)
+	ok, err := verifyClaim(claimHandsA, plays, 'N', claim, known, 3, 1)
 	if err != nil || !ok {
 		t.Fatalf("defender claim refused: ok=%v err=%v", ok, err)
 	}
@@ -437,7 +464,7 @@ func TestVerifyClaimDefender(t *testing.T) {
 func TestVerifyClaimBeforeLeadRefused(t *testing.T) {
 	var claim, known [4]bool
 	claim[2], known[2] = true, true // South claims before leading; dummy is face down
-	ok, _ := verifyClaim(claimHandsA, nil, 'N', claim, known, 2)
+	ok, _ := verifyClaim(claimHandsA, nil, 'N', claim, known, 2, 13)
 	if ok {
 		t.Fatal("a 13-trick defender claim was accepted before the opening lead")
 	}
@@ -455,7 +482,7 @@ func TestVerifyClaimSolidSpread(t *testing.T) {
 	}
 	claim, known := claimSide(2, 0)
 	start := time.Now()
-	ok, err := verifyClaim(hands, nil, 'N', claim, known, 2)
+	ok, err := verifyClaim(hands, nil, 'N', claim, known, 2, 13)
 	if err != nil || !ok {
 		t.Fatalf("solid spread refused: ok=%v err=%v", ok, err)
 	}
@@ -469,7 +496,7 @@ func TestVerifyClaimSolidSpread(t *testing.T) {
 func TestVerifyClaimBudget(t *testing.T) {
 	claim, known := claimSide(2, 0)
 	start := time.Now()
-	ok, err := verifyClaim(claimHandsA, nil, 'N', claim, known, 2)
+	ok, err := verifyClaim(claimHandsA, nil, 'N', claim, known, 2, 13)
 	if ok {
 		t.Fatal("claiming all 13 tricks on this deal must be refused")
 	}
@@ -502,7 +529,7 @@ func TestCheckClaimWiring(t *testing.T) {
 		Trump:    'N', Declarer: 2, Dummy: 0, Opener: 3,
 		Plays: plays,
 	}
-	if ok, err := b.checkClaim(2); err != nil || !ok {
+	if ok, err := b.checkClaim(2, 2); err != nil || !ok {
 		t.Fatalf("board declarer claim refused: ok=%v err=%v", ok, err)
 	}
 
@@ -515,7 +542,7 @@ func TestCheckClaimWiring(t *testing.T) {
 	for _, pc := range plays {
 		s.Plays = append(s.Plays, DrillPlay{Seat: pc.Seat, Card: pc.Card})
 	}
-	if ok, err := s.checkClaim(0); err != nil || !ok { // dummy's turn to lead
+	if ok, err := s.checkClaim(0, 2); err != nil || !ok { // dummy's turn to lead
 		t.Fatalf("drill declarer claim refused: ok=%v err=%v", ok, err)
 	}
 }
@@ -584,7 +611,7 @@ func TestHandlePlayClaim(t *testing.T) {
 	before := good.Play.DeclTricks
 	playBoards[good.ID] = good
 	rr := httptest.NewRecorder()
-	req := drillReq(t, "POST", "/api/play/"+good.ID+"/claim", "", token)
+	req := drillReq(t, "POST", "/api/play/"+good.ID+"/claim", `{"tricks":2}`, token)
 	req.SetPathValue("id", good.ID)
 	handlePlayClaim(rr, req)
 	if rr.Code != http.StatusOK {
@@ -614,7 +641,7 @@ func TestHandlePlayClaim(t *testing.T) {
 	bad := claimTestBoard(t, "claimbad0001", claimKeepBad)
 	playBoards[bad.ID] = bad
 	rr = httptest.NewRecorder()
-	req = drillReq(t, "POST", "/api/play/"+bad.ID+"/claim", "", token)
+	req = drillReq(t, "POST", "/api/play/"+bad.ID+"/claim", `{"tricks":2}`, token)
 	req.SetPathValue("id", bad.ID)
 	handlePlayClaim(rr, req)
 	if rr.Code != http.StatusConflict {
@@ -625,6 +652,33 @@ func TestHandlePlayClaim(t *testing.T) {
 	}
 	if bad.Result != nil || bad.Play.Done || bad.Play.Claimed {
 		t.Fatal("a refused claim must not touch the board")
+	}
+
+	// claiming more tricks than remain is a 400
+	rr = httptest.NewRecorder()
+	req = drillReq(t, "POST", "/api/play/"+bad.ID+"/claim", `{"tricks":3}`, token)
+	req.SetPathValue("id", bad.ID)
+	handlePlayClaim(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("over-claim: %d %s", rr.Code, rr.Body.String())
+	}
+
+	// a concede (0 tricks) is auto-accepted even on this hopeless position:
+	// the declarer side simply takes no more tricks
+	badBefore := bad.Play.DeclTricks
+	scored.Store(-1)
+	rr = httptest.NewRecorder()
+	req = drillReq(t, "POST", "/api/play/"+bad.ID+"/claim", `{"tricks":0}`, token)
+	req.SetPathValue("id", bad.ID)
+	handlePlayClaim(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("concede: %d %s", rr.Code, rr.Body.String())
+	}
+	if got := scored.Load(); int(got) != badBefore {
+		t.Fatalf("concede scored with %d tricks, want %d", got, badBefore)
+	}
+	if bad.Result == nil || !bad.Play.Done || !bad.Play.Claimed || bad.Play.DeclTricks != badBefore {
+		t.Fatalf("bad concede result: %+v", bad.Play)
 	}
 
 	// logged out
@@ -663,7 +717,7 @@ func TestHandleDrillSessionClaim(t *testing.T) {
 	good := claimSession("drillgood001", claimTestPlays(t, claimHandsA, claimKeepGood, "SHDC", 0))
 	before := good.DeclTricks
 	rr := httptest.NewRecorder()
-	req := drillReq(t, "POST", "/api/drill/session/"+good.ID+"/claim", "", token)
+	req := drillReq(t, "POST", "/api/drill/session/"+good.ID+"/claim", `{"tricks":2}`, token)
 	req.SetPathValue("sid", good.ID)
 	handleDrillSessionClaim(rr, req)
 	if rr.Code != http.StatusOK {
@@ -684,7 +738,7 @@ func TestHandleDrillSessionClaim(t *testing.T) {
 	// refused: a claim the defense can beat leaves the session running
 	bad := claimSession("drillbad0001", claimTestPlays(t, claimHandsA, claimKeepBad, "SHDC", 0))
 	rr = httptest.NewRecorder()
-	req = drillReq(t, "POST", "/api/drill/session/"+bad.ID+"/claim", "", token)
+	req = drillReq(t, "POST", "/api/drill/session/"+bad.ID+"/claim", `{"tricks":2}`, token)
 	req.SetPathValue("sid", bad.ID)
 	handleDrillSessionClaim(rr, req)
 	if rr.Code != http.StatusConflict {
@@ -693,6 +747,23 @@ func TestHandleDrillSessionClaim(t *testing.T) {
 	if bad.Done || bad.Result != nil {
 		t.Fatal("a refused claim must not end the session")
 	}
+	// a concede (0 tricks) is auto-accepted: the run ends with the tricks
+	// declarer already had, graded (here: below target, so it fails)
+	rr = httptest.NewRecorder()
+	req = drillReq(t, "POST", "/api/drill/session/"+bad.ID+"/claim", `{"tricks":0}`, token)
+	req.SetPathValue("sid", bad.ID)
+	handleDrillSessionClaim(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("drill concede: %d %s", rr.Code, rr.Body.String())
+	}
+	var cst map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &cst); err != nil {
+		t.Fatal(err)
+	}
+	cres, _ := cst["result"].(map[string]any)
+	if cres == nil || cres["claimed"] != true || int(cres["tricks"].(float64)) != bad.DeclTricks {
+		t.Fatalf("bad concede result: %v", cres)
+	}
 
 	// out of turn: a fresh session waits on the opener (West), not the hero
 	fresh := claimSession("drillfresh001", nil)
@@ -700,7 +771,7 @@ func TestHandleDrillSessionClaim(t *testing.T) {
 		t.Fatal("a fresh session should wait on the opener")
 	}
 	rr = httptest.NewRecorder()
-	req = drillReq(t, "POST", "/api/drill/session/"+fresh.ID+"/claim", "", token)
+	req = drillReq(t, "POST", "/api/drill/session/"+fresh.ID+"/claim", `{"tricks":1}`, token)
 	req.SetPathValue("sid", fresh.ID)
 	handleDrillSessionClaim(rr, req)
 	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "your turn") {

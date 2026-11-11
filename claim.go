@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -9,15 +10,18 @@ import (
 
 // ---- Claim verification ----
 //
-// A player may claim the remaining tricks when it is their turn to play (or
-// their dummy's): the declarer claims for declarer+dummy, a defender for
-// themselves alone. The claim is accepted only when it cannot fail -- when
-// the claiming side wins EVERY remaining trick in every legal layout of the
-// unseen cards. A layout is legal when it agrees with everything the claimer
-// can know: their own (and for the declarer the dummy's) cards, every card
-// played so far, each seat's card count, and the voids proven by failing to
-// follow suit. Any other distribution of the unseen cards must be assumed
-// possible.
+// A player may claim tricks when it is their turn to play (or their dummy's):
+// the declarer claims for declarer+dummy, a defender for themselves alone. The
+// claim states how many of the remaining tricks the claiming side takes --
+// any number from 0 to all of them -- and the unclaimed rest is conceded to
+// the opponents. A claim of 0 (a concede) needs no proof and is accepted as
+// is; any other claim is accepted only when it cannot fail -- when the
+// claiming side wins the next `want` tricks IN A ROW (taking every trick it
+// claims before losing any) in every legal layout of the unseen cards. A
+// layout is legal when it agrees with everything the claimer can know: their
+// own (and for the declarer the dummy's) cards, every card played so far,
+// each seat's card count, and the voids proven by failing to follow suit.
+// Any other distribution of the unseen cards must be assumed possible.
 //
 // The search models the hidden seats as drawing adversarially from a shared
 // pool of unseen cards: on each turn a hidden seat either follows with any
@@ -77,6 +81,7 @@ type claimSolver struct {
 	tn       int8         // cards played to the current trick
 	next     int8         // seat to act
 	rem      int          // total cards still held (hands + pool)
+	need     int          // claimed tricks the claim side still has to win
 	memo     map[string]bool
 	nodes    int
 	deadline time.Time
@@ -241,20 +246,36 @@ func buildClaimSolver(hands [4]string, plays []PlayCard, trump byte, claim, know
 // in progress counts as one) once len(plays) cards are on the table.
 func claimRemainingTricks(plays int) int { return (52 - plays + 3) / 4 }
 
-// verifyClaim reports whether the claim side takes every remaining trick in
-// every legal layout of the unseen cards. (true, nil) accepts the claim;
-// (false, nil) means the defense has a way to take a trick; (false,
+// verifyClaim reports whether the claim side takes the next `want` tricks in
+// a row -- every trick it claims, before losing any -- in every legal layout
+// of the unseen cards; the tricks it does not claim are conceded and never
+// looked at. A want of 0 is a concede: giving tricks away needs no proof and
+// is accepted as is. (true, nil) accepts the claim; (false, nil) means the
+// defense has a way to take a trick before the claim is fulfilled; (false,
 // errClaimTimeout) means the position could not be settled in time -- which
 // also refuses the claim.
-func verifyClaim(hands [4]string, plays []PlayCard, trump byte, claim, known [4]bool, next int) (bool, error) {
+func verifyClaim(hands [4]string, plays []PlayCard, trump byte, claim, known [4]bool, next, want int) (bool, error) {
+	if want < 0 {
+		return false, errors.New("a claim cannot take fewer than zero tricks")
+	}
+	if want == 0 {
+		return true, nil // a concede: auto-accepted
+	}
 	sv, err := buildClaimSolver(hands, plays, trump, claim, known, next)
 	if err != nil {
 		return false, err
 	}
+	remaining := (sv.rem + 3) / 4
 	if sv.rem == 0 {
 		return false, errors.New("there are no tricks left to claim")
 	}
+	if want > remaining {
+		return false, fmt.Errorf("cannot claim %d of the %d remaining tricks", want, remaining)
+	}
+	sv.need = want
 	if sv.fastSolidRun() {
+		// the fast path proves the claim side takes EVERY remaining trick,
+		// which is more than any claim asks for
 		return true, nil
 	}
 	return sv.search()
@@ -270,10 +291,16 @@ func (sv *claimSolver) search() (bool, error) {
 	if sv.tn == 4 {
 		w, ok := sv.trickWon()
 		if !ok {
-			return false, nil
+			return false, nil // the defense took a trick before the claim was fulfilled
+		}
+		sv.need--
+		if sv.need == 0 {
+			sv.need = 1
+			return true, nil // every claimed trick is sure; the rest is conceded
 		}
 		if sv.rem == 0 {
-			return true, nil // every trick of the hand is the claim side's
+			sv.need++
+			return false, nil // the cards ran out before the claim did
 		}
 		// the next trick overwrites sv.trick from index 0: save the completed
 		// one so the caller's other alternatives still see their own cards
@@ -281,6 +308,7 @@ func (sv *claimSolver) search() (bool, error) {
 		sv.tn, sv.next = 0, int8(w)
 		res, err := sv.search()
 		sv.tn, sv.next, sv.trick = 4, savedNext, savedTrick
+		sv.need++
 		return res, err
 	}
 	key := sv.key()

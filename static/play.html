@@ -1389,6 +1389,7 @@
             let selectedCall = null; // bid currently selected, awaiting confirmation
             let showLastTrick = false; // "last trick" review panel open?
             let showAuction = false; // "bidding" review panel open?
+            let showClaim = false; // claim-tricks panel open?
 
             // ---- Bid pacing (solo) ----
             // The server answers with every bot call up to the human in one
@@ -3000,14 +3001,37 @@
             }
 
             // The claim button: offered whenever the human is to act (their
-            // own turn or their dummy's). The server only accepts the claim
-            // when the claiming side takes EVERY remaining trick against
-            // every legal layout of the hidden cards -- anything less is
-            // refused with the reason as a toast, and the hand goes on.
+            // own turn or their dummy's). The claim states how many of the
+            // remaining tricks the claiming side takes -- 0 concedes the rest
+            // -- and the server accepts a nonzero claim only when those tricks
+            // come in a row against every legal layout of the hidden cards.
+            function claimRemainingTricksJS() {
+                const n = (state.play && state.play.plays ? state.play.plays : []).length;
+                return Math.ceil((52 - n) / 4);
+            }
             function claimBtnHtml() {
                 if (!playReady()) return "";
-                return `<button id="claimBtn" class="cb-trickbtn" title="Claim every remaining trick (refused unless it cannot fail)">
+                return `<button id="claimBtn" class="cb-trickbtn${showClaim ? " on" : ""}" title="Claim tricks (refused unless the claim cannot fail)">
                     <span class="material-symbols-outlined">flag</span>Claim</button>`;
+            }
+            function claimPanelHtml() {
+                if (!showClaim || !playReady()) return "";
+                const rem = claimRemainingTricksJS();
+                return `<div class="cb-auctionpop" style="padding:.7rem .8rem">
+                    <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.45rem">
+                        <span class="font-headline" style="color:#e8e6e3">Claim</span>
+                        <input id="claimTricksIn" type="number" min="0" max="${rem}" value="${rem}"
+                            style="width:4.2rem;padding:.25rem .4rem;text-align:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:.5rem;color:#e8e6e3">
+                        <span style="color:#908f8d;font-size:.85rem">of ${rem} remaining trick${rem === 1 ? "" : "s"}</span>
+                    </div>
+                    <div style="color:#908f8d;font-size:.78rem;line-height:1.45;margin-bottom:.6rem">
+                        ${"Your side must take these tricks <b>in a row</b>, whatever the hidden hands hold — anything less is refused and play continues. Claiming <b>0</b> concedes the rest."}
+                    </div>
+                    <div style="display:flex;gap:.5rem;justify-content:flex-end">
+                        <button id="claimCancelBtn" class="cb-btn-ghost !px-3 !py-1.5 !text-xs">Cancel</button>
+                        <button id="claimOkBtn" class="cb-btn-green !px-4 !py-1.5 !text-xs">Claim</button>
+                    </div>
+                </div>`;
             }
 
             // The most recent COMPLETED trick (four cards), or null before one.
@@ -3079,6 +3103,7 @@
                     <div class="cb-playbottom">
                         ${auctionPanelHtml()}
                         ${lastTrickPanelHtml()}
+                        ${claimPanelHtml()}
                         <div class="cb-playrow">
                             <div class="cb-pprompt">${playPromptHtml()}</div>
                             ${auctionBtnHtml()}
@@ -3109,14 +3134,16 @@
                 await post(`/api/play/${state.id}/card`, { card: card });
             }
 
-            // Claim all remaining tricks; a refusal arrives as a 409 whose
-            // error message the shared response handler shows as a toast.
-            async function makeClaim() {
+            // Claim `n` of the remaining tricks (0 concedes); a refusal
+            // arrives as a 409 whose error message the shared response
+            // handler shows as a toast.
+            async function makeClaim(n) {
                 if (!state || busy || stepping || state.done) return;
                 if (state.phase !== "play" || !state.play || !playReady())
                     return;
                 selectedCard = null;
-                await post(`/api/play/${state.id}/claim`);
+                showClaim = false;
+                await post(`/api/play/${state.id}/claim`, { tricks: n });
             }
 
             // The calls currently on screen (paced by callRevealCount);
@@ -3285,6 +3312,7 @@
                     selectedCall = null;
                     showLastTrick = false;
                     showAuction = false;
+                    showClaim = false;
                 }
                 // the lifted card / selected call survives between the two
                 // clicks that pick it, but is dropped whenever the acting
@@ -4084,16 +4112,48 @@
                 if (lastTrick)
                     lastTrick.onclick = () => {
                         showLastTrick = !showLastTrick;
-                        if (showLastTrick) showAuction = false;
+                        if (showLastTrick) {
+                            showAuction = false;
+                            showClaim = false;
+                        }
                         render();
                     };
                 const claimBtn = document.getElementById("claimBtn");
-                if (claimBtn) claimBtn.onclick = () => makeClaim();
+                if (claimBtn)
+                    claimBtn.onclick = () => {
+                        showClaim = !showClaim;
+                        if (showClaim) {
+                            showAuction = false;
+                            showLastTrick = false;
+                        }
+                        render();
+                    };
+                const claimOk = document.getElementById("claimOkBtn");
+                if (claimOk)
+                    claimOk.onclick = () => {
+                        const el = document.getElementById("claimTricksIn");
+                        const n = el ? parseInt(el.value, 10) : NaN;
+                        const rem = claimRemainingTricksJS();
+                        if (isNaN(n) || n < 0 || n > rem) {
+                            showToast(`Claim between 0 and ${rem} tricks`, true);
+                            return;
+                        }
+                        makeClaim(n);
+                    };
+                const claimCancel = document.getElementById("claimCancelBtn");
+                if (claimCancel)
+                    claimCancel.onclick = () => {
+                        showClaim = false;
+                        render();
+                    };
                 const aucBtn = document.getElementById("auctionBtn");
                 if (aucBtn)
                     aucBtn.onclick = () => {
                         showAuction = !showAuction;
-                        if (showAuction) showLastTrick = false;
+                        if (showAuction) {
+                            showLastTrick = false;
+                            showClaim = false;
+                        }
                         render();
                     };
                 const retry = document.getElementById("retryBtn");
