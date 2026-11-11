@@ -2517,6 +2517,15 @@
                 return `<button id="drHintBtn" class="cb-trickbtn${hintMsg ? " on" : ""}" title="Reveal the author's note for this card">
                     <span class="material-symbols-outlined">tips_and_updates</span><span class="cb-trickbtn-t">Hint</span></button>`;
             }
+            // the hero's own claim: offered on the hero's turn in any phase.
+            // The server only accepts it when the hero's side takes EVERY
+            // remaining trick against every legal layout of the unseen cards;
+            // a refusal arrives as a 409 and the run simply continues.
+            function claimBtnHtml() {
+                if (!playReady()) return "";
+                return `<button id="drClaimBtn" class="cb-trickbtn" title="Claim every remaining trick (refused unless it cannot fail)">
+                    <span class="material-symbols-outlined">flag</span><span class="cb-trickbtn-t">Claim</span></button>`;
+            }
             function playTableView() {
                 // dh/dv: where the tabled dummy will lie on screen (row at the
                 // top, column at a side) so the table reserves its space up
@@ -2541,7 +2550,7 @@
                     ${auctionPanelHtml()}${notesPanelHtml()}${lastTrickPanelHtml()}${hintBubbleHtml()}${wrongBubbleHtml()}
                     <div class="cb-playrow">
                         <div class="cb-pprompt">${playPromptHtml()}</div>
-                        ${auctionBtnHtml()}${notesBtnHtml()}${lastTrickBtnHtml()}${hintBtnHtml()}
+                        ${auctionBtnHtml()}${notesBtnHtml()}${lastTrickBtnHtml()}${hintBtnHtml()}${claimBtnHtml()}
                     </div>
                 </div>`;
             }
@@ -2596,6 +2605,29 @@
                     else showToast((r.data && r.data.error) || "No hint right now", true);
                 } catch (e) { hintBusy = false; }
                 render();
+            }
+            // claim every remaining trick; an accepted claim ends the run
+            // right away (graded against the target), a refusal is just a
+            // toast and play continues
+            async function makeClaim() {
+                if (!state || busy || stepping || state.phase !== "play" || !playReady()) return;
+                selectedCard = null;
+                busy = true;
+                render();
+                try {
+                    const r = await api("POST", `/api/drill/session/${state.id}/claim`);
+                    busy = false;
+                    if (!r.ok) {
+                        showToast((r.data && r.data.error) || "Claim refused", true);
+                        render();
+                        return;
+                    }
+                    onSessionState(r.data, false);
+                } catch (e) {
+                    busy = false;
+                    if (!e || !e.auth) showToast("Network error", true);
+                    render();
+                }
             }
             function drivePlay() {
                 clearTimeout(paceTimer); paceTimer = null;
@@ -4247,6 +4279,7 @@
                 on("drHintClose", () => { hintMsg = null; render(); });
                 on("drWrongClose", () => { wrongMsg = null; render(); });
                 on("drHintBtn", () => toggleHint());
+                on("drClaimBtn", () => makeClaim());
                 document.querySelectorAll("[data-play]").forEach((el) => {
                     el.onclick = () => onCardClick(el.getAttribute("data-play"));
                 });

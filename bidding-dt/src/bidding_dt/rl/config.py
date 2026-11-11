@@ -31,12 +31,16 @@ class RLConfig:
                                    # deviation from greedy play (rollout.py)
     # system-convention enforcement (conventions/): every learner call is
     # checked against the enforced system (5-card majors, 15-17 1NT, strong
-    # 2C, 20-21 2NT, GF 2/1, invitational jump shifts, standard overcalls,
-    # splinters below 4H, RKCB 4NT, XYZ, takeout doubles, fourth-suit GF,
-    # standard natural structure) with hands evaluated in Kaplan-Rubens
-    # points; each violation's weight is summed and conv_weight * penalty
-    # is subtracted from that decision's row reward (after the partner-dev
-    # discount, so a partner's noise never excuses a system break).
+    # 2C, 20-21 2NT, GF 2/1, invitational jump shifts, standard overcalls
+    # with a 12-15 balancing 1NT, splinters below 4H, smolen after 1/2NT
+    # stayman, RKCB step responses, support cuebids, XYZ, takeout doubles
+    # with shape-free power doubles, fourth-suit GF, standard natural
+    # structure) with hands evaluated in Kaplan-Rubens points; each
+    # violation's weight is summed and conv_weight * penalty is subtracted
+    # from that decision's row reward (after the partner-dev discount, so a
+    # partner's noise never excuses a system break). Correctly using an
+    # artificial convention (XYZ, RKCB, splinter, smolen, fourth suit,
+    # cuebid raise) adds the small flat conv_params.conv_bonus reward.
     conv_weight: float = 0.0       # 0 disables the convention penalty
     conv_rules: dict = field(default_factory=dict)   # rule code -> weight
                                    # override (0 disables one rule)

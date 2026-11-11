@@ -27,7 +27,10 @@ import (
 // records how many self-play deals the model made that call in that position
 // (n) plus the min/max HCP and per-suit lengths of the hand it held --
 // exactly an alert text for the bid, and n over the parent's n is how often
-// the model picks that call there.
+// the model picks that call there. A node whose call is one of the system's
+// artificial conventions (XYZ, RKCB ask/response, splinter, smolen,
+// fourth-suit GF, support cuebid) additionally carries a "conv" string with
+// the alert text from bidding_dt.conventions.alerts, served verbatim.
 //
 // The raw JSON is hundreds of MB, so it ships zstd-compressed (~1.9 MB,
 // level 19) and is never unmarshalled into maps: a token streaming decoder
@@ -40,9 +43,9 @@ import (
 
 const (
 	defaultAlertTreeFile = "models/last.json" // ALERT_TREE_JSON overrides
-	alertBinVersion      = uint32(1)
+	alertBinVersion      = uint32(2)
 	alertBinHeaderSize   = 48
-	alertNodeSize        = 20 // packed bytes per node in the cache
+	alertNodeSize        = 24 // packed bytes per node in the cache
 	alertKidSize         = 8  // packed bytes per child edge in the cache
 	alertMaxNodes        = 16 << 20
 	alertMaxDepth        = 64 // deeper auctions (the site cap is 80 calls) simply get no alerts
@@ -75,10 +78,13 @@ func vocabID(call string) (uint8, bool) {
 
 // alertNode is one auction position's summary: the bidder's pooled hand
 // ranges and how often the model reached it. Children live contiguously in
-// alertTree.kids, sorted by token id.
+// alertTree.kids, sorted by token id. A node whose call is one of the
+// system's artificial conventions carries its alert text as an offset into
+// alertTree.conv (u16-length-prefixed UTF-8 strings); -1 means no alert.
 type alertNode struct {
 	n        int32
 	childOff int32
+	convOff  int32
 	kids     uint8
 	seen     uint8 // hand stats observed (hcp/suits non-null in the JSON)
 	hcpLo    uint8
@@ -96,7 +102,8 @@ type alertKid struct {
 type alertTree struct {
 	nodes []alertNode
 	kids  []alertKid
-	deals int32 // self-play deals behind the root visit count
+	conv  []byte // convention alert texts, referenced by alertNode.convOff
+	deals int32  // self-play deals behind the root visit count
 }
 
 // bidAlert is the client-visible alert for one call in one position.
@@ -105,6 +112,7 @@ type bidAlert struct {
 	Pct   float64    `json:"pct"`   // share of the parent position's visits
 	HCP   [2]int16   `json:"hcp"`   // pooled min/max of the bidder's hand
 	Suits [4][2]int8 `json:"suits"` // min/max length per suit, S,H,D,C
+	Conv  string     `json:"conv,omitempty"` // convention meaning (XYZ, RKCB, ...)
 }
 
 // alertTreePath resolves the tree source: the explicit ALERT_TREE_JSON
@@ -196,6 +204,18 @@ func (t *alertTree) walk(calls []string) int32 {
 	return idx
 }
 
+// convText returns the convention alert text stored at off, or "".
+func (t *alertTree) convText(off int32) string {
+	if off < 0 || int(off)+2 > len(t.conv) {
+		return ""
+	}
+	n := int(binary.LittleEndian.Uint16(t.conv[off:]))
+	if int(off)+2+n > len(t.conv) {
+		return ""
+	}
+	return string(t.conv[off+2 : int(off)+2+n])
+}
+
 // alertAt renders the alert for node, reached from parent (pct denominator).
 func (t *alertTree) alertAt(parent, node int32) *bidAlert {
 	if node < 0 || node >= int32(len(t.nodes)) {
@@ -205,7 +225,8 @@ func (t *alertTree) alertAt(parent, node int32) *bidAlert {
 	if nd.seen == 0 {
 		return nil
 	}
-	a := &bidAlert{N: nd.n, HCP: [2]int16{int16(nd.hcpLo), int16(nd.hcpHi)}}
+	a := &bidAlert{N: nd.n, HCP: [2]int16{int16(nd.hcpLo), int16(nd.hcpHi)},
+		Conv: t.convText(nd.convOff)}
 	for i := 0; i < alertSuitCount; i++ {
 		a.Suits[i] = [2]int8{int8(nd.suitLo[i]), int8(nd.suitHi[i])}
 	}
@@ -270,6 +291,7 @@ type treeParser struct {
 	dec   *json.Decoder
 	nodes []alertNode
 	kids  []alertKid
+	conv  []byte // convention alert text blob (u16-length-prefixed strings)
 }
 
 // openTreeSource wraps the open file in the decompressor its magic bytes
@@ -379,7 +401,7 @@ func (p *treeParser) parseReport() (*alertTree, error) {
 	if treeIdx != 0 || len(p.nodes) == 0 {
 		return nil, errors.New("no tree found in the report")
 	}
-	out.nodes, out.kids = p.nodes, p.kids
+	out.nodes, out.kids, out.conv = p.nodes, p.kids, p.conv
 	if out.deals == 0 {
 		out.deals = out.nodes[0].n
 	}
@@ -406,6 +428,7 @@ func (p *treeParser) parseNode(depth int) (int32, error) {
 	idx := int32(len(p.nodes))
 	p.nodes = append(p.nodes, alertNode{})
 	var nd alertNode
+	nd.convOff = -1
 	var kids []alertKid
 	for {
 		tok, err = p.dec.Token()
@@ -443,6 +466,16 @@ func (p *treeParser) parseNode(depth int) (int32, error) {
 		case "suits":
 			if err := p.parseSuits(&nd); err != nil {
 				return -1, err
+			}
+		case "conv":
+			tok, err = p.dec.Token()
+			if err != nil {
+				return -1, err
+			}
+			if s, ok := tok.(string); ok && s != "" && len(s) <= 0xFFFF {
+				nd.convOff = int32(len(p.conv))
+				p.conv = binary.LittleEndian.AppendUint16(p.conv, uint16(len(s)))
+				p.conv = append(p.conv, s...)
 			}
 		case "children":
 			if kids, err = p.parseChildren(depth); err != nil {
@@ -594,7 +627,8 @@ func (p *treeParser) skipValue() error {
 //
 // Header (48 bytes, little endian): magic[8], version u32, reserved u32,
 // source size u64, source mtime ns u64, node count u32, kid count u32,
-// deals u32, reserved u32. Then the packed node and kid arenas.
+// deals u32, conv-blob byte count u32. Then the packed node and kid arenas
+// and the convention alert text blob.
 
 func writeAlertBin(path string, t *alertTree, fi os.FileInfo) error {
 	tmp := path + ".tmp"
@@ -616,6 +650,7 @@ func writeAlertBin(path string, t *alertTree, fi os.FileInfo) error {
 	binary.LittleEndian.PutUint32(hdr[32:], uint32(len(t.nodes)))
 	binary.LittleEndian.PutUint32(hdr[36:], uint32(len(t.kids)))
 	binary.LittleEndian.PutUint32(hdr[40:], uint32(t.deals))
+	binary.LittleEndian.PutUint32(hdr[44:], uint32(len(t.conv)))
 	if _, err := w.Write(hdr); err != nil {
 		return fail(err)
 	}
@@ -630,6 +665,7 @@ func writeAlertBin(path string, t *alertTree, fi os.FileInfo) error {
 		nodes[o+11] = n.hcpHi
 		copy(nodes[o+12:], n.suitLo[:])
 		copy(nodes[o+16:], n.suitHi[:])
+		binary.LittleEndian.PutUint32(nodes[o+20:], uint32(n.convOff))
 	}
 	if _, err := w.Write(nodes); err != nil {
 		return fail(err)
@@ -641,6 +677,9 @@ func writeAlertBin(path string, t *alertTree, fi os.FileInfo) error {
 		binary.LittleEndian.PutUint32(kids[o+4:], uint32(k.node))
 	}
 	if _, err := w.Write(kids); err != nil {
+		return fail(err)
+	}
+	if _, err := w.Write(t.conv); err != nil {
 		return fail(err)
 	}
 	if err := w.Flush(); err != nil {
@@ -671,16 +710,19 @@ func readAlertBin(path string, fi os.FileInfo) (*alertTree, error) {
 	}
 	nNodes := binary.LittleEndian.Uint32(data[32:36])
 	nKids := binary.LittleEndian.Uint32(data[36:40])
+	convLen := binary.LittleEndian.Uint32(data[44:48])
 	if nNodes == 0 || nNodes > alertMaxNodes || nKids > alertMaxNodes {
 		return nil, errors.New("implausible cache counts")
 	}
-	if len(data) != alertBinHeaderSize+int(nNodes)*alertNodeSize+int(nKids)*alertKidSize {
+	want := alertBinHeaderSize + int(nNodes)*alertNodeSize + int(nKids)*alertKidSize + int(convLen)
+	if len(data) != want {
 		return nil, errors.New("truncated cache")
 	}
 	t := &alertTree{
 		deals: int32(binary.LittleEndian.Uint32(data[40:44])),
 		nodes: make([]alertNode, nNodes),
 		kids:  make([]alertKid, nKids),
+		conv:  data[alertBinHeaderSize+int(nNodes)*alertNodeSize+int(nKids)*alertKidSize:],
 	}
 	buf := data[alertBinHeaderSize:]
 	for i := range t.nodes {
@@ -694,6 +736,7 @@ func readAlertBin(path string, fi os.FileInfo) (*alertTree, error) {
 		n.hcpHi = buf[o+11]
 		copy(n.suitLo[:], buf[o+12:o+16])
 		copy(n.suitHi[:], buf[o+16:o+20])
+		n.convOff = int32(binary.LittleEndian.Uint32(buf[o+20:]))
 	}
 	buf = data[alertBinHeaderSize+int(nNodes)*alertNodeSize:]
 	for i := range t.kids {

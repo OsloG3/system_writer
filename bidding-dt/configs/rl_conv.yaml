@@ -2,12 +2,17 @@
 # reward as rl_small.yaml, plus a per-call penalty for every bid that breaks
 # the enforced system (conventions/: 5-card majors, 15-17 1NT, strong 2C,
 # 20-21 2NT, GF 2/1, invitational jump shifts -- 6 cards, 10-11, also in
-# competition -- standard overcalls, splinter double jumps below 4H, RKCB
-# 4NT in the last suit the partnership bid, XYZ, takeout doubles, fourth-suit
-# GF, standard natural structure). Hands are evaluated in Kaplan-Rubens
-# points (rpbridge.net/8j19.htm); every range carries +-conv_params
-# .kr_tolerance slack. The penalty is conv_weight * sum(violated rule
-# weights), subtracted from each offending call's row reward.
+# competition -- standard overcalls with a 12-15 balancing 1NT, splinter
+# double jumps below 4H, smolen after 1/2NT stayman, RKCB step responses
+# showing the right keycard count (the 4NT ask itself is free), support
+# cuebids of the opponents' suit, XYZ, takeout doubles -- power doubles with
+# 18+ need no shape -- fourth-suit GF, standard natural structure). Hands are
+# evaluated in Kaplan-Rubens points (rpbridge.net/8j19.htm); every range
+# carries +-conv_params.kr_tolerance slack. The penalty is conv_weight *
+# sum(violated rule weights), subtracted from each offending call's row
+# reward; correctly using an artificial convention (XYZ, RKCB, splinter,
+# smolen, fourth suit, cuebid raise) instead adds the small flat
+# conv_params.conv_bonus reward.
 #   uv run python -m bidding_dt.rl.train_ppo --config configs/rl_conv.yaml \
 #       --preset small --bc-ckpt runs/small/best.pt --out runs/rl_conv
 #
@@ -50,3 +55,4 @@ rl:
   # conv_params:            # threshold overrides (see ConventionConfig):
   #   kr_tolerance: 0.75
   #   js_range: [10.5, 12.5]
+  #   conv_bonus: 0.1       # small reward per correct convention use

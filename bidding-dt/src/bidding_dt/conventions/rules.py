@@ -1,4 +1,4 @@
-"""System-convention consistency checks (the penalized half).
+"""System-convention consistency checks and convention-usage rewards.
 
 The enforced system (all strength numbers are Kaplan-Rubens points, kr.py,
 with a configurable tolerance on every range):
@@ -17,13 +17,24 @@ with a configurable tolerance on every range):
     strong one (~17+)
   * splinter: a double jump shift below 4H shows singleton/void in the bid
     suit, fit for partner's last suit, slam interest
+  * smolen: after a 1NT/2NT opening, stayman (2C/3C) and the 2D/3D denial,
+    a 3M bid by responder is GF showing 4 in the bid major and 5+ in the
+    other major
   * standard overcalls: 5+ suit (4 only with ~13+ at the 1 level), values
-    by level, lighter in balancing seat; direct 1NT = 15-18 + stopper
+    by level, lighter in balancing seat; direct 1NT = 15-18 + stopper,
+    balancing 1NT = 12-15
   * takeout doubles: opening-ish values + 3+ in every unbid major (lighter
-    in balancing seat); negative doubles need values or an unbid 4-card
-    major; doubles once our side has bid are penalty (values or trumps)
-  * 4NT is RKCB in the last suit the partnership bid (needs fit + slam
-    values); with no suit bid it stays quantitative (unchecked)
+    in balancing seat); a power double (18+ K&R) needs no specific shape;
+    negative doubles need values or an unbid 4-card major; doubles once our
+    side has bid are penalty-oriented and unchecked
+  * 4NT is RKCB in the last suit the partnership bid: the ask itself is not
+    evaluated, but the asker's partner must answer with the step showing the
+    correct keycard count (5C = 0/3, 5D = 1/4, 5H = 2 without the trump
+    queen, 5S = 2 with it); with no suit bid 4NT stays quantitative
+    (unchecked)
+  * a cuebid of the opponents' suit shows invitational-or-better support
+    for partner's last suit (with no suit bid by partner it is undefined
+    and unchecked)
   * XYZ after an uncontested 1x-1y-1z: 2C = relay (any invite or a diamond
     signoff), 2D = artificial GF, opener completes the relay without extras
   * fourth suit is artificial and game forcing (~11+)
@@ -34,10 +45,12 @@ with a configurable tolerance on every range):
 Each violated rule emits a `Violation` whose weight (DEFAULT_WEIGHTS,
 overridable per rule) is summed into the call's penalty; the RL loop
 multiplies that by `rl.conv_weight` and subtracts it from the row reward
-(see rl/rollout.py). Rules that a hand cannot violate (pass in a non-GF
-auction, redouble, cuebids, game-level natural bids, passed-hand jumps)
-deliberately emit nothing -- the checker is lenient by design so it punishes
-system breaks, not style.
+(see rl/rollout.py). Correctly using one of the artificial conventions
+(XYZ 2C/2D, RKCB ask/response, splinter, smolen, fourth-suit GF, cuebid
+raise) instead earns the small flat `conv_bonus` reward (convention_bonus).
+Rules that a hand cannot violate (pass in a non-GF auction, redouble, game-
+level natural bids, passed-hand jumps) deliberately emit nothing -- the
+checker is lenient by design so it punishes system breaks, not style.
 """
 
 from dataclasses import dataclass, field
@@ -59,17 +72,19 @@ DEFAULT_WEIGHTS = {
     "open_2nt_range": 1.0,      # 2NT = 20-21 balanced
     "open_2c_strong": 1.0,      # 2C = strong artificial
     "open_major_5card": 1.0,    # 5-card majors
-    "open_weak2": 1.0,          # 2D/2H/2S = weak two
+    "open_weak2": 0.1,          # 2D/2H/2S = weak two
     "two_one_gf": 1.0,          # 2/1 responses are GF
-    "inv_jump_shift": 1.0,      # single jump: 6 cards, 10-11 (also in comp)
-    "splinter": 1.0,            # double jump below 4H: shortness + fit
+    "inv_jump_shift": 2.0,      # single jump: 6 cards, 10-11 (also in comp)
+    "splinter": 2.0,            # double jump below 4H: shortness + fit
+    "smolen": 1.0,              # 3M after a stayman denial: 4 + 5 majors, GF
     "overcall": 1.0,            # standard overcalls
-    "takeout_double": 1.0,      # takeout doubles
-    "rkcb_4nt": 1.0,            # 4NT = RKCB in the last suit we bid
+    "takeout_double": 1.0,      # takeout doubles (power doubles shape-free)
+    "rkcb_response": 1.0,       # step answer shows the right keycard count
+    "cuebid_support": 1.0,      # their-suit cuebid: invite+ fit for partner
     "xyz_2c": 1.0,              # XYZ 2C = relay (invite or diamond signoff)
     "xyz_2d": 1.0,              # XYZ 2D = artificial GF
     "fourth_suit": 1.0,         # fourth suit is artificial and GF
-    "gf_pass": 1.0,             # never pass below game once GF
+    "gf_pass": 2.0,             # never pass below game once GF
     # --- standard natural glue (softer, weight 0.5) ---
     "open_values": 0.5,
     "open_minor_length": 0.5,
@@ -82,12 +97,11 @@ DEFAULT_WEIGHTS = {
     "rebid_2nt": 0.5,
     "resp_2c_positive": 0.5,
     "strong_jump_rebid": 0.5,
-    "negative_double": 0.5,
-    "penalty_double": 0.5,
-    "nt_penalty_double": 0.5,
+    "negative_double": 1.5,
     "overcall_1nt": 0.5,
-    "xyz_relay": 0.5,
-    "xyz_pass": 0.5,
+    "overcall_1nt_bal": 0.5,
+    "xyz_relay": 2.5,
+    "xyz_pass": 2.5,
 }
 
 
@@ -112,7 +126,7 @@ class ConventionConfig:
     two_c_suit_min_kr: float = 16.5
     two_c_longsuit_len: int = 8
     weak2_range: tuple = (4.0, 12.0)   # K&R; ~5-10 HCP with a 6-card suit
-    weak2_len: tuple = (6, 7)
+    weak2_len: tuple = (5, 7)
     open_min_kr: float = 11.0
     open_min_kr_late: float = 9.5    # 3rd/4th seat
     open_rule20: bool = True         # HCP + two longest suits >= 20 also opens
@@ -120,7 +134,7 @@ class ConventionConfig:
     resp_1nt_range: tuple = (5.0, 12.0)
     raise_range: tuple = (5.0, 12.5)
     raise_support_major: int = 3
-    raise_support_minor: int = 3
+    raise_support_minor: int = 4
     jump_raise_range: tuple = (10.0, 13.0)
     jump_raise_support_major: int = 3
     jump_raise_support_minor: int = 4
@@ -144,30 +158,37 @@ class ConventionConfig:
     js_min_len: int = 6
     splinter_min_kr: float = 12.0
     splinter_max_len: int = 1        # singleton or void in the bid suit
-    splinter_fit_major: int = 3
-    splinter_fit_minor: int = 4
+    splinter_fit_major: int = 4
+    splinter_fit_minor: int = 5
     fourth_suit_min_kr: float = 10.0
+    # smolen (3M after a NT opening - stayman - 2D/3D denial)
+    smolen_bid_len: int = 4          # cards in the bid major
+    smolen_other_len: int = 5        # cards in the other major
+    # their-suit cuebids: invitational+ support for partner's last suit
+    cuebid_min_kr: float = 10.0
+    cuebid_fit_major: int = 3
+    cuebid_fit_minor: int = 4
     # overcalls
     overcall1_min_kr: float = 7.0
-    overcall2_min_kr: float = 9.5
+    overcall2_min_kr: float = 10.0
     overcall3_min_kr: float = 12.5
-    overcall1_bal_min_kr: float = 5.5
+    overcall1_bal_min_kr: float = 6.5
     overcall2_bal_min_kr: float = 8.0
     overcall_min_len: int = 5
     overcall3_min_len: int = 6
     overcall_bal1_min_len: int = 4
     overcall_short_ok_kr: float = 13.0   # 4-card 1-level overcall if strong
-    overcall_nt_range: tuple = (14.5, 18.5)
+    overcall_nt_range: tuple = (14.5, 18.5)      # direct 1NT = 15-18
+    overcall_nt_bal_range: tuple = (11.5, 15.5)  # balancing 1NT = 12-15
     # doubles
-    takeout_min_kr: float = 9.0
-    takeout_bal_min_kr: float = 7.0
+    takeout_min_kr: float = 10.0
+    takeout_bal_min_kr: float = 8.0
     takeout_major_len: int = 3
+    takeout_power_kr: float = 18.0   # power double: no shape requirement
     negative_min_kr: float = 5.5
     negative_values_kr: float = 8.5      # no unbid 4-card major -> need values
-    penalty_min_kr: float = 10.0
-    penalty_trump_len: int = 4
-    nt_penalty_min_kr: float = 13.0
-    # slam conventions
+    # slam conventions (rkcb_min_kr/rkcb_min_fit now gate the ask's bonus;
+    # the ask itself is not penalized -- only wrong step responses are)
     rkcb_min_kr: float = 11.0
     rkcb_min_fit: int = 3
     # XYZ
@@ -176,6 +197,10 @@ class ConventionConfig:
     xyz_inv_min_kr: float = 9.5          # below this: diamond signoff only
     xyz_signoff_min_d: int = 5
     xyz_relay_break_kr: float = 15.5     # opener may bypass 2D with extras
+    # small flat reward for correctly using an artificial convention
+    # (XYZ 2C/2D, RKCB ask/response, splinter, smolen, fourth suit, cuebid
+    # raise); 0 disables the bonus
+    conv_bonus: float = 0.05
     # per-rule weights (0 disables a rule)
     weights: dict = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
 
@@ -313,6 +338,8 @@ def _check_double(reader: AuctionReader, hi: HandInfo, info: CallInfo,
     tol = cfg.kr_tolerance
     ctx = info.dbl_ctx
     if ctx == "takeout":
+        if hi.kr >= cfg.takeout_power_kr - tol:
+            return                       # power double: 18+ needs no shape
         unbid_majors = [d for d in MAJORS if d not in reader.suits_bid]
         shape_ok = all(hi.length(d) >= cfg.takeout_major_len
                        for d in unbid_majors)
@@ -328,14 +355,7 @@ def _check_double(reader: AuctionReader, hi: HandInfo, info: CallInfo,
         if hi.kr < cfg.negative_min_kr - tol or (
                 not has_major and hi.kr < cfg.negative_values_kr - tol):
             v("negative_double", f"K&R {hi.kr:.2f}, no unbid 4-card major")
-    elif ctx == "nt_penalty":
-        if hi.kr < cfg.nt_penalty_min_kr - tol:
-            v("nt_penalty_double", f"K&R {hi.kr:.2f}")
-    elif ctx == "penalty":
-        trump_len = (hi.length(reader.high_denom)
-                     if 0 <= reader.high_denom < DENOM_N else 0)
-        if hi.kr < cfg.penalty_min_kr - tol and trump_len < cfg.penalty_trump_len:
-            v("penalty_double", f"K&R {hi.kr:.2f}, {trump_len} trumps")
+    # penalty / nt_penalty doubles (our side has bid) are unchecked
 
 
 def check_call(reader: AuctionReader, hero: int, hand, action: int,
@@ -422,6 +442,32 @@ def _check_bid(reader: AuctionReader, hi: HandInfo, info: CallInfo,
             v("xyz_relay", f"broke the relay with K&R {hi.kr:.2f}")
         return _dedupe(out)
 
+    if info.smolen:
+        other = MAJORS[0] if denom == MAJORS[1] else MAJORS[1]
+        bad = []
+        if hi.length(denom) < cfg.smolen_bid_len:
+            bad.append(f"only {hi.length(denom)} in the bid major")
+        if hi.length(other) < cfg.smolen_other_len:
+            bad.append(f"only {hi.length(other)} in the other major")
+        if bad:
+            v("smolen", "; ".join(bad))
+        return _dedupe(out)
+
+    if info.rkcb_response:
+        trump = info.rkcb_trump
+        keys = sum(int(hi.has(d, 0)) for d in range(4)) + int(hi.has(trump, 1))
+        has_q = hi.has(trump, 2)
+        step = info.rkcb_step
+        ok = ((step == 1 and keys in (0, 3))
+              or (step == 2 and keys in (1, 4))
+              or (step == 3 and keys == 2 and not has_q)
+              or (step == 4 and keys == 2 and has_q))
+        if not ok:
+            v("rkcb_response",
+              f"{keys} keycards{' + trump Q' if has_q else ''} but step "
+              f"{step} shows the wrong count")
+        return _dedupe(out)
+
     if info.is_2over1:
         min_len = (cfg.two_one_min_len_clubs if denom == 0
                    else cfg.two_one_min_len)
@@ -475,22 +521,18 @@ def _check_bid(reader: AuctionReader, hi: HandInfo, info: CallInfo,
     # notrum bids
     if denom == DENOM_N:
         if level == 4:
-            trump = info.side_last_suit
-            if trump >= 0:                    # RKCB in the last suit we bid
-                bad = []
-                if hi.length(trump) < cfg.rkcb_min_fit:
-                    bad.append(f"only {hi.length(trump)} in the trump suit")
-                if hi.kr < cfg.rkcb_min_kr - tol:
-                    bad.append(f"K&R {hi.kr:.2f}")
-                if bad:
-                    v("rkcb_4nt", "; ".join(bad))
-            # no suit bid by us -> quantitative, unchecked
-        elif info.overcall and level == 1 and not info.balancing:
-            if not _in_range(hi.kr, cfg.overcall_nt_range, tol):
-                v("overcall_1nt", f"K&R {hi.kr:.2f} outside 15-18")
-            elif (0 <= reader.high_denom < DENOM_N
-                  and not hi.stopper(reader.high_denom)):
-                v("overcall_1nt", "no stopper in their suit")
+            pass    # RKCB ask (its step responses are checked instead) or
+            #       # quantitative 4NT: neither is evaluated
+        elif info.overcall and level == 1:
+            if info.balancing:
+                if not _in_range(hi.kr, cfg.overcall_nt_bal_range, tol):
+                    v("overcall_1nt_bal", f"K&R {hi.kr:.2f} outside 12-15")
+            else:
+                if not _in_range(hi.kr, cfg.overcall_nt_range, tol):
+                    v("overcall_1nt", f"K&R {hi.kr:.2f} outside 15-18")
+                elif (0 <= reader.high_denom < DENOM_N
+                      and not hi.stopper(reader.high_denom)):
+                    v("overcall_1nt", "no stopper in their suit")
         elif info.responder or info.advancer:
             if level == 1:
                 if not _in_range(hi.kr, cfg.resp_1nt_range, tol):
@@ -520,8 +562,26 @@ def _check_bid(reader: AuctionReader, hi: HandInfo, info: CallInfo,
                 v("rebid_2nt", f"K&R {hi.kr:.2f} outside 18-19")
         return _dedupe(out)
 
-    if info.cuebid or info.own_rebid:
-        return _dedupe(out)         # artificial / natural rebid: unchecked
+    if info.cuebid:
+        # cuebid of the opponents' suit: invitational or better support for
+        # partner's last suit; with no suit bid by partner it is a two-suited
+        # / strong call and stays unchecked
+        fit = info.partner_last_suit
+        if fit >= 0:
+            need = (cfg.cuebid_fit_major if fit in MAJORS
+                    else cfg.cuebid_fit_minor)
+            bad = []
+            if hi.length(fit) < need:
+                bad.append(f"only {hi.length(fit)}-card support for "
+                           f"partner's {_DENOMS[fit]}")
+            if hi.kr < cfg.cuebid_min_kr - tol:
+                bad.append(f"K&R {hi.kr:.2f} below invitational")
+            if bad:
+                v("cuebid_support", "; ".join(bad))
+        return _dedupe(out)
+
+    if info.own_rebid:
+        return _dedupe(out)         # natural rebid: unchecked
 
     if info.raise_bid:
         # descriptive raises only on the first chance to support (later
@@ -592,3 +652,69 @@ def call_penalty(hand, dealer: int, vuln: int, calls, action: int,
     """Total weighted penalty of `action` (0.0 = consistent with the system)."""
     return sum(v.weight for v in call_violations(hand, dealer, vuln, calls,
                                                  action, cfg))
+
+
+# ---------------------------------------------------------------------------
+# Convention-usage rewards
+# ---------------------------------------------------------------------------
+
+def convention_kind(info: CallInfo) -> str | None:
+    """The rewarded convention a classified call uses (None for plain bids).
+
+    The cuebid only counts as the convention when partner has bid a suit --
+    that is the case the system defines (invitational+ support); with a
+    silent partner the call is a two-suited/strong cuebid and earns nothing.
+    """
+    if info.xyz_2c:
+        return "xyz_2c"
+    if info.xyz_2d:
+        return "xyz_2d"
+    if info.smolen:
+        return "smolen"
+    if info.rkcb_ask:
+        return "rkcb_ask"
+    if info.rkcb_response:
+        return "rkcb_response"
+    if info.splinter:
+        return "splinter"
+    if info.fourth_suit:
+        return "fourth_suit"
+    if info.cuebid and info.partner_last_suit >= 0:
+        return "cuebid_support"
+    return None
+
+
+def convention_bonus(info: CallInfo, hi: HandInfo, violations,
+                     cfg: ConventionConfig) -> float:
+    """Small reward for one clean use of an artificial convention.
+
+    `info` is the classified call, `hi` the bidder's hand and `violations`
+    the check_call result for the same call: any violation on it forfeits
+    the bonus (a broken convention is punished, not rewarded). The RKCB ask
+    itself is no longer rule-checked -- only its step responses are -- so
+    its bonus instead requires the trump fit and slam values of a proper
+    ask (rkcb_min_fit / rkcb_min_kr).
+    """
+    if cfg.conv_bonus <= 0 or violations:
+        return 0.0
+    kind = convention_kind(info)
+    if kind is None:
+        return 0.0
+    if kind == "rkcb_ask" and (
+            hi.length(info.rkcb_trump) < cfg.rkcb_min_fit
+            or hi.kr < cfg.rkcb_min_kr - cfg.kr_tolerance):
+        return 0.0
+    return cfg.conv_bonus
+
+
+def call_bonus(reader: AuctionReader, hero: int, hand, action: int,
+               cfg: ConventionConfig | None = None) -> float:
+    """Convenience wrapper: the convention bonus of `action` in `reader`'s
+    auction (0.0 when it is not a correctly used convention)."""
+    cfg = cfg or ConventionConfig()
+    if cfg.conv_bonus <= 0:
+        return 0.0
+    info = reader.classify(action, seat=hero)
+    hi = HandInfo(hand)
+    return convention_bonus(info, hi,
+                            check_call(reader, hero, hi, action, cfg), cfg)

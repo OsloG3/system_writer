@@ -98,6 +98,7 @@ type PlayState struct {
 	Opener     int           `json:"opener"`
 	Plays      []PlayCard    `json:"plays"`
 	DeclTricks int           `json:"declTricks"`
+	Claimed    bool          `json:"claimed,omitempty"` // the human claimed the remaining tricks
 	Done       bool          `json:"done"`
 }
 
@@ -131,6 +132,7 @@ type PlayRecord struct {
 	Imps     float64    `json:"imps"`
 	Hands    [4]string  `json:"hands,omitempty"` // all four hands, N,E,S,W
 	Plays    []PlayCard `json:"plays,omitempty"` // the card-play sequence
+	Claimed  bool       `json:"claimed,omitempty"`
 }
 
 // PlayStats is the persisted per-user history (data/play_stats.json).
@@ -351,6 +353,7 @@ func recordPlayResult(b *PlayBoard) {
 	}
 	if b.Play != nil {
 		rec.Plays = append([]PlayCard(nil), b.Play.Plays...)
+		rec.Claimed = b.Play.Claimed
 	}
 	if b.Mode == "play" {
 		s.RecentPlay = append([]PlayRecord{rec}, s.RecentPlay...)
@@ -760,6 +763,27 @@ func (b *PlayBoard) applyPlay(seat int, card string) error {
 	return nil
 }
 
+// checkClaim verifies the human's claim that the seats they play take every
+// remaining trick: the declarer claims for declarer+dummy, a defender for
+// themselves alone. The claim is only accepted when it holds for EVERY legal
+// layout of the unseen cards -- consistent with the card counts, the cards
+// played, the voids proven by the play, and (for a defender) the tabled
+// dummy. See claim.go.
+func (b *PlayBoard) checkClaim(seat int) (bool, error) {
+	p := b.Play
+	var claim, known [4]bool
+	if seat == p.Declarer || seat == p.Dummy {
+		claim[p.Declarer], claim[p.Dummy] = true, true
+		known[p.Declarer], known[p.Dummy] = true, true
+	} else {
+		claim[seat], known[seat] = true, true
+		if len(p.Plays) > 0 {
+			known[p.Dummy] = true // the tabled dummy is public information
+		}
+	}
+	return verifyClaim(b.Hands, p.Plays, p.Trump, claim, known, seat)
+}
+
 // advancePlay runs the bots until the human must play, the hand is over, or a
 // single bot play has been made. Stepping one card at a time lets the client
 // reveal each card as it is computed (with its own pacing) rather than waiting
@@ -947,6 +971,7 @@ func (b *PlayBoard) playStateLocked(withLegal bool) map[string]any {
 		"humanSeats": humanSeats,
 		"dummyHand":  dummyHand,
 		"counts":     counts,
+		"claimed":    p.Claimed,
 		"done":       p.Done,
 		"yourTurn":   false,
 	}
@@ -1271,6 +1296,80 @@ func handlePlayCard(w http.ResponseWriter, r *http.Request) {
 	}
 	// Return straight away so the human sees their own card land immediately;
 	// the client then paces the bots one card per request (see advancePlay).
+	writeJSON(w, b.stateLocked(getPlayStats(username)))
+}
+
+// POST /api/play/{id}/claim - the human claims every remaining trick (the
+// declarer for declarer+dummy, a defender for themselves). It may only be
+// their turn (or their dummy's). The claim is verified against every legal
+// layout of the unseen cards (see claim.go): when it cannot fail the tricks
+// are awarded, the board is scored like a played-out hand and recorded once;
+// otherwise the hand simply continues.
+func handlePlayClaim(w http.ResponseWriter, r *http.Request) {
+	username := requireLogin(w, r)
+	if username == "" {
+		return
+	}
+	id := r.PathValue("id")
+	if !validID(id) {
+		jsonError(w, http.StatusBadRequest, "invalid board ID")
+		return
+	}
+	b := lookupPlayBoard(id, username)
+	if b == nil {
+		jsonError(w, http.StatusNotFound, "no such board")
+		return
+	}
+	defer persistPlayBoards() // after the board unlock, keep disk current
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.Result != nil {
+		jsonError(w, http.StatusConflict, "board is finished")
+		return
+	}
+	if b.Play == nil {
+		// the auction may not have reached the play yet (a stalled bot turn)
+		if err := b.advance(); err != nil {
+			jsonError(w, http.StatusBadGateway, botUnavailableMsg(err))
+			return
+		}
+		if b.Play == nil {
+			jsonError(w, http.StatusConflict, "the auction is not over")
+			return
+		}
+	}
+	p := b.Play
+	if p.Done {
+		jsonError(w, http.StatusConflict, "the hand is over")
+		return
+	}
+	seat := p.nextSeat()
+	if !b.humanControlsPlay(seat) {
+		jsonError(w, http.StatusConflict, "you can only claim when it is your turn (or your dummy's)")
+		return
+	}
+	ok, err := b.checkClaim(seat)
+	switch {
+	case errors.Is(err, errClaimTimeout):
+		jsonError(w, http.StatusConflict, "claim refused: the position is "+err.Error())
+		return
+	case err != nil:
+		jsonError(w, http.StatusConflict, "claim refused: "+err.Error())
+		return
+	case !ok:
+		jsonError(w, http.StatusConflict, "claim refused: the other side could still take a trick")
+		return
+	}
+	// the claim stands: the claiming side takes every remaining trick
+	if seat == p.Declarer || seat == p.Dummy {
+		p.DeclTricks += claimRemainingTricks(len(p.Plays))
+	}
+	p.Claimed = true
+	p.Done = true
+	if err := b.finishPlay(); err != nil {
+		// the claim stands even if scoring stalled; the next GET retries it
+		log.Printf("play board %s: claim scoring: %v", b.ID, err)
+	}
 	writeJSON(w, b.stateLocked(getPlayStats(username)))
 }
 

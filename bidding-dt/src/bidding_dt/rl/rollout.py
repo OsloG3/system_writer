@@ -40,11 +40,15 @@ averaging dev per call keeps the discount independent of auction length.
 When a ConventionConfig is given (rl.conv_weight > 0), every recorded call is
 also checked against the enforced bidding system (conventions/: 5-card majors,
 15-17 1NT, strong 2C, 20-21 2NT, GF 2/1, invitational jump shifts, standard
-overcalls, splinters below 4H, RKCB 4NT, XYZ, takeout doubles, fourth-suit
-GF, standard natural structure; hands evaluated in Kaplan-Rubens points).
+overcalls, splinters below 4H, smolen, RKCB step responses, support cuebids,
+XYZ, takeout doubles, fourth-suit GF, standard natural structure; hands
+evaluated in Kaplan-Rubens points).
 The per-call penalty (sum of violated rule weights) is subtracted from the
 row reward as conv_weight * penalty *after* the partner-deviation discount,
 so a partner's exploration noise never excuses the row's own system break.
+A correctly used artificial convention (XYZ 2C/2D, RKCB ask/response,
+splinter, smolen, fourth-suit GF, cuebid raise) instead earns the small flat
+cfg.conv_bonus reward, added to the row reward unscaled.
 
 Every learner decision is recorded in exactly the supervised input format,
 so the PPO update reuses the BC representation. Trajectories are per
@@ -64,7 +68,8 @@ import numpy as np
 import torch
 from torch.distributions import Categorical
 
-from ..conventions import ConventionConfig, HandInfo, check_call
+from ..conventions import (ConventionConfig, HandInfo, check_call,
+                           convention_bonus)
 from ..conventions.auction import AuctionReader
 from ..data.hands import HAND_DIM
 from ..data.vocab import VOCAB_SIZE
@@ -224,20 +229,27 @@ def partner_greedy_dev(buf: RolloutBuffer) -> np.ndarray:
 
 def convention_penalties(buf: RolloutBuffer, env: AuctionBatch,
                          cfg: ConventionConfig | None = None,
-                         ) -> tuple[np.ndarray, list[list[str]]]:
-    """(penalties (n,), violation codes per row) for a finished rollout.
+                         ) -> tuple[np.ndarray, list[list[str]], np.ndarray]:
+    """(penalties (n,), violation codes per row, bonuses (n,)) for a rollout.
 
     Replays each recorded decision's auction prefix (env.calls up to the
     row's call_idx) through the convention reader and weighs the hero's
     actual call against the enforced system. Only uses information the
     model itself sees: hero's hand + public auction + dealer/vuln. Hand
     features (K&R count, lengths) are computed once per (deal, seat).
+
+    The bonus per row is the small reward for one clean use of an
+    artificial convention (rules.convention_bonus): cfg.conv_bonus when the
+    call is XYZ 2C/2D, an RKCB ask with fit+values or a correct step
+    response, a splinter, smolen, fourth-suit GF or a support cuebid that
+    violates nothing -- 0.0 otherwise.
     """
     n = buf.n
     pens = np.zeros(n, dtype=np.float64)
     codes: list[list[str]] = [[] for _ in range(n)]
+    bonuses = np.zeros(n, dtype=np.float64)
     if n == 0:
-        return pens, codes
+        return pens, codes, bonuses
     cfg = cfg or ConventionConfig()
     hands: dict[tuple[int, int], HandInfo] = {}
     readers: dict[int, AuctionReader] = {}
@@ -261,11 +273,14 @@ def convention_penalties(buf: RolloutBuffer, env: AuctionBatch,
             readers[di] = reader
         while reader.n < ci:
             reader.feed(int(env.calls[di, reader.n]))
-        vs = check_call(reader, seat, hi, int(buf.action[i]), cfg)
+        action = int(buf.action[i])
+        vs = check_call(reader, seat, hi, action, cfg)
         if vs:
             pens[i] = sum(v.weight for v in vs)
             codes[i] = [v.code for v in vs]
-    return pens, codes
+        bonuses[i] = convention_bonus(reader.classify(action, seat=seat),
+                                      hi, vs, cfg)
+    return pens, codes, bonuses
 
 
 def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
@@ -274,7 +289,8 @@ def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
                      par_weight: float = 0.25,
                      partner_dev: np.ndarray | None = None,
                      conv_pen: np.ndarray | None = None,
-                     conv_weight: float = 0.0) -> np.ndarray:
+                     conv_weight: float = 0.0,
+                     conv_bonus: np.ndarray | None = None) -> np.ndarray:
     """Per-row terminal rewards for a two-table team rollout.
 
     team_imps[j]  = IMPs(score_NS(table0, deal j) - score_NS(table1, deal j))
@@ -293,6 +309,9 @@ def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
                     row (convention_penalties); conv_weight * conv_pen is
                     subtracted after the partner-dev scaling so the row owns
                     its own system breaks in full.
+    conv_bonus    = (n,) optional small per-row rewards for correctly used
+                    artificial conventions (convention_penalties); added
+                    unscaled (the magnitude lives in cfg.conv_bonus).
     """
     deal_idx = np.asarray(buf.deal_idx)          # env row in [0, 2B)
     seat = np.asarray(buf.seat)
@@ -311,6 +330,8 @@ def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
         r = np.where(r < 0.0, r * scale, r)
     if conv_pen is not None and conv_weight:
         r = r - conv_weight * np.asarray(conv_pen, dtype=np.float64)
+    if conv_bonus is not None:
+        r = r + np.asarray(conv_bonus, dtype=np.float64)
     return r
 
 
@@ -328,6 +349,7 @@ class TeamRollout:
     partner_dev: np.ndarray | None = None   # (n,) mean partner greedy deviation
     conv_pen: np.ndarray | None = None      # (n,) convention penalty per row
     conv_codes: list | None = None          # (n,) violated rule codes per row
+    conv_bonus: np.ndarray | None = None    # (n,) convention-usage reward/row
 
     def row_rewards(self, reward_scale: float, team_weight: float = 1.0,
                     par_weight: float = 0.25,
@@ -337,7 +359,8 @@ class TeamRollout:
                                 team_weight, par_weight,
                                 partner_dev=self.partner_dev,
                                 conv_pen=self.conv_pen,
-                                conv_weight=conv_weight)
+                                conv_weight=conv_weight,
+                                conv_bonus=self.conv_bonus)
 
 
 def _act(mdl, tokens, hand, vuln_cls, row_len, masks, device, greedy,
@@ -522,8 +545,9 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
     presolve: optional warm_cache future to join before scoring.
     conv_cfg: optional ConventionConfig -- when given (and rows are
     recorded), every learner decision is checked against the enforced
-    bidding system and roll.conv_pen/conv_codes carry the weighted
-    per-call penalties (subtracted in row_rewards via conv_weight).
+    bidding system and roll.conv_pen/conv_codes/conv_bonus carry the
+    weighted per-call penalties and the small convention-usage rewards
+    (applied in row_rewards via conv_weight / unscaled).
     """
     b = len(deals)
     dealer2 = np.concatenate([dealer, dealer]).astype(np.int64)
@@ -542,11 +566,13 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
                           for j in range(b)], dtype=np.float64)
     diverge, diverged = _divergence(env, b)
     partner_dev = partner_greedy_dev(buf) if buf is not None else None
-    conv_pen = conv_codes = None
+    conv_pen = conv_codes = conv_bonus = None
     if buf is not None and conv_cfg is not None:
-        conv_pen, conv_codes = convention_penalties(buf, env, conv_cfg)
+        conv_pen, conv_codes, conv_bonus = convention_penalties(buf, env,
+                                                                conv_cfg)
     return TeamRollout(buf=buf, env=env, n_deals=b, team_imps=team_imps,
                        diverge=diverge, diverged=diverged,
                        par_imps_ns=par_imps, score_ns=score_ns,
                        partner_dev=partner_dev,
-                       conv_pen=conv_pen, conv_codes=conv_codes)
+                       conv_pen=conv_pen, conv_codes=conv_codes,
+                       conv_bonus=conv_bonus)

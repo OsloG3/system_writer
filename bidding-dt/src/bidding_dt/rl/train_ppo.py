@@ -32,11 +32,16 @@ System conventions (rl.conv_weight > 0 / --conv-weight, see
 configs/rl_conv.yaml): every learner call is additionally checked against
 the enforced bidding system (conventions/: 5-card majors, 15-17 1NT, strong
 2C, 20-21 2NT, GF 2/1, invitational jump shifts also in competition,
-standard overcalls, splinter double jumps below 4H, RKCB 4NT in the last
-suit the partnership bid, XYZ, takeout doubles, fourth-suit GF, standard
-natural structure -- hands evaluated in Kaplan-Rubens points), and the
-weighted sum of the violated rules is subtracted from that decision's row
-reward. Per-iteration logs carry conv_pen_mean / conv_viol_rate / conv_top.
+standard overcalls with a 12-15 balancing 1NT, splinter double jumps below
+4H, smolen after 1/2NT stayman, RKCB step responses showing the right
+keycard count, support cuebids of the opponents' suit, XYZ, takeout doubles
+with shape-free power doubles, fourth-suit GF, standard natural structure --
+hands evaluated in Kaplan-Rubens points), and the weighted sum of the
+violated rules is subtracted from that decision's row reward. Correctly
+using an artificial convention (XYZ, RKCB, splinter, smolen, fourth suit,
+cuebid raise) earns the small flat conv_params.conv_bonus reward instead.
+Per-iteration logs carry conv_pen_mean / conv_viol_rate / conv_top /
+conv_bonus_mean.
 
 CPU smoke:
   python -m bidding_dt.rl.train_ppo --preset tiny --bc-ckpt runs/smoke/best.pt \
@@ -381,6 +386,7 @@ def main():
             rec["conv_viol_rate"] = round(
                 float((roll.conv_pen > 0).mean()), 4)
             rec["conv_top"] = cnt.most_common(3)
+            rec["conv_bonus_mean"] = round(float(roll.conv_bonus.mean()), 5)
         log(rec)
 
         if rl.eval_every and (it + 1) % rl.eval_every == 0:

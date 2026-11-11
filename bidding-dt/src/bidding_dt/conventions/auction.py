@@ -4,8 +4,10 @@
 everything the rules need to know about what a candidate call *means* in the
 system: who opened/overcalled, whether the hero is responder/advancer/opener,
 jump distance above the cheapest legal bid in the bid suit, raises vs new
-suits vs cuebids, XYZ / fourth-suit / 2-over-1 contexts, double meanings
-(takeout / negative / penalty) and per-side game-force status.
+suits vs cuebids, XYZ / fourth-suit / 2-over-1 contexts, Smolen (Stayman
+state machine over 1NT-2C-2D / 2NT-3C-3D), RKCB asks and step responses,
+double meanings (takeout / negative / penalty -- the penalty contexts are
+structural only and no longer rule-checked) and per-side game-force status.
 
 Classification is purely structural (no hands involved), so the same code
 path both tracks agreements while replaying an auction prefix and describes a
@@ -25,6 +27,7 @@ seats are absolute N=0 E=1 S=2 W=3, side = seat % 2 (0 = N-S).
 """
 
 from dataclasses import dataclass, field
+from copy import deepcopy
 
 from ..data.vocab import CALL_PASS, CALL_X, CALL_XX, FIRST_BID
 
@@ -75,7 +78,8 @@ class CallInfo:
     new_suit: bool = False        # suit hero has not bid before
     raise_bid: bool = False       # partner's suit, hero has not bid it
     own_rebid: bool = False       # hero's own previously-bid suit
-    cuebid: bool = False          # opponents' last-bid denom (artificial)
+    cuebid: bool = False          # opponents' last-bid suit (invitational+
+    #                             # support for partner's last suit)
     # role / context flags
     first_call: bool = False      # hero has not called before
     passed_hand: bool = False     # hero called before but never bid
@@ -94,18 +98,25 @@ class CallInfo:
     #                             # (invitational in this system)
     is_strong_js: bool = False    # opener's jump-shift rebid (standard: ~19)
     splinter: bool = False        # double jump shift below 4H
+    smolen: bool = False          # 3M after a NT-stayman denial: 4 in the bid
+    #                             # major + 5 in the other, game forcing
     fourth_suit: bool = False     # completes the 4th suit for the partnership
     xyz: bool = False             # responder's call in a live XYZ auction
     xyz_2c: bool = False          # ... bid exactly 2C (relay: invite/signoff)
     xyz_2d: bool = False          # ... bid exactly 2D (artificial GF)
     xyz_relay: bool = False       # opener's bid after partner's XYZ 2C
     xyz_after_relay: bool = False  # responder's call after XYZ 2C-2D
+    rkcb_ask: bool = False        # 4NT keycard ask in the side's last suit
+    rkcb_response: bool = False   # step answer (5C..5S) to partner's RKCB ask
+    rkcb_step: int = 0            # 1..4 = 5C..5S (0/3, 1/4, 2 no Q, 2 with Q)
+    rkcb_trump: int = -1          # keycard suit of the ask / response
     # state snapshots at the moment of the call
     gf_active: bool = False       # hero's side is game-forced
     partner_last_suit: int = -1   # denom partner last bid (-1 none)
     side_last_suit: int = -1      # denom hero's side last bid (-1 none)
     dbl_ctx: str = ""             # takeout|balancing_takeout|negative|
-    #                             # penalty|nt_penalty
+    #                             # penalty|nt_penalty (the penalty contexts
+    #                             # are structural only: not rule-checked)
     passes_since_bid: int = 0
     n_prior_passes: int = 0       # consecutive passes right before this call
 
@@ -131,6 +142,7 @@ class AuctionReader:
         self.seat_suits = [set() for _ in range(4)]   # denoms bid per seat
         self.seat_nt = [False] * 4
         self.side_suits = [[], []]     # ordered (seat, denom) suit bids
+        self.side_last_denom = [-1, -1]  # last suit each side bid (cuebids)
         self.side_has_bid = [False, False]
         self.suits_bid = set()         # union over both sides
         self.opener = -1
@@ -148,6 +160,15 @@ class AuctionReader:
         self.xyz_opener = -1
         self.xyz_for = -1              # responder seat with XYZ available
         self.xyz_2c_by = -1
+        # stayman/Smolen state machine: none -> nt -> asked -> denied
+        self.stayman_stage = "none"
+        self.stayman_nt = 0            # NT opening level (1 or 2)
+        self.stayman_opener = -1
+        self.stayman_for = -1          # responder seat with Smolen available
+        # RKCB: asker + trump latched from the 4NT ask until the partner's
+        # next call consumes it (step responses are only checked undisturbed)
+        self.rkcb_asker = -1
+        self.rkcb_trump = -1
         self._pass_run = 0             # consecutive passes before next call
 
     # -- queries ------------------------------------------------------------
@@ -217,9 +238,7 @@ class AuctionReader:
             lmin += 1
         info.jump = level - lmin
 
-        opp_last_denom = (self.high_denom
-                          if self.high_seat >= 0 and self.high_seat % 2 != side
-                          else -1)
+        opp_last_denom = self.side_last_denom[1 - side]
         if denom < DENOM_N:
             info.cuebid = (denom == opp_last_denom
                            and denom not in self.seat_suits[seat]
@@ -228,6 +247,12 @@ class AuctionReader:
             info.raise_bid = (denom in self.seat_suits[partner]
                               and not info.own_rebid)
             info.new_suit = not info.own_rebid and not info.raise_bid
+
+        # 4NT with a suit bid by our side is RKCB in that suit (the ask
+        # itself is unchecked; rules.py evaluates the step responses)
+        if denom == DENOM_N and level == 4 and info.side_last_suit >= 0:
+            info.rkcb_ask = True
+            info.rkcb_trump = info.side_last_suit
 
         # opening bid
         if self.highest == 0:
@@ -261,6 +286,24 @@ class AuctionReader:
             info.xyz_relay = True
         elif self.xyz_stage == "after_relay" and seat == self.xyz_2c_by:
             info.xyz_after_relay = True
+
+        # Smolen: after a 1NT/2NT opening, stayman (2C/3C) and the 2D/3D
+        # denial, responder's 3M shows 4 in the bid major + 5 in the other
+        # and is game forcing. Intercepted here so 1NT-2C-2D-3M is not
+        # misread as the invitational jump shift.
+        if (self.stayman_stage == "denied" and seat == self.stayman_for
+                and level == 3 and denom in MAJORS):
+            info.smolen = True
+            return info
+
+        # RKCB step response: the asker's partner's next 5-level suit bid
+        # (5C..5S = steps 1..4) answers the keycard ask.
+        if (self.rkcb_asker >= 0 and seat == (self.rkcb_asker + 2) % 4
+                and level == 5 and denom < DENOM_N):
+            info.rkcb_response = True
+            info.rkcb_step = denom + 1
+            info.rkcb_trump = self.rkcb_trump
+            return info
 
         if denom == DENOM_N or info.cuebid or info.own_rebid or info.raise_bid:
             return info              # NT / cuebid / rebid / raise: no shift logic
@@ -348,6 +391,7 @@ class AuctionReader:
             else:
                 self.seat_suits[seat].add(denom)
                 self.side_suits[side].append((seat, denom))
+                self.side_last_denom[side] = denom
                 self.suits_bid.add(denom)
             self.side_has_bid[side] = True
             if self.opener < 0:
@@ -373,6 +417,8 @@ class AuctionReader:
 
         self._update_gf(seat, side, info)
         self._update_xyz(call, seat, info)
+        self._update_stayman(call, seat, info)
+        self._update_rkcb(call, seat, info)
         self.calls.append(call)
         self.n += 1
         return info
@@ -387,7 +433,7 @@ class AuctionReader:
             if (self.s2c_opener_calls == 2 and self.s2c_waiting
                     and info.level == 2 and info.denom == DENOM_N):
                 self.gf[side] = False
-        if info.is_2over1 or info.fourth_suit or info.xyz_2d:
+        if info.is_2over1 or info.fourth_suit or info.xyz_2d or info.smolen:
             self.gf[side] = True
         if is_game_or_above(info.level, info.denom):
             self.gf[side] = False      # obligation fulfilled
@@ -438,3 +484,56 @@ class AuctionReader:
         elif stage == "after_relay":
             if seat == self.xyz_2c_by:
                 self.xyz_stage = "none"
+
+    def _update_stayman(self, call: int, seat: int, info: CallInfo):
+        """Stayman -> Smolen state machine (1NT-2C-2D / 2NT-3C-3D).
+
+        Passes keep the stage; any opponent action or an unexpected call
+        kills it. After the 2D/3D denial the responder's next non-pass call
+        is the Smolen position (classify flags a 3M); anything else there is
+        natural and ends the sequence.
+        """
+        stage = self.stayman_stage
+        if stage == "none":
+            if info.opening and info.denom == DENOM_N and info.level in (1, 2):
+                self.stayman_stage = "nt"
+                self.stayman_nt = info.level
+                self.stayman_opener = seat
+            return
+        if self.opp_nonpass > 0:           # interference kills stayman
+            self.stayman_stage = "none"
+            return
+        if info.kind == "pass":
+            return
+        ask = bid_id(self.stayman_nt + 1, 0)     # 2C over 1NT, 3C over 2NT
+        deny = bid_id(self.stayman_nt + 1, 1)    # the matching 2D/3D denial
+        if stage == "nt":
+            if seat == (self.stayman_opener + 2) % 4 and call == ask:
+                self.stayman_stage = "asked"
+                self.stayman_for = seat
+            else:
+                self.stayman_stage = "none"
+        elif stage == "asked":
+            self.stayman_stage = ("denied"
+                                  if seat == self.stayman_opener
+                                  and call == deny else "none")
+        elif stage == "denied":
+            self.stayman_stage = "none"    # responder called (Smolen or not)
+
+    def _update_rkcb(self, call: int, seat: int, info: CallInfo):
+        """Latch the RKCB ask; the asker's partner's next call consumes it.
+
+        An intervening opponent bid/double cancels the step-response window
+        (DOPI-style agreements are not checked); passes keep it open.
+        """
+        if self.rkcb_asker >= 0:
+            partner = (self.rkcb_asker + 2) % 4
+            if seat == partner or call != CALL_PASS:
+                self.rkcb_asker, self.rkcb_trump = -1, -1
+        if info.rkcb_ask:
+            self.rkcb_asker, self.rkcb_trump = seat, info.rkcb_trump
+
+    def copy(self) -> "AuctionReader":
+        """Independent deep copy of the whole state (rl/analyze.py walks the
+        dumped auction tree with one reader per branch)."""
+        return deepcopy(self)

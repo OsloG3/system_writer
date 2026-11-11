@@ -961,6 +961,9 @@ func (s *DrillSession) strayLocked(seat int, card string) error {
 }
 
 func (s *DrillSession) finishClaimLocked(tricks int) {
+	if s.Bot {
+		s.dropBotSessionsLocked() // the bots will play no more cards
+	}
 	s.gradeLocked(tricks, true, false)
 }
 
@@ -1089,6 +1092,32 @@ func (s *DrillSession) botChooseLocked(seat int) (string, error) {
 		return "", errors.New("sidecar returned an invalid card")
 	}
 	return card, nil
+}
+
+// checkClaim verifies the hero's claim that the seats they play take every
+// remaining trick: the declarer hero claims for declarer+dummy, a defending
+// hero for themselves alone. The claim is only accepted when it holds for
+// EVERY legal layout of the unseen cards (see claim.go) -- the script's own
+// deal is one of them, so an accepted claim can never contradict the author's
+// line. It works in the scripted and in the bot phase alike.
+func (s *DrillSession) checkClaim(seat int) (bool, error) {
+	decl := s.contract.Declarer
+	dummy := (decl + 2) % 4
+	plays := make([]PlayCard, len(s.Plays))
+	for i, dp := range s.Plays {
+		plays[i] = PlayCard{Seat: dp.Seat, Card: dp.Card}
+	}
+	var claim, known [4]bool
+	if seat == decl || seat == dummy {
+		claim[decl], claim[dummy] = true, true
+		known[decl], known[dummy] = true, true
+	} else {
+		claim[seat], known[seat] = true, true
+		if len(s.Plays) > 0 {
+			known[dummy] = true // the tabled dummy is public information
+		}
+	}
+	return verifyClaim(s.Problem.Hands, plays, s.trump, claim, known, seat)
 }
 
 // stateLocked renders the client-visible session. During the play the hero
@@ -1906,6 +1935,60 @@ func handleDrillSessionCard(w http.ResponseWriter, r *http.Request) {
 	if err := s.advanceLocked(); err != nil {
 		log.Printf("drill session %s: bot advance: %v", s.ID, err)
 	}
+	writeSessionState(w, s, username)
+}
+
+// POST /api/drill/session/{sid}/claim - the hero claims every remaining trick
+// (the declarer hero for declarer+dummy, a defending hero for themselves). It
+// may only be their turn (or their dummy's). The claim is verified against
+// every legal layout of the unseen cards (see claim.go): when it cannot fail
+// the run ends right away with the claimed trick count, graded against the
+// problem's target like any other claim ending; otherwise play continues.
+func handleDrillSessionClaim(w http.ResponseWriter, r *http.Request) {
+	username := requireLogin(w, r)
+	if username == "" {
+		return
+	}
+	sid := r.PathValue("sid")
+	if !validID(sid) {
+		jsonError(w, http.StatusBadRequest, "invalid session ID")
+		return
+	}
+	s := lookupDrillSession(sid, username)
+	if s == nil {
+		jsonError(w, http.StatusNotFound, "no such session")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Done {
+		writeSessionState(w, s, username)
+		return
+	}
+	seat := s.nextSeatLocked()
+	if !s.heroControls(seat) {
+		jsonError(w, http.StatusConflict, "you can only claim when it is your turn (or your dummy's)")
+		return
+	}
+	ok, err := s.checkClaim(seat)
+	switch {
+	case errors.Is(err, errClaimTimeout):
+		jsonError(w, http.StatusConflict, "claim refused: the position is "+err.Error())
+		return
+	case err != nil:
+		jsonError(w, http.StatusConflict, "claim refused: "+err.Error())
+		return
+	case !ok:
+		jsonError(w, http.StatusConflict, "claim refused: the other side could still take a trick")
+		return
+	}
+	// the claim stands: the hero's seats take every remaining trick
+	tricks := s.DeclTricks
+	decl := s.contract.Declarer
+	if seat == decl || seat == (decl+2)%4 {
+		tricks += claimRemainingTricks(len(s.Plays))
+	}
+	s.finishClaimLocked(tricks)
 	writeSessionState(w, s, username)
 }
 

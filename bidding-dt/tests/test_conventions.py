@@ -14,8 +14,9 @@ import numpy as np
 import pytest
 
 from bidding_dt.conventions import (AuctionReader, ConventionConfig,
-                                    HandInfo, call_penalty, call_violations,
-                                    check_call, kr_points)
+                                    HandInfo, call_bonus, call_penalty,
+                                    call_violations, check_call,
+                                    convention_alert, kr_points)
 from bidding_dt.conventions.auction import bid_id
 from bidding_dt.data.hands import encode_hand
 from bidding_dt.data.vocab import call_to_id
@@ -272,6 +273,10 @@ def test_overcall_checks():
     # hero = W balancing after 1D-P-P
     assert codes("KJ73.952.A74.T98", ["1D", P, P], "1S") == []
     assert codes("9852.74.KJ73.T95", ["1D", P, P], "1S") == ["overcall"]
+    # balancing 1NT = 12-15 (range only, no stopper promise required)
+    assert codes("AK74.QJ6.AQ7.654", ["1D", P, P], "1N") == []
+    assert codes("KJ74.952.A74.T98", ["1D", P, P], "1N") == ["overcall_1nt_bal"]
+    assert codes("AKJ4.KQ6.AQJ7.KJ", ["1D", P, P], "1N") == ["overcall_1nt_bal"]
     # hero = W advancing partner's 1S overcall: invitational jump shift
     assert codes("T5.7.QJ94.KQJT53", ["1D", "1S", P], "3C") == []
     assert codes("T54.7.QJ94.KQJT5", ["1D", "1S", P], "3C") == ["inv_jump_shift"]
@@ -281,19 +286,17 @@ def test_double_checks():
     # hero = E: takeout double of 1D
     assert codes("AK73.KQ74.5.AJT4", ["1D"], "X") == []
     assert codes("AKT9876.5.Q4.T98", ["1D"], "X") == ["takeout_double"]
+    # power double: 18+ K&R needs no shape in the unbid majors
+    assert codes("AKQJT98.AK.AKQ.J", ["1D"], "X") == []
     # hero = W: balancing takeout (lighter values fine)
     assert codes("KJ73.952.A7.T985", ["1D", P, P], "X") == []
     assert codes("T73.952.Q74.T983", ["1D", P, P], "X") == ["takeout_double"]
     # hero = S: negative double after 1C-(1D)
     assert codes("KT73.QJ74.5.T984", ["1C", "1D"], "X") == []
     assert codes("T98.75.KJ5.T9843", ["1C", "1D"], "X") == ["negative_double"]
-    # hero = E (bid 1S earlier): penalty double of 3D
-    assert codes("KQJ73.A5.74.T985", ["1D", "1S", "2H", P, "3D"], "X") == []
-    assert codes("KJ73.952.74.T985", ["1D", "1S", "2H", P, "3D"], "X") \
-        == ["penalty_double"]
-    # hero = E: penalty double of a 1NT opening
-    assert codes("AKJT.AKQ.AKQ.AKQ", ["1N"], "X") == []
-    assert codes("752.752.752.T985", ["1N"], "X") == ["nt_penalty_double"]
+    # doubles once our side has bid (penalty-oriented) are unchecked
+    assert codes("KJ73.952.74.T985", ["1D", "1S", "2H", P, "3D"], "X") == []
+    assert codes("752.752.752.T985", ["1N"], "X") == []
 
 
 def test_gf_pass_and_fourth_suit():
@@ -309,14 +312,94 @@ def test_gf_pass_and_fourth_suit():
     assert codes("KQJ4.AKJ3.T98.54", fs, "2S") == []
 
 
-def test_rkcb_4nt():
-    # hero = S after 1S-2C-2S: 4NT is RKCB in spades
+def test_rkcb_ask_and_responses():
+    # hero = S after 1S-2C-2S: the 4NT ask itself is NOT evaluated anymore
     auc = ["1S", P, "2C", P, "2S", P]
     assert codes("KQJ.A753.AJT5.43", auc, "4N") == []
-    assert codes("43.AKJ5.AJT52.43", auc, "4N") == ["rkcb_4nt"]   # 2-card fit
-    assert codes("KQJ.752.T9854.T9", auc, "4N") == ["rkcb_4nt"]   # no values
+    assert codes("43.AKJ5.AJT52.43", auc, "4N") == []    # 2-card fit: free
+    assert codes("KQJ.752.T9854.T9", auc, "4N") == []    # no values: free
     # no suit bid by us -> quantitative, unchecked (hero = S over 1NT)
     assert codes("AK74.QJ6.AQ7.654", ["1N", P], "4N") == []
+    # hero = N answers the ask: the step must show the right keycard count
+    # (5C 0/3, 5D 1/4, 5H 2 without the trump Q, 5S 2 with it)
+    resp = auc + ["4N", P]
+    assert codes("AK74.QJ6.AQ7.654", resp, "5C") == []            # 3 keys
+    assert codes("AK74.QJ6.AQ7.654", resp, "5D") == ["rkcb_response"]
+    assert codes("AJ74.KJ6.KJ7.KJ4", resp, "5D") == []            # 1 key
+    assert codes("AJ74.KJ6.KJ7.KJ4", resp, "5C") == ["rkcb_response"]
+    assert codes("KQJ4.A753.T985.4", resp, "5S") == []            # 2 + Q
+    assert codes("KQJ4.A753.T985.4", resp, "5H") == ["rkcb_response"]
+    assert codes("43.AKJ5.AJT52.43", resp, "5H") == []            # 2, no Q
+    assert codes("43.AKJ5.AJT52.43", resp, "5S") == ["rkcb_response"]
+    assert codes("QJ74.KJ6.QJ7.QJ4", resp, "5C") == []            # 0 keys
+    assert codes("QJ74.KJ6.QJ7.QJ4", resp, "5D") == ["rkcb_response"]
+
+
+def test_reader_rkcb_state():
+    r = feed_all(["1S", P, "2C", P, "2S", P])
+    info = r.classify(B("4N"), seat=2)
+    assert info.rkcb_ask and info.rkcb_trump == 3          # trump = S
+    r.feed(B("4N"))
+    assert r.rkcb_asker == 2
+    r.feed(B(P))                                           # W passes
+    assert r.rkcb_asker == 2                               # window stays open
+    info = r.classify(B("5D"), seat=0)
+    assert info.rkcb_response and info.rkcb_step == 2 and info.rkcb_trump == 3
+    # an intervening opponent bid kills the step-response window
+    r2 = feed_all(["1S", P, "2C", P, "2S", P, "4N"])
+    r2.feed(B("5C"))                                       # W bids over the ask
+    assert r2.rkcb_asker == -1
+    assert not r2.classify(B("5D"), seat=0).rkcb_response
+    # a quantitative 4NT (no suit bid by us) is not an ask
+    r3 = feed_all(["1N", P])
+    assert not r3.classify(B("4N"), seat=2).rkcb_ask
+
+
+def test_reader_smolen_state():
+    # 1NT - 2C stayman - 2D denial: responder's 3M is smolen (not the
+    # invitational jump shift)
+    r = feed_all(["1N", P, "2C", P, "2D", P])
+    info = r.classify(B("3S"), seat=2)
+    assert info.smolen and not info.is_jump_shift
+    assert r.classify(B("3H"), seat=2).smolen
+    # 2NT - 3C stayman - 3D denial
+    r2 = feed_all(["2N", P, "3C", P, "3D", P])
+    assert r2.classify(B("3H"), seat=2).smolen
+    # opener showing a major ends the sequence: 3S is natural again
+    r3 = feed_all(["1N", P, "2C", P, "2H", P])
+    assert not r3.classify(B("3S"), seat=2).smolen
+    # opponent interference kills stayman/smolen
+    r4 = feed_all(["1N", X, "2C", P, "2D", P])
+    assert not r4.classify(B("3S"), seat=2).smolen
+    # smolen is game forcing
+    r5 = feed_all(["1N", P, "2C", P, "2D", P, "3S"])
+    assert r5.gf[0]
+    assert r5.classify(B(P), seat=3).gf_active is False    # E-W not forced
+
+
+def test_smolen_checks():
+    sm = ["1N", P, "2C", P, "2D", P]
+    # hero = S: 3S smolen shows 4 spades + 5 hearts
+    assert codes("KQJ4.A7532.T54.4", sm, "3S") == []
+    assert codes("KQJ4.A753.T985.4", sm, "3S") == ["smolen"]   # only 4 hearts
+    assert codes("KQJ.AKJ73.T98.54", sm, "3S") == ["smolen"]    # only 3 spades
+    # 3H shows 4 hearts + 5 spades
+    assert codes("KQJ4.A7532.T54.4", sm, "3H") == ["smolen"]
+    # smolen sets the game force: passing below game violates it
+    assert codes("AK74.QJ6.AQ7.654", sm + ["3S", P], "P") == ["gf_pass"]
+
+
+def test_cuebid_support_checks():
+    # hero = W: cuebid of N's 1D shows invitational+ support for E's 1S
+    cb = ["1D", "1S", P]
+    assert codes("KQJ4.A753.T54.43", cb, "2D") == []
+    assert codes("9852.74.KJ73.T95", cb, "2D") == ["cuebid_support"]  # weak
+    assert codes("KQ.A753.T9854.54", cb, "2D") == ["cuebid_support"]  # 2-card
+    # with no suit bid by partner the cuebid is undefined: unchecked
+    assert codes("KQJ4.A753.T54.43", ["1D", P, P], "2D") == []
+    # the reader flags the cuebid of the opponents' last-bid suit
+    r = feed_all(cb)
+    assert r.classify(B("2D"), seat=3).cuebid
 
 
 def test_xyz_checks():
@@ -367,6 +450,81 @@ def test_raise_and_nt_response_checks():
 def test_pass_and_redouble_neutral():
     assert codes("752.752.752.T985", [], "P") == []
     assert codes("752.752.752.T985", ["1D", X], "XX") == []
+
+
+# ---------------------------------------------------------------------------
+# Convention-usage rewards and alert texts
+# ---------------------------------------------------------------------------
+
+def bonus(hand, calls, action, dealer=0):
+    r = feed_all(calls, dealer=dealer)
+    return call_bonus(r, (dealer + len(calls)) % 4, hand, B(action), CFG)
+
+
+def test_convention_bonus():
+    small = CFG.conv_bonus
+    assert small > 0
+    # splinter: correct use earns the bonus, a broken one does not
+    assert bonus("KQJ4.A753.AJT5.4", ["1S", P], "4C") == pytest.approx(small)
+    assert bonus("43.AKJ5.AJT52.43", ["1S", P], "4C") == 0.0
+    # RKCB: the ask earns the bonus with fit + slam values only
+    auc = ["1S", P, "2C", P, "2S", P]
+    assert bonus("KQJ.A753.AJT5.43", auc, "4N") == pytest.approx(small)
+    assert bonus("KQJ.752.T9854.T9", auc, "4N") == 0.0
+    assert bonus("43.AKJ5.AJT52.43", auc, "4N") == 0.0     # 2-card fit
+    # ... and the step response earns it only when the count is right
+    resp = auc + ["4N", P]
+    r = feed_all(resp)
+    assert call_bonus(r, 0, "AK74.QJ6.AQ7.654", B("5C"), CFG) \
+        == pytest.approx(small)
+    assert call_bonus(r, 0, "AK74.QJ6.AQ7.654", B("5D"), CFG) == 0.0
+    # XYZ 2C / 2D, fourth suit, smolen, support cuebid
+    xyz = ["1C", P, "1H", P, "1S", P]
+    assert bonus("KQJ4.A753.T985.4", xyz, "2C") == pytest.approx(small)
+    assert bonus("KQJ4.AKJ3.T98.54", xyz, "2D") == pytest.approx(small)
+    assert bonus("KQJ4.A753.T985.4", xyz, "2S") == 0.0     # natural, no conv
+    assert bonus("KQJ4.AKJ3.T98.54", ["1C", P, "1H", P, "2D", P], "2S") \
+        == pytest.approx(small)
+    assert bonus("KQJ4.A7532.T54.4", ["1N", P, "2C", P, "2D", P], "3S") \
+        == pytest.approx(small)
+    assert bonus("KQJ4.A753.T54.43", ["1D", "1S", P], "2D") \
+        == pytest.approx(small)
+    # plain natural bids earn nothing
+    assert bonus("AK74.QJ6.AQ7.654", [], "1N") == 0.0
+    assert bonus("KQJ4.A753.T985.4", ["1S", P], "2S") == 0.0
+    # conv_bonus = 0 disables the reward
+    cfg0 = ConventionConfig.from_overrides(None, {"conv_bonus": 0.0})
+    r = feed_all(["1S", P])
+    assert call_bonus(r, 2, "KQJ4.A753.AJT5.4", B("4C"), cfg0) == 0.0
+
+
+def test_convention_alerts():
+    auc = ["1S", P, "2C", P, "2S", P]
+    resp = auc + ["4N", P]
+    assert "relay" in convention_alert(
+        feed_all(["1C", P, "1H", P, "1S", P]).classify(B("2C"), seat=2))
+    assert "game force" in convention_alert(
+        feed_all(["1C", P, "1H", P, "1S", P]).classify(B("2D"), seat=2))
+    assert "RKCB for ♠" in convention_alert(
+        feed_all(auc).classify(B("4N"), seat=2))
+    assert "1 or 4 keycards" in convention_alert(
+        feed_all(resp).classify(B("5D"), seat=0))
+    assert "2 keycards with the trump queen" in convention_alert(
+        feed_all(resp).classify(B("5S"), seat=0))
+    assert convention_alert(feed_all(["1S", P]).classify(B("4C"), seat=2)) \
+        == "Splinter: singleton/void ♣, fit for partner's ♠, slam interest"
+    assert convention_alert(
+        feed_all(["1N", P, "2C", P, "2D", P]).classify(B("3H"), seat=2)) \
+        == "Smolen: 4 ♥ and 5+ ♠, game force"
+    assert "artificial, game force" in convention_alert(
+        feed_all(["1C", P, "1H", P, "2D", P]).classify(B("2S"), seat=2))
+    assert "support for partner's ♠" in convention_alert(
+        feed_all(["1D", "1S", P]).classify(B("2D"), seat=3))
+    # natural calls carry no alert
+    assert convention_alert(feed_all([]).classify(B("1N"), seat=0)) is None
+    assert convention_alert(feed_all(["1S", P]).classify(B("2S"), seat=2)) \
+        is None
+    assert convention_alert(feed_all(["1D"]).classify(B(X), seat=1)) is None
 
 
 # ---------------------------------------------------------------------------
@@ -440,6 +598,11 @@ def test_team_row_rewards_convention_penalty():
     r = team_row_rewards(buf, partner_dev=pd, conv_pen=conv, conv_weight=0.5,
                          **kw)
     assert np.allclose(r, [-8.0 / 4 - 1.0, 8.0 - 0.5])
+    # the convention bonus is added unscaled on top
+    bon = np.array([0.05, 0.0])
+    r = team_row_rewards(buf, conv_pen=conv, conv_weight=0.5, conv_bonus=bon,
+                         **kw)
+    assert np.allclose(r, [-9.0 + 0.05, 7.5])
 
 
 def test_convention_penalties_matches_manual():
@@ -463,8 +626,8 @@ def test_convention_penalties_matches_manual():
                      actions, np.zeros(len(idx)), np.zeros(len(idx)),
                      env.n_calls[idx], np.zeros(len(idx)))
         env.step(idx, actions)
-    pens, pen_codes = convention_penalties(buf, env, CFG)
-    assert pens.shape == (buf.n,)
+    pens, pen_codes, bonuses = convention_penalties(buf, env, CFG)
+    assert pens.shape == (buf.n,) == bonuses.shape
     assert (pens >= 0).all() and np.isfinite(pens).all()
     for i in range(buf.n):
         di, ci = buf.deal_idx[i], buf.call_idx[i]
@@ -473,6 +636,11 @@ def test_convention_penalties_matches_manual():
                              int(vuln[di]), prefix, buf.action[i], CFG)
         assert pens[i] == pytest.approx(sum(v.weight for v in vs))
         assert pen_codes[i] == [v.code for v in vs]
+        # the bonus is either 0 or exactly cfg.conv_bonus, and a penalized
+        # call never earns one
+        assert bonuses[i] == 0.0 or bonuses[i] == pytest.approx(CFG.conv_bonus)
+        if pens[i] > 0:
+            assert bonuses[i] == 0.0
     # random legal play breaks the system somewhere in 6 full auctions
     assert (pens > 0).any()
 
@@ -499,11 +667,16 @@ def test_play_team_deals_conv_pen_flows_into_rewards(tmp_path):
     assert roll.conv_pen.shape == (roll.buf.n,)
     assert (roll.conv_pen >= 0).all()
     assert len(roll.conv_codes) == roll.buf.n
+    assert roll.conv_bonus is not None
+    assert roll.conv_bonus.shape == (roll.buf.n,)
+    assert (roll.conv_bonus >= 0).all()
     r0 = roll.row_rewards(1.0, conv_weight=0.0)
     r1 = roll.row_rewards(1.0, conv_weight=0.5)
+    # the bonus flows into both (unscaled), so only the penalty differs
     assert np.allclose(r0 - r1, 0.5 * roll.conv_pen)
     # without conv_cfg nothing is computed and rewards are unchanged
     ref = play_team_deals(model, deals, dealer, vuln, torch.device("cpu"),
                           cache=cache, greedy=True)
     assert ref.conv_pen is None
+    assert ref.conv_bonus is None
     cache.close()

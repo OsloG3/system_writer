@@ -23,6 +23,12 @@ the print with --min-n / --depth; the JSON always holds the full tree):
        ...}}
 
 (root = the deals played; every other node = one bot bid in one sequence)
+
+A node whose call is one of the system's artificial conventions in that
+sequence additionally carries a "conv" field with the alert text (XYZ,
+RKCB ask/response, splinter, smolen, fourth-suit GF, support cuebid --
+conventions/alerts.py); the Go alert loader (system_writer/alerts.go)
+serves it to the client alongside the stat ranges.
 """
 
 import argparse
@@ -33,6 +39,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from ..conventions.alerts import convention_alert
+from ..conventions.auction import AuctionReader
 from ..data.hands import SUITS
 from ..data.vocab import id_to_call
 from ..env.auction_env import AuctionBatch
@@ -103,17 +111,37 @@ def selfplay_tree(model, deals, dealer: np.ndarray, vuln: np.ndarray, device,
     return build_tree(deals, env, buf), env, buf
 
 
-def node_to_json(node: dict) -> dict:
+def node_to_json(node: dict, reader: AuctionReader | None = None,
+                 conv: str | None = None) -> dict:
     """JSON view: call names, children sorted by frequency; the root (and
-    any never-observed node) carries null hand stats."""
+    any never-observed node) carries null hand stats.
+
+    `reader` is the auction state before this node's call (dealer-relative:
+    the tree is keyed by the sequence from the dealer, so seat = depth) and
+    `conv` the alert text of this node's call, classified with the
+    conventions reader in the parent frame. Convention nodes carry it as
+    the "conv" field for the Go alert loader.
+    """
+    if reader is None:
+        reader = AuctionReader(0, 0)
     seen = node["hcp_max"] >= 0
     kids = sorted(node["children"].values(), key=lambda c: -c["n"])
-    return {"call": None if node["call"] is None else id_to_call(node["call"]),
-            "n": node["n"],
-            "hcp": [node["hcp_min"], node["hcp_max"]] if seen else None,
-            "suits": ({s: [node["suit_min"][i], node["suit_max"][i]]
-                       for i, s in enumerate(SUITS)} if seen else None),
-            "children": {id_to_call(c["call"]): node_to_json(c) for c in kids}}
+    out = {"call": None if node["call"] is None else id_to_call(node["call"]),
+           "n": node["n"],
+           "hcp": [node["hcp_min"], node["hcp_max"]] if seen else None,
+           "suits": ({s: [node["suit_min"][i], node["suit_max"][i]]
+                      for i, s in enumerate(SUITS)} if seen else None)}
+    if conv:
+        out["conv"] = conv
+    children = {}
+    for c in kids:
+        call = int(c["call"])
+        child_reader = reader.copy()
+        info = child_reader.feed(call)
+        children[id_to_call(call)] = node_to_json(
+            c, child_reader, convention_alert(info))
+    out["children"] = children
+    return out
 
 
 def print_tree(root: dict, max_depth: int | None = None,

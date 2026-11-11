@@ -1551,6 +1551,9 @@
             // ---- Bid alerts (from the bot model's self-play tree) ----
             // state.alerts parallels state.calls (null for human seats and
             // unseen positions); state.optionAlerts parallels state.legal.
+            // An alert may carry a.conv: the system's convention alert text
+            // (XYZ, RKCB, splinter, smolen, fourth suit, support cuebid),
+            // shown first when present.
             const ALERT_SUITS = ["♠", "♥", "♦", "♣"]; // S,H,D,C server order
 
             function callLabel(c) {
@@ -1570,7 +1573,8 @@
                     a.pct > 0
                         ? ` · picked ${(a.pct * 100).toFixed(1)}% here`
                         : "";
-                return `${a.hcp[0]}–${a.hcp[1]} HCP · ${suits} · ${a.n.toLocaleString()} self-play deals${pct}`;
+                const conv = a.conv ? `⚠ ${a.conv} · ` : "";
+                return `${conv}${a.hcp[0]}–${a.hcp[1]} HCP · ${suits} · ${a.n.toLocaleString()} self-play deals${pct}`;
             }
 
             function alertBoxLine(label, text, dim) {
@@ -2557,7 +2561,9 @@
                             ? ` <span style="opacity:.6">(DD ${r.tricks})</span>`
                             : "";
                     contractLine = `${c.level}${SUIT_SYMBOL[c.denom]}${pen} by ${SEAT_NAMES[c.declarer]} (${side})`;
-                    trickNote = `${made} trick${made === 1 ? "" : "s"}${ddNote} — ${margin >= 0 ? "made " + (margin > 0 ? "+" + margin : "exactly") : margin + " down"}`;
+                    const claimNote =
+                        state.play && state.play.claimed ? " · claimed" : "";
+                    trickNote = `${made} trick${made === 1 ? "" : "s"}${ddNote}${claimNote} — ${margin >= 0 ? "made " + (margin > 0 ? "+" + margin : "exactly") : margin + " down"}`;
                 } else {
                     contractLine = "Passed out";
                     trickNote = "no contract was reached";
@@ -2993,6 +2999,17 @@
                 return spinner(SEAT_NAMES[nextSeat] + " is playing…");
             }
 
+            // The claim button: offered whenever the human is to act (their
+            // own turn or their dummy's). The server only accepts the claim
+            // when the claiming side takes EVERY remaining trick against
+            // every legal layout of the hidden cards -- anything less is
+            // refused with the reason as a toast, and the hand goes on.
+            function claimBtnHtml() {
+                if (!playReady()) return "";
+                return `<button id="claimBtn" class="cb-trickbtn" title="Claim every remaining trick (refused unless it cannot fail)">
+                    <span class="material-symbols-outlined">flag</span>Claim</button>`;
+            }
+
             // The most recent COMPLETED trick (four cards), or null before one.
             function lastTrickPlays() {
                 const plays = revealedPlays();
@@ -3066,6 +3083,7 @@
                             <div class="cb-pprompt">${playPromptHtml()}</div>
                             ${auctionBtnHtml()}
                             ${lastTrickBtnHtml()}
+                            ${claimBtnHtml()}
                         </div>
                     </div>`;
             }
@@ -3089,6 +3107,16 @@
                     return;
                 selectedCard = null;
                 await post(`/api/play/${state.id}/card`, { card: card });
+            }
+
+            // Claim all remaining tricks; a refusal arrives as a 409 whose
+            // error message the shared response handler shows as a toast.
+            async function makeClaim() {
+                if (!state || busy || stepping || state.done) return;
+                if (state.phase !== "play" || !state.play || !playReady())
+                    return;
+                selectedCard = null;
+                await post(`/api/play/${state.id}/claim`);
             }
 
             // The calls currently on screen (paced by callRevealCount);
@@ -4059,6 +4087,8 @@
                         if (showLastTrick) showAuction = false;
                         render();
                     };
+                const claimBtn = document.getElementById("claimBtn");
+                if (claimBtn) claimBtn.onclick = () => makeClaim();
                 const aucBtn = document.getElementById("auctionBtn");
                 if (aucBtn)
                     aucBtn.onclick = () => {

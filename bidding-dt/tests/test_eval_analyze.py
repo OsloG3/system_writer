@@ -81,6 +81,34 @@ def test_build_tree_merges_prefixes_and_ranges():
     json.dumps(js)                             # fully serializable
 
 
+def test_node_to_json_stamps_convention_alerts():
+    """node_to_json walks the tree with the conventions reader: convention
+    calls carry their alert text as "conv", natural calls do not."""
+    import numpy as np
+    from bidding_dt.rl.analyze import _new_node, _observe
+    from bidding_dt.data.vocab import call_to_id
+
+    # 1C-P-1H-P-1S-P-2C: responder's 2C is the live XYZ relay
+    seq = ["1C", "P", "1H", "P", "1S", "P", "2C"]
+    root = _new_node(None)
+    root["n"] = 1
+    node = root
+    lens = np.array([3, 3, 3, 4])
+    for c in seq:
+        cid = call_to_id(c)
+        child = node["children"].setdefault(cid, _new_node(cid))
+        _observe(child, 10, lens)
+        node = child
+
+    js = node_to_json(root)
+    assert "conv" not in js and "conv" not in js["children"]["1C"]
+    out = js
+    for c in seq:
+        out = out["children"][c]
+    assert out["conv"].startswith("XYZ")
+    json.dumps(js)                             # fully serializable
+
+
 def test_selfplay_tree_covers_every_decision():
     """End-to-end self-play: every auction is a path in the tree, every
     recorded decision's hand lies inside its node's ranges, and greedy

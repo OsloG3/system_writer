@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +31,7 @@ const tinyReport = `{
              "children": {}},
       "1N": {"call": "1N", "n": 10, "hcp": [14, 16],
              "suits": {"S": [2, 5], "H": [2, 5], "D": [2, 5], "C": [2, 5]},
+             "conv": "XYZ: 2♦ artificial game force",
              "children": {}}
     }
   }
@@ -68,6 +70,14 @@ func TestCompileTiny(t *testing.T) {
 	}
 	if tr.nodes[0].seen != 0 {
 		t.Error("root should carry no hand stats")
+	}
+	// the 1N node carries its convention alert text; the others do not
+	n1n := tr.child(0, "1N")
+	if n1n < 0 || tr.convText(tr.nodes[n1n].convOff) != "XYZ: 2♦ artificial game force" {
+		t.Errorf("conv text wrong: %q", tr.convText(tr.nodes[n1n].convOff))
+	}
+	if tr.nodes[tr.child(0, "1C")].convOff != -1 {
+		t.Error("plain 1C should carry no conv text")
 	}
 	// walk P -> 1C
 	p := tr.child(0, "P")
@@ -118,10 +128,17 @@ func TestAlertPayloads(t *testing.T) {
 	if opts := tr.optionAlerts([]string{"7N"}, []string{"P"}); opts != nil {
 		t.Errorf("want nil for unseen position, got %+v", opts)
 	}
-	// JSON shape stays compact and ordered
+	// JSON shape stays compact and ordered; convention nodes add "conv"
 	b, _ := json.Marshal(opts[0])
 	if string(b) != `{"n":50,"pct":0.5,"hcp":[0,12],"suits":[[0,6],[0,5],[0,6],[0,6]]}` {
 		t.Errorf("unexpected JSON: %s", b)
+	}
+	if got := opts[2].(*bidAlert).Conv; got != "XYZ: 2♦ artificial game force" {
+		t.Errorf("unexpected conv: %q", got)
+	}
+	b, _ = json.Marshal(opts[2])
+	if !strings.Contains(string(b), `"conv":"XYZ: 2♦ artificial game force"`) {
+		t.Errorf("conv missing from JSON: %s", b)
 	}
 }
 
@@ -145,6 +162,9 @@ func TestBinRoundtrip(t *testing.T) {
 	}
 	if got.deals != want.deals || len(got.nodes) != len(want.nodes) || len(got.kids) != len(want.kids) {
 		t.Fatal("cache roundtrip changed the tree shape")
+	}
+	if !bytes.Equal(got.conv, want.conv) {
+		t.Fatal("cache roundtrip changed the conv blob")
 	}
 	for i := range want.nodes {
 		if got.nodes[i] != want.nodes[i] {
@@ -295,22 +315,33 @@ func TestRealTree(t *testing.T) {
 		t.Errorf("deals = %d, want 100000", tr.deals)
 	}
 	// Values straight from the head of models/last.json:
-	//   P: n=48254 hcp [0,18]; P,P: n=18703; P,P,P: n=4900; P,P,P,1C: n=1043 hcp [9,20]
+	//   P: n=68411 hcp [0,19]; P,P: n=37042; P,P,P: n=16002; P,P,P,1C: n=3743 hcp [8,28]
 	p := tr.walk([]string{"P"})
-	if p < 0 || tr.nodes[p].n != 48254 || tr.nodes[p].hcpLo != 0 || tr.nodes[p].hcpHi != 18 {
+	if p < 0 || tr.nodes[p].n != 68411 || tr.nodes[p].hcpLo != 0 || tr.nodes[p].hcpHi != 19 {
 		t.Fatalf("P node wrong: %d %+v", p, tr.nodes[p])
 	}
 	ppp := tr.walk([]string{"P", "P", "P"})
-	if ppp < 0 || tr.nodes[ppp].n != 4900 {
+	if ppp < 0 || tr.nodes[ppp].n != 16002 {
 		t.Fatalf("P,P,P node wrong: %d", ppp)
 	}
 	c := tr.walk([]string{"P", "P", "P", "1C"})
-	if c < 0 || tr.nodes[c].n != 1043 || tr.nodes[c].hcpLo != 9 || tr.nodes[c].hcpHi != 20 {
+	if c < 0 || tr.nodes[c].n != 3743 || tr.nodes[c].hcpLo != 8 || tr.nodes[c].hcpHi != 28 {
 		t.Fatalf("P,P,P,1C node wrong: %d", c)
 	}
-	if a := tr.alertAt(ppp, c); a == nil || a.N != 1043 {
+	if a := tr.alertAt(ppp, c); a == nil || a.N != 3743 {
 		t.Fatalf("alert wrong: %+v", a)
 	}
+	// the tree carries convention alert texts, and they survive the walk
+	nConv := 0
+	for i := range tr.nodes {
+		if tr.nodes[i].convOff >= 0 && tr.convText(tr.nodes[i].convOff) != "" {
+			nConv++
+		}
+	}
+	if nConv == 0 {
+		t.Error("no convention alerts in the real tree")
+	}
+	t.Logf("convention alert nodes: %d", nConv)
 	// cache roundtrip on the real tree
 	bin := filepath.Join(t.TempDir(), "last.bin")
 	start = time.Now()
