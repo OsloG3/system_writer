@@ -743,6 +743,103 @@
             .cb-pt-n .cb-flat .cb-card.sel { transform: translateY(0.55rem); }
             .cb-pt-w .cb-flat .cb-card.sel { transform: translateX(0.55rem); }
             .cb-pt-e .cb-flat .cb-card.sel { transform: translateX(-0.55rem); }
+
+            /* ---- Diagram hand (hand-display setting) ----
+               Compact alternative to the card faces: every suit is one
+               colored symbol followed by its ranks as small chips. Drawn
+               wherever your own hand or the tabled dummy would show card
+               faces (bid footer, play fan, tabled dummy), interactive with
+               the same two-tap semantics: a legal rank lifts (gold), a
+               second tap plays it. Much shorter than a fan of cards, so the
+               table keeps more of the screen. */
+            .cb-dghand {
+                display: flex;
+                justify-content: safe center;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 0.3rem 1.1rem;
+                padding: 0.35rem 0.4rem;
+                max-width: 100%;
+            }
+            /* side-seat dummy: the four suit lines stack in a narrow column */
+            .cb-dghand-v {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.32rem;
+            }
+            .cb-dgg {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.28rem;
+                white-space: nowrap;
+            }
+            .cb-dghand .cb-dg-su {
+                width: 1.15rem;
+                font-size: 1.05rem;
+                line-height: 1;
+            }
+            .cb-dgr {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 1.55rem;
+                padding: 0.14rem 0.28rem;
+                border-radius: 0.45rem;
+                background: rgba(255, 255, 255, 0.07);
+                border: 1px solid rgba(255, 255, 255, 0.09);
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.95rem;
+                line-height: 1.15;
+                color: #e8e6e3;
+                user-select: none;
+                -webkit-user-select: none;
+            }
+            .cb-dgr-empty {
+                color: #908f8d;
+                font-family: Manrope, sans-serif;
+                font-weight: 800;
+                font-size: 0.9rem;
+            }
+            .cb-dgr.playable {
+                cursor: pointer;
+                background: rgba(255, 255, 255, 0.14);
+                border-color: rgba(232, 230, 227, 0.35);
+                transition:
+                    transform 0.14s ease,
+                    background 0.14s ease;
+            }
+            .cb-dgr.playable:hover { transform: translateY(-3px); }
+            .cb-dgr.sel {
+                transform: translateY(-3px);
+                background: #ffd54a;
+                border-color: #ffd54a;
+                color: #1b1f27;
+                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.55);
+                z-index: 5;
+            }
+            /* a selected dummy rank steps towards the table center, exactly
+               like a selected dummy card face does */
+            .cb-pt-n .cb-dghand .cb-dgr.sel { transform: translateY(3px); }
+            .cb-pt-w .cb-dghand .cb-dgr.sel { transform: translateX(3px); }
+            .cb-pt-e .cb-dghand .cb-dgr.sel { transform: translateX(-3px); }
+            /* diagram mode reserves no card-column / card-row space for the
+               tabled dummy: it is a small block of suit lines (three classes
+               beat the dv/dh reservations above and inside media queries) */
+            .cb-ptable.dv.dg {
+                grid-template-rows: auto minmax(7.8rem, 1fr) auto;
+            }
+            .cb-ptable.dh.dg .cb-pt-n { min-height: 0; }
+            .cb-playview .cb-dghand { flex-shrink: 0; }
+            @media (max-width: 400px) {
+                .cb-dghand { gap: 0.25rem 0.8rem; }
+                .cb-dgr {
+                    min-width: 1.4rem;
+                    padding: 0.12rem 0.24rem;
+                    font-size: 0.88rem;
+                }
+            }
+
             @media (max-width: 400px) {
                 .cb-fan-play .cb-card,
                 .cb-flat .cb-card {
@@ -1858,6 +1955,13 @@
                 render();
             }
 
+            // Flip the hand-display setting (card faces / diagram) for this
+            // account; shared.js persists it and every mode reads it.
+            async function toggleCardViewSetting() {
+                await setCardView(cardViewIsDiagram() ? "cards" : "diagram");
+                render();
+            }
+
             function updateTitleAlert(s) {
                 let n = 0;
                 if (s && s.mode === "team") n = yourTurnBoards(s).length;
@@ -2678,6 +2782,13 @@
                            <span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' ${turnAlertsOn ? 1 : 0};">${turnAlertsOn ? "notifications_active" : "notifications_off"}</span>
                        </button>`
                     : "";
+                // hand-display setting (one per account, shared by bid only,
+                // play bridge and drills): flip your hand and the tabled
+                // dummy between card faces and diagram suit lines
+                const dg = cardViewIsDiagram();
+                const viewBtn = `<button id="cardViewBtn" class="cb-iconbtn" title="${dg ? "Hand display: diagram — tap for card faces" : "Hand display: card faces — tap for diagram"}">
+                           <span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' 1;">${dg ? "view_agenda" : "playing_cards"}</span>
+                       </button>`;
                 const menu = `
                     <div class="cb-menuwrap">
                         <button id="cbMenuBtn" class="cb-plainbtn" title="Menu">
@@ -2698,7 +2809,7 @@
                             <div class="t">${title}</div>
                             <div class="s">${sub}</div>
                         </div>
-                        ${arrows}${bell}${menu}
+                        ${arrows}${bell}${viewBtn}${menu}
                     </div>`;
             }
 
@@ -2803,6 +2914,33 @@
                 return gridCardHtml(token, cls, `data-play="${token}"`);
             }
 
+            // The diagram style of the hand-display setting: the remaining
+            // cards grouped by suit (display order, high first inside each
+            // suit), every rank a small chip. Same interaction model as the
+            // card faces: while the hand acts, legal ranks carry data-play
+            // (lift, then tap again to play); everything else is inert.
+            // `vertical` stacks the four suit lines for a side-seat dummy.
+            function diagramHandHtml(cards, acting, playable, vertical) {
+                const sorted = sortHand(cards || []);
+                const groups = HAND_SUIT_ORDER.map((s) => {
+                    const chips = sorted
+                        .filter((c) => c[1] === s)
+                        .map((tok) => {
+                            const rank = tok[0] === "T" ? "10" : tok[0];
+                            if (!acting || !playable || !playable.has(tok))
+                                return `<span class="cb-dgr">${rank}</span>`;
+                            const cls =
+                                selectedCard === tok
+                                    ? "cb-dgr playable sel"
+                                    : "cb-dgr playable";
+                            return `<span class="${cls}" data-play="${tok}">${rank}</span>`;
+                        })
+                        .join("");
+                    return `<span class="cb-dgg"><span class="cb-dg-su ${s.toLowerCase()}">${SUIT_SYMBOL[s]}</span>${chips || '<span class="cb-dgr-empty">—</span>'}</span>`;
+                }).join("");
+                return `<div class="cb-dghand${vertical ? " cb-dghand-v" : ""}">${groups}</div>`;
+            }
+
             // Cards in display order: suit by suit (HAND_SUIT_ORDER), high
             // rank first, one continuous line with no gaps between suits.
             function sortHand(cards) {
@@ -2819,8 +2957,9 @@
             }
 
             // The tabled dummy: every remaining card face up, one overlapping
-            // row (top seat) or column (side seats). Clickable only when you
-            // declared and it is the dummy's turn to play.
+            // row (top seat) or column (side seats) — or, in diagram display,
+            // a compact block of suit lines. Clickable only when you declared
+            // and it is the dummy's turn to play.
             function dummyLayoutHtml(seat) {
                 const p = state.play;
                 const acting =
@@ -2828,24 +2967,29 @@
                     playReady() &&
                     p.actSeat === seat;
                 const playable = new Set(acting ? p.legal || [] : []);
-                const cards = sortHand(remainingOf(seat) || [])
+                const cards = sortHand(remainingOf(seat) || []);
+                if (cardViewIsDiagram())
+                    return diagramHandHtml(cards, acting, playable, seat !== 0);
+                return `<div class="cb-flat ${seat === 0 ? "cb-flat-h" : "cb-flat-v"}">${cards
                     .map((c) => playCardHtml(c, acting, playable))
-                    .join("");
-                return `<div class="cb-flat ${seat === 0 ? "cb-flat-h" : "cb-flat-v"}">${cards}</div>`;
+                    .join("")}</div>`;
             }
 
             // Your play-phase hand: the same big fan as while bidding, but
             // only the cards you still hold, all in one line; legal cards
-            // lift on tap and play on the second tap.
+            // lift on tap and play on the second tap. In diagram display the
+            // fan becomes a compact row of suit lines with the same taps.
             function playFanHtml() {
                 const p = state.play;
                 const seat = state.humanSeat;
                 const acting = playReady() && p.actSeat === seat;
                 const playable = new Set(acting ? p.legal || [] : []);
-                const cards = sortHand(remainingOf(seat) || [])
+                const cards = sortHand(remainingOf(seat) || []);
+                if (cardViewIsDiagram())
+                    return diagramHandHtml(cards, acting, playable, false);
+                return `<div class="cb-fan cb-fan-play">${cards
                     .map((c) => playCardHtml(c, acting, playable))
-                    .join("");
-                return `<div class="cb-fan cb-fan-play">${cards}</div>`;
+                    .join("")}</div>`;
             }
 
             function playSeatHtml(seat) {
@@ -3083,15 +3227,17 @@
             function playTableView() {
                 const p = state.play;
                 // dv/dh: where the tabled dummy will lie (column at E/W, row
-                // at N) so the table can reserve its space up front
+                // at N) so the table can reserve its space up front; dg: the
+                // diagram hand display, which needs no card-space reservation
                 const dcls =
                     p.dummy === 1 || p.dummy === 3
                         ? " dv"
                         : p.dummy === 0
                           ? " dh"
                           : "";
+                const dg = cardViewIsDiagram() ? " dg" : "";
                 return `
-                    <div class="cb-ptable${dcls}">
+                    <div class="cb-ptable${dcls}${dg}">
                         <div class="cb-pt-tl">${contractTagHtml()}</div>
                         <div class="cb-pt-n">${playSeatHtml(0)}</div>
                         <div class="cb-pt-tr">${playTallyHtml()}</div>
@@ -3335,10 +3481,15 @@
                 // During play the hand lives inside the single play view
                 // (cb-playview), not in a separate footer.
                 if (state.phase === "play") return "";
+                // the hand-display setting draws the same hand either as the
+                // big card fan or as compact diagram suit lines
+                const hand = cardViewIsDiagram()
+                    ? diagramHandHtml(handToCards(state.hand), false, null, false)
+                    : cardFan(state.hand, false);
                 return `
                     <div class="cb-handfoot">
                         <div class="cb-handlabel">${SEAT_NAMES[state.humanSeat]} · ${hcpOf(state.hand)} HCP</div>
-                        ${cardFan(state.hand, false)}
+                        ${hand}
                     </div>`;
             }
 
@@ -4044,6 +4195,8 @@
                     nxt.onclick = () => teamSelectBoard(state.boardSel + 1);
                 const bell = document.getElementById("alertBellBtn");
                 if (bell) bell.onclick = toggleTurnAlerts;
+                const viewBtn = document.getElementById("cardViewBtn");
+                if (viewBtn) viewBtn.onclick = toggleCardViewSetting;
                 const mbtn = document.getElementById("cbMenuBtn");
                 if (mbtn)
                     mbtn.onclick = (e) => {
@@ -4212,7 +4365,10 @@
             document.addEventListener("click", (e) => {
                 if (!e.target.closest(".cb-menuwrap")) closeMenu();
                 // tapping anywhere outside the hands drops a lifted card
-                if (selectedCard && !e.target.closest(".cb-fan-play, .cb-flat")) {
+                if (
+                    selectedCard &&
+                    !e.target.closest(".cb-fan-play, .cb-flat, .cb-dghand")
+                ) {
                     selectedCard = null;
                     render();
                 }

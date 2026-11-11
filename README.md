@@ -47,6 +47,25 @@ the full auction and the play.
 Both solo sections send `{"mode":"bid"|"play"}` to `POST /api/play/new`; the
 board keeps that mode for its whole life.
 
+### Hand display setting (cards / diagram)
+
+Every account carries **one hand-display setting** (`cardView`: `cards` or
+`diagram`) that applies to bid only, play bridge and drills alike. It is
+stored on the account in `data/users.json`, delivered to the page by
+`GET /api/auth` and changed with `POST /api/user/card-view`
+(`{"cardView":"cards"|"diagram"}`). The toggle sits in the board top bar of
+all three modes (a `playing_cards` / `view_agenda` icon).
+
+With `cards` (the default) your hand and the tabled dummy are drawn as the
+big overlapping card faces; with `diagram` they become compact suit lines
+(♠ A K 5 2 …) — the same look as the end-of-hand diagram — with identical
+interaction: legal ranks are clickable, the first tap lifts one (gold), the
+second plays it. In diagram mode the table reserves no card-row/card-column
+space for the dummy, so the single screen always fits, whether the dummy is
+your partner (row across the top) or an opponent (narrow column at a side
+seat). The drills claim reveal follows the setting too; review screens keep
+their always-diagram layout.
+
 An auction may run up to **80 calls** (20 per player). The bidding model itself
 only reads the first 36, so from there on the bots **pass automatically** rather
 than being asked for a call they cannot see; the human (and the legality the

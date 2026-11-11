@@ -162,6 +162,10 @@ function showToast(message, isError) {
 window.currentUser = null; // username of the logged-in user, or null
 window.appUnlocked = false; // legacy alias for "logged in"
 window.currentTree = null; // tree loaded by the current page (set by pages)
+// Hand-display setting, one per account: "cards" draws your hand and the
+// tabled dummy as big card faces, "diagram" as compact suit lines. Shared by
+// bid only, play bridge and drills; the server is the source of truth.
+window.cardView = "cards";
 
 // Query the server for the current auth state, update UI and notify pages
 async function refreshAuthState() {
@@ -170,12 +174,35 @@ async function refreshAuthState() {
         const data = await res.json();
         window.currentUser = data.loggedIn ? data.username : null;
         window.googleClientId = data.googleClientId || null;
+        window.cardView = data.cardView === "diagram" ? "diagram" : "cards";
     } catch (e) {
         window.currentUser = null;
     }
     window.appUnlocked = !!window.currentUser;
     applyAuthUI();
     document.dispatchEvent(new CustomEvent("authchange"));
+}
+
+function cardViewIsDiagram() {
+    return window.cardView === "diagram";
+}
+
+// Flip or set the hand-display setting: applied at once so the page can
+// re-render without a reload, then persisted to the account. A failure to
+// persist only shows a toast — the local choice stays for this page.
+async function setCardView(mode) {
+    const next = mode === "diagram" ? "diagram" : "cards";
+    window.cardView = next;
+    try {
+        const res = await fetch("/api/user/card-view", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cardView: next }),
+        });
+        if (!res.ok) showToast("Could not save the hand display setting", true);
+    } catch (e) {
+        showToast("Could not save the hand display setting", true);
+    }
 }
 
 // Render the login button or the user chip + logout in the header

@@ -51,6 +51,10 @@ type User struct {
 	// and Email links a Google login to a pre-existing password account
 	Email    string `json:"email,omitempty"`
 	GoogleID string `json:"googleId,omitempty"`
+	// CardView is how the user's own hand and the tabled dummy are drawn in
+	// bid only, play bridge and drills: "cards" (big card faces, the default
+	// stored as "") or "diagram" (compact suit lines). One setting per user.
+	CardView string `json:"cardView,omitempty"`
 }
 
 type Session struct {
@@ -186,6 +190,7 @@ func main() {
 	http.HandleFunc("POST /api/login", handleLogin)
 	http.HandleFunc("POST /api/logout", handleLogout)
 	http.HandleFunc("GET /api/auth", handleAuthStatus)
+	http.HandleFunc("POST /api/user/card-view", handleUserCardView)
 	http.HandleFunc("POST /api/auth/google", handleGoogleAuth)
 	http.HandleFunc("GET /api/users", handleListUsers)
 	http.HandleFunc("POST /api/new", handleCreateTree)
@@ -670,6 +675,20 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /api/auth - reports the logged in user for this browser
+// cardViewOf returns the account's hand-display setting, normalized:
+// "diagram" when the user chose it, "cards" otherwise (the default).
+func cardViewOf(username string) string {
+	if username == "" {
+		return "cards"
+	}
+	usersMu.Lock()
+	defer usersMu.Unlock()
+	if u, ok := users[username]; ok && u.CardView == "diagram" {
+		return "diagram"
+	}
+	return "cards"
+}
+
 func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	username := currentUser(r)
 	w.Header().Set("Content-Type", "application/json")
@@ -677,7 +696,52 @@ func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		"loggedIn":       username != "",
 		"username":       username,
 		"googleClientId": googleClientID, // empty disables the Google button
+		"cardView":       cardViewOf(username),
 	})
+}
+
+// POST /api/user/card-view - sets the caller's hand-display setting
+// ({"cardView":"cards"|"diagram"}); it applies to bid only, play bridge and
+// drills alike and is delivered to clients through GET /api/auth.
+func handleUserCardView(w http.ResponseWriter, r *http.Request) {
+	username := requireLogin(w, r)
+	if username == "" {
+		return
+	}
+	limitBody(w, r, maxBodyAuth)
+	var body struct {
+		CardView string `json:"cardView"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if body.CardView != "cards" && body.CardView != "diagram" {
+		jsonError(w, http.StatusBadRequest, `cardView must be "cards" or "diagram"`)
+		return
+	}
+	usersMu.Lock()
+	u, ok := users[username]
+	if ok {
+		u.CardView = body.CardView
+		users[username] = u
+	}
+	var err error
+	if ok {
+		err = saveUsers()
+	}
+	usersMu.Unlock()
+	if !ok {
+		jsonError(w, http.StatusInternalServerError, "unknown user")
+		return
+	}
+	if err != nil {
+		log.Printf("Could not persist card view for %s: %v", username, err)
+		jsonError(w, http.StatusInternalServerError, "could not save setting")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "cardView": body.CardView})
 }
 
 // GET /api/users - lists registered usernames (for the sharing dialog)
