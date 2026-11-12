@@ -233,9 +233,168 @@ def _alt_candidate():
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
 def test_best_ranked_randomizes_ties():
     s = decl_session(seed=3)
+    s.cfg.tie_prefer_spots = False    # pure random-among-ties mode
     avg = {10: 5.0, 20: 5.0, 30: 1.0}
     picks = {s._best_ranked(avg, {10, 20, 30}) for _ in range(40)}
     assert picks == {10, 20}          # tied pair, chosen at random; 30 never
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_best_ranked_prefers_spots_and_cheapest_honour():
+    s = decl_session(seed=3)          # tie_prefer_spots is on by default
+    ks, qh = cid("K", "S"), cid("Q", "H")
+    five = cid("5", "D")
+    avg = {ks: 5.0, qh: 5.0, five: 5.0, cid("3", "C"): 1.0}
+    # a spot doing an honour's job goes first; the honours are saved
+    picks = {s._best_ranked(avg, {ks, qh, five}) for _ in range(40)}
+    assert picks == {five}
+    # among tied honours only, the cheapest one goes
+    picks2 = {s._best_ranked(avg, {ks, qh}) for _ in range(40)}
+    assert picks2 == {qh}
+    # spots that tie among themselves stay random (see the mode test above)
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_rank_make_bonus_prefers_the_beating_card(monkeypatch):
+    """With the contract on the line, P(beat) outranks a bare trick: card B
+    wins one more expected trick, but only card A beats the contract on every
+    layout -- the "both" objective must flip the ranking, "ev" must not."""
+    from bidding_dt import play_bot as pb
+    from bidding_dt.play_strategy import Layout
+    # West defends a 6-level contract (target 12): 11 tricks played, declarer
+    # has 10, so the defence has 1 and needs 1 of the last 2 to beat it
+    s = def_session(3, seed=1, cfg=PlayConfig(def_pool=4, min_floor=0,
+                                              strategy=False, play_temp=0.0,
+                                              weight_temp=0.0))
+    s.target = 12
+    cA, cB = cid("K", "S"), cid("2", "S")
+    boards = [{cA: 1, cB: 2}, {cA: 1, cB: 0}]     # defence tricks per layout
+    monkeypatch.setattr(pb.fastsolve, "solve_positions",
+                        lambda positions, trump: boards)
+    layouts = [Layout(rem={0: set(), 1: set()}, weight=0.6),
+               Layout(rem={0: set(), 1: set()}, weight=0.4)]
+    info = {"cur": [], "leader": 3, "n_done": 11, "tricks_decl": 10}
+    known_rem = {3: {cA, cB}, 2: set()}
+    legal = {cA, cB}
+
+    s.cfg.rank_objective = "ev"
+    ev = s._pool_rank(info, known_rem, legal, layouts, 3)
+    assert ev[cB] > ev[cA]                        # 1.2 tricks vs 1.0
+    assert ev[cA] == pytest.approx(1.0)
+
+    s.cfg.rank_objective = "both"                 # rank_make_bonus defaults 1.0
+    both = s._pool_rank(info, known_rem, legal, layouts, 3)
+    assert both[cA] > both[cB]
+    assert both[cA] == pytest.approx(1.0 + 1.0)   # ev + P(beat)=1
+    assert both[cB] == pytest.approx(1.2 + 0.6)   # ev + P(beat)=0.6
+    # no to_act -> no contract term even in "both" (the legacy EV contract)
+    assert s._pool_rank(info, known_rem, legal, layouts)[cA] == \
+        pytest.approx(1.0)
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_rank_make_need_threshold():
+    s = def_session(3)                            # 4H by N: target 10
+    assert s.target == 10
+    info = {"n_done": 5, "tricks_decl": 4}
+    # declarer side needs 10 - 4 = 6 more; the defence 14 - 10 - (5 - 4) = 3
+    assert s._make_need(info, 0) == 6             # to_act on the declaring side
+    assert s._make_need(info, 3) == 3             # to_act defending
+    assert s._make_need(info, None) is None
+    s.target = None
+    assert s._make_need(info, 3) is None
+
+
+def test_repair_pair_swaps_and_rejects():
+    free = {1, 2, 3, 4}
+    R = {0: 2, 1: 2}
+    # seat 1 may not hold card 1, but the draw left it there -> swap it to s
+    out = PlaySession._repair_pair({3, 4}, 0, 1, free, R,
+                                   {0: set(), 1: {1}})
+    assert out == {0: {1, 4}, 1: {2, 3}}
+    # a card NEITHER seat may hold cannot be repaired
+    assert PlaySession._repair_pair({3, 4}, 0, 1, free, R,
+                                    {0: {1}, 1: {1}}) is None
+    # wrong-size draws are rejected
+    assert PlaySession._repair_pair({3}, 0, 1, free, R,
+                                    {0: set(), 1: {1}}) is None
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_batch_topup_respects_constraints():
+    """The batched top-up must produce exactly the same class of candidates as
+    the per-candidate path: a legal partition of the unseen cards that honours
+    the lead denial (East's QC denies the KC) and the show-out (West discarded
+    on the club lead -> void in clubs)."""
+    from bidding_dt.play_bot import _Candidate
+    model = tiny_model()
+    plays = [(1, cid("Q", "C")), (2, cid("2", "C")), (3, cid("5", "D")),
+             (0, cid("8", "C")), (1, cid("5", "S")), (2, cid("9", "S")),
+             (3, cid("Q", "S"))]
+    unseen = set(range(52)) - set(HANDS[0]) - set(HANDS[2])
+    # a seed candidate guaranteed to survive every play, so the show-out and
+    # the lead denial are recorded deterministically (as in the live flow,
+    # where a pool always exists when plays are folded in): East holds the QC
+    # and 5S, West the QS and 5D and NO club
+    clubs = {c for c in unseen if suit_of(c) == 3}
+    w_pool = sorted(unseen - clubs - {cid("Q", "S"), cid("5", "S"),
+                                      cid("5", "D")})
+    w_hand = {cid("Q", "S"), cid("5", "D")} | set(w_pool[:11])
+    e_hand = unseen - w_hand                    # holds QC (a club) and the 5S
+    played_free = {c for _, c in plays}
+    for batch in (True, False):
+        s = decl_session(model=model, seed=7,
+                         cfg=PlayConfig(decl_pool=12, min_floor=2,
+                                        play_review=0, play_temp=0.0,
+                                        weight_temp=0.0, batch_topup=batch))
+        s.pool = [_Candidate(hands={1: set(e_hand), 3: set(w_hand)})]
+        s._process_new_plays(plays)
+        assert len(s.pool) == 1                                # the seed lives
+        s._ensure_pool(s._analyze(plays))                      # top up to 12
+        assert len(s.pool) == 12
+        assert cid("K", "C") in s.lead_denials[1]
+        assert s.showouts[3] == {3}                            # West: club void
+        for cand in s.pool:
+            e, w = cand.hands[1], cand.hands[3]
+            assert len(e) == 13 - 2 and len(w) == 13 - 2       # 2 played each
+            assert not (e & w)
+            assert (e | w) == unseen - played_free
+            assert cid("K", "C") not in e                      # lead-denied
+            assert not any(suit_of(c) == 3 for c in w)         # club void
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_weight_cache_skips_identical_encoder_passes():
+    """The weights phase must not re-run the torch encoder/decoder when
+    nothing it depends on moved: a repeat call is served from the exact-match
+    cache, while a hidden-seat play (pool filtered, exclusions grown) forces a
+    recompute."""
+    model = tiny_model()
+    s = decl_session(model=model, seed=5,
+                     cfg=PlayConfig(decl_pool=6, min_floor=2, strategy=False,
+                                    weight_temp=1.0, play_temp=0.0))
+    s._topup(6, s._analyze([]))
+    calls = {"n": 0}
+    real_memory = model.memory
+
+    def counting_memory(*a, **k):
+        calls["n"] += 1
+        return real_memory(*a, **k)
+
+    s.model.memory = counting_memory
+    info = s._analyze([])
+    w1 = s._model_weights(info)
+    assert calls["n"] == 2                      # one encoder pass per hidden seat
+    w2 = s._model_weights(info)                 # nothing moved -> pure cache hit
+    assert calls["n"] == 2
+    assert np.array_equal(w1, w2)
+    # a hidden-seat play filters the pool and grows the exclusions: recompute
+    lead = cid("6", "S")
+    s._process_new_plays([(1, lead)])
+    info2 = s._analyze([(1, lead)])
+    s._ensure_pool(info2)
+    s._model_weights(info2)
+    assert calls["n"] > 2
 
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")

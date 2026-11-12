@@ -511,6 +511,28 @@ def main():
                     help="wall-clock seconds one pool top-up may spend retro-scoring "
                          "fresh candidates against recent hidden plays, newest "
                          "first (0 = review all of them unbudgeted)")
+    ap.add_argument("--rank-objective", default="both", choices=("ev", "both"),
+                    help="defender (and declarer-fallback) card ranking: pure "
+                         "expected double-dummy tricks, or that plus the "
+                         "likelihood of beating/making the contract")
+    ap.add_argument("--rank-make-bonus", type=float, default=1.0,
+                    help="weight of P(beat/make) inside the 'both' rank objective")
+    ap.add_argument("--no-tie-prefer-spots", action="store_true",
+                    help="pick uniformly among score-tied cards instead of "
+                         "preferring spots over (and cheaper over dearer) honours")
+    ap.add_argument("--no-batch-topup", action="store_true",
+                    help="draw pool top-ups one candidate at a time (up to "
+                         "topup_tries decoder calls each) instead of one batched "
+                         "call per hidden seat plus constraint repair")
+    ap.add_argument("--no-fast-onestep", action="store_true",
+                    help="strategy search: score declarer cards with one solve "
+                         "per (layout, card) instead of one per layout")
+    ap.add_argument("--no-def-smart", action="store_true",
+                    help="strategy search: model the deep no-solve defence as "
+                         "always-lowest instead of the take/cover/overtake rules")
+    ap.add_argument("--no-endgame-skip", action="store_true",
+                    help="strategy search: keep searching proved run-out "
+                         "endgames instead of returning at the one-step ceiling")
     args = ap.parse_args()
 
     ckpts = parse_ckpt_specs(args.ckpt)
@@ -520,7 +542,14 @@ def main():
                           strat_layouts=args.strat_layouts,
                           strat_time=args.strat_time,
                           play_temp=args.play_temp,
-                          play_review_time=args.play_review_time)
+                          play_review_time=args.play_review_time,
+                          rank_objective=args.rank_objective,
+                          rank_make_bonus=args.rank_make_bonus,
+                          tie_prefer_spots=not args.no_tie_prefer_spots,
+                          batch_topup=not args.no_batch_topup,
+                          fast_onestep=not args.no_fast_onestep,
+                          def_smart=not args.no_def_smart,
+                          endgame_skip=not args.no_endgame_skip)
     svc = Service(ckpts, dd_cache=args.dd_cache or None, temp=args.temp,
                   hand_ckpt=args.hand_ckpt, play_cfg=play_cfg)
     httpd = ThreadingHTTPServer((args.host, args.port), _Handler)

@@ -4,7 +4,7 @@ import pytest
 from bidding_dt.data.hands import str_to_cards
 from bidding_dt.data.vocab import call_to_id
 from bidding_dt.play_bot import _Candidate, PlayConfig, PlaySession
-from bidding_dt.play_strategy import (Layout, StrategySearch, macro_key,
+from bidding_dt.play_strategy import (_Node, Layout, StrategySearch, macro_key,
                                       merge_layouts, suit_relevance)
 
 HAS_ENDPLAY = True
@@ -248,6 +248,117 @@ def test_search_prefers_the_weighted_majority_layout():
     assert diag["value"] == pytest.approx(top, abs=1e-9)
     # sanity: the two layouts really disagree somewhere, so weights matter
     assert any(ta[c] != tb[c] for c in legal)
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_fast_onestep_matches_per_card_path():
+    """The one-solve-per-layout one-step must return exactly the legacy
+    per-(layout, card) objective values while sending a |cards|x smaller
+    batch to the solver."""
+    s = decl_session(cfg=STRAT_FAST)
+    s.pool = [_Candidate(hands={1: set(HANDS[1]), 3: set(HANDS[3])})]
+    s.processed = 0
+    plays = [(1, cid("6", "S")), (2, cid("2", "S")), (3, cid("Q", "S"))]
+    s._process_new_plays(plays)
+    info = s._analyze(plays)
+    known_rem, legal = s._legal_for(info, DECLARER)
+    layouts = s._weighted_layouts(info, known_rem)
+
+    def onestep(fast):
+        search = StrategySearch(
+            s.trump, DECLARER, s.dummy, s.known_seats, s.hidden_seats,
+            max_layouts=4, beam=13, depth=1, def_depth=1,
+            solve_budget=2000, time_budget=60.0, objective="ev",
+            target=s.target, fast_onestep=fast)
+        # solve() stamps the trick-so-far onto every layout before building
+        # the root; _position_for needs it to exclude the tabled cards
+        root = search._node(
+            known_rem,
+            [Layout(rem=dict(L.rem), weight=L.weight, cur=list(info["cur"]))
+             for L in layouts],
+            info["leader"], info["n_done"], info["tricks_decl"],
+            DECLARER, frozenset(info["played_all"]))
+        return search, root, search._onestep_decl_cards(root, sorted(legal))
+
+    sf, rf, fast_scores = onestep(True)
+    sl, rl, slow_scores = onestep(False)
+    assert set(fast_scores) == set(slow_scores) == set(legal)
+    for c in legal:
+        assert fast_scores[c] == pytest.approx(slow_scores[c])
+    assert sf.solves == len(rf.layouts)                 # one board per layout
+    assert sl.solves == len(rl.layouts) * len(legal)    # legacy: per card too
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_ceiling_skip_short_circuits_runout():
+    """Two tricks left, declarer holds the top spades: the one-step already
+    proves every remaining trick, so solve() must return at the ceiling
+    without expanding a single search node."""
+    a_s, k_s = cid("A", "S"), cid("K", "S")
+    known_rem = {0: {a_s, k_s}, 2: {cid("3", "H"), cid("2", "H")}}
+    rem = {1: {cid("6", "S"), cid("5", "S")}, 3: {cid("8", "S"), cid("7", "S")}}
+    search = StrategySearch(T.Denom.nt, 0, 2, [0, 2], [1, 3],
+                            beam=4, depth=4, def_depth=2,
+                            solve_budget=500, time_budget=30.0,
+                            objective="ev", rng=None)
+    lay = Layout(rem={s: set(rem[s]) for s in rem}, weight=1.0)
+    card, info = search.solve(known_rem, [lay], 0, [], 11, 9, 0,
+                              {a_s, k_s}, frozenset())
+    assert card in {a_s, k_s}
+    assert info["value"] == pytest.approx(11.0)   # 9 banked + both remaining
+    assert info["nodes"] == 0                     # no beam expansion happened
+    assert search.solves == 1                     # just the one-step board
+
+
+def _def_node(to_act, cur):
+    """A minimal defender node/layout pair for _smart_pick tests (NT)."""
+    search = StrategySearch(T.Denom.nt, 0, 2, [0, 2], [1, 3])
+    lay = Layout(rem={1: set(), 3: set()}, weight=1.0, cur=list(cur))
+    node = _Node({}, [lay], 0, 0, 0, to_act, frozenset(), {})
+    return search, node, lay
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_smart_pick_follows_table_rules():
+    # (a) last to play, declarer side winning cheap -> take it (cheapest winner)
+    search, node, lay = _def_node(3, [(0, cid("5", "S")), (1, cid("2", "S")),
+                                      (2, cid("3", "S"))])
+    allowed = {cid("K", "S"), cid("4", "S")}
+    assert search._smart_pick(node, lay, allowed) == cid("K", "S")
+    # (b) partner is winning -> never overtake, play low
+    search, node, lay = _def_node(3, [(1, cid("A", "S")), (2, cid("3", "S")),
+                                      (0, cid("5", "S"))])
+    assert search._smart_pick(node, lay, allowed) == cid("4", "S")
+    # (c) covering an honour just played by the declaring side (partner has
+    #     not played yet) -> cover with the cheapest winner
+    search, node, lay = _def_node(3, [(2, cid("Q", "S"))])
+    assert search._smart_pick(node, lay, allowed) == cid("K", "S")
+    # (c2) an ace never covers -- it wins whenever it is played, so it is held;
+    #      but last to play, the lone ace does take the trick
+    ace_only = {cid("A", "S"), cid("4", "S")}
+    search, node, lay = _def_node(3, [(2, cid("Q", "S"))])
+    assert search._smart_pick(node, lay, ace_only) == cid("4", "S")
+    search, node, lay = _def_node(3, [(0, cid("Q", "S")), (1, cid("2", "S")),
+                                      (2, cid("3", "S"))])
+    assert search._smart_pick(node, lay, ace_only) == cid("A", "S")
+    # (d) second hand, LOW card from declarer side -> second hand low
+    search, node, lay = _def_node(3, [(2, cid("5", "S"))])
+    assert search._smart_pick(node, lay, allowed) == cid("4", "S")
+    # (e) cannot beat the trick -> cheapest card, no honour wasted
+    search, node, lay = _def_node(3, [(0, cid("A", "S"))])
+    assert search._smart_pick(node, lay, allowed) == cid("4", "S")
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_smart_pick_ruffs_cheapest_trump():
+    # hearts trump; defender is out of the led suit and ruffs with the lowest
+    search = StrategySearch(T.Denom.hearts, 0, 2, [0, 2], [1, 3])
+    lay = Layout(rem={1: set(), 3: set()}, weight=1.0,
+                 cur=[(0, cid("5", "S")), (1, cid("2", "S")),
+                      (2, cid("3", "S"))])
+    node = _Node({}, [lay], 0, 0, 0, 3, frozenset(), {})
+    allowed = {cid("2", "H"), cid("K", "H")}
+    assert search._smart_pick(node, lay, allowed) == cid("2", "H")
 
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")

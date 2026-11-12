@@ -101,18 +101,22 @@ uv run python -m bidding_dt.bid --ckpt runs/small/best.pt \
 #    hidden-hand pool falls back to the constraint-based sampler.
 #    Card play adds /play/choose /play/result /play/drop: /play/choose picks a
 #    bot's card over a pool of hidden-hand candidates consistent with the
-#    auction and the play so far. Candidates are re-scored for likelihood with
-#    the hand model (given every exclusion the play produced) and discounted
-#    when an observed play cost tricks double-dummy under them (a player
-#    wouldn't make a bad play from their hand), then merged into weighted
-#    macro layouts that ignore interchangeable low cards; the declarer side
-#    beam-searches a conditional strategy valued by how many (weighted)
-#    layouts the plan works on, and the other seats rank cards by their
-#    weighted double-dummy expectation, breaking score ties at random (see
-#    play_bot.py and play_strategy.py). The optional "dd_hands" body key (the
-#    real deal, sent by the drills page) makes it the drills bot: options are
-#    ranked the same way, but the card returned is the best-ranked one that
-#    gives away no trick double-dummy on the real deal.
+#    auction and the play so far (top-ups are drawn in ONE batched decoder
+#    call per hidden seat, with constraint violations repaired by swapping).
+#    Candidates are re-scored for likelihood with the hand model (given every
+#    exclusion the play produced) and discounted when an observed play cost
+#    tricks double-dummy under them (a player wouldn't make a bad play from
+#    their hand), then merged into weighted macro layouts that ignore
+#    interchangeable low cards; the declarer side beam-searches a conditional
+#    strategy valued by how many (weighted) layouts the plan works on (one DDS
+#    solve per layout scores all its candidate cards, and a proved run-out
+#    ends the search at once), and the other seats rank cards by their weighted
+#    double-dummy expectation PLUS the likelihood of beating the contract,
+#    breaking score ties at random with a preference for spots over honours
+#    (see play_bot.py and play_strategy.py). The optional "dd_hands" body key
+#    (the real deal, sent by the drills page) makes it the drills bot: options
+#    are ranked the same way, but the card returned is the best-ranked one
+#    that gives away no trick double-dummy on the real deal.
 #    Needs torch (cpu/cuda extra) and endplay (rl extra), so repeat the
 #    extras here. `runs/` is gitignored: copy a checkpoint to the server.
 uv run --extra cpu --extra rl python -m bidding_dt.play_server \
@@ -142,6 +146,22 @@ uv run --extra cpu --extra rl python -m bidding_dt.play_server \
 #                                         a layout under which an observed
 #                                         hidden play cost N tricks DD is
 #                                         discounted by exp(-N/T); 0 disables
+#   --rank-objective ev|both              defender (and declarer-fallback)
+#                                         ranking: pure expected tricks, or
+#                                         plus the likelihood of beating/
+#                                         making the contract (default both,
+#                                         weight: --rank-make-bonus)
+#   --no-tie-prefer-spots                 pick uniformly among score-tied
+#                                         cards instead of preferring spots
+#                                         over (and cheaper over dearer)
+#                                         honours
+#   --no-batch-topup                      draw pool top-ups one candidate at
+#                                         a time instead of one batched call
+#                                         per hidden seat plus repair
+#   --no-fast-onestep / --no-def-smart /  strategy-search internals: per-card
+#   --no-endgame-skip                     solving, always-lowest deep defence
+#                                         model, no run-out shortcut (all on
+#                                         by default; kept for A/B runs)
 
 # tests
 uv run pytest

@@ -15,7 +15,11 @@ see, drawn from the auction with the hand VQ encoder/decoder (hand/model.py):
     suit it could have followed;
   * when the surviving pool drops below a minimum that shrinks as the hand
     advances, fresh candidates are topped up by sampling only the cards a seat
-    still holds (hand/model.py generate(n_cards=R));
+    still holds (hand/model.py generate(n_cards=R)) -- a whole cohort per
+    hidden seat in ONE batched decoder call, with complements that break the
+    other seat's constraints repaired by swapping instead of re-rolled
+    (cfg.batch_topup; the per-candidate retry loop used to make the pool phase
+    the single biggest latency source of a hand);
   * the declarer-side pool is larger than a defender's (declarer sees two hands
     and controls the play, so it can afford more simulations).
 
@@ -42,7 +46,10 @@ The card itself is picked from those weighted layouts:
     reachable information set and is valued by how many (weighted) layouts the
     plan works on, within solve/time budgets;
   * defenders (and any fallback) rank each legal card by its expected
-    double-dummy tricks weighted by layout likelihood.
+    double-dummy tricks weighted by layout likelihood plus, by default, the
+    weighted likelihood that the card BEATS (defence) or MAKES (declarer
+    fallback) the contract (cfg.rank_objective/rank_make_bonus): pure trick
+    expectation happily trades a contract-killing play for an overtrick.
 
 All double-dummy work goes through dd/fastsolve.py: positions are built as
 raw DDS structs with integer maths and solved in memoised batches (the same
@@ -52,7 +59,9 @@ times and DDS solve count in session.last_timing (surfaced on the wire as
 "timing") for latency tuning.
 
 Cards that tie in score are chosen AT RANDOM among the tied set (the bot used
-to always play the highest, which is predictable and wastes honours).
+to always play the highest, which is predictable and wastes honours), narrowed
+first by the standard table preference: a spot doing an honour's job goes
+first, and among tied honours the cheapest (cfg.tie_prefer_spots).
 
 `choose_drill` is the variant the card-problems page uses: it ranks the options
 the same way (with only the information a real game gives), but returns the
@@ -167,6 +176,17 @@ class PlayConfig:
     declarer side at its double-dummy trick count on 12/12 hands. Both knobs
     are CLI flags, so the quality-first settings (2.0 and 0) are one
     restart away.
+
+    The speed group below (batch_topup, fast_onestep, endgame_skip, plus the
+    _weight_cache in PlaySession) then roughly HALVED whole-hand wall time
+    again at unchanged budgets (16-deal A/B: 103.8s -> 51.5s per hand; the
+    strategy search explores ~2x more nodes inside the same strat_time), and
+    the quality knobs (rank_objective, tie_prefer_spots for the defence;
+    def_smart for the search's defence model) measured net-positive in
+    isolated 16-deal arms (defence took +4 paired tricks against an unchanged
+    declarer side; declarer reached its double-dummy count on 14/16 hands vs
+    12/16). Everything is flag-gated for A/B runs via play_ab.py; the flags
+    below are all one CLI switch away from the old behaviour.
     """
     decl_pool: int = 64        # candidate deals kept by the declarer-side bot
     def_pool: int = 40         # candidate deals kept by a defender bot
@@ -204,6 +224,35 @@ class PlayConfig:
     #                          # weighted share of layouts making the contract,
     #                          # or the sum (see play_strategy._objective)
     strat_make_bonus: float = 1.0   # weight of P(make) inside "both"
+    fast_onestep: bool = True  # strategy search: one DDS solve per layout scores
+    #                          # every declarer card (solutions=3), instead of
+    #                          # one solve per (layout, card) -- identical values,
+    #                          # ~|cards|x fewer boards inside the same budget
+    def_smart: bool = True     # strategy search: model the no-solve defence
+    #                          # beyond strat_def_depth with the take/cover/
+    #                          # overtake table rules instead of always-lowest
+    endgame_skip: bool = True  # strategy search: when a card's one-step value
+    #                          # already proves declarer takes EVERY remaining
+    #                          # trick, return it (among equals) instead of
+    #                          # spending the budget confirming a run-out
+    # ---- one-step ranking (defenders, and declarer-side fallbacks) ----
+    rank_objective: str = "both"  # "ev" | "both": expected double-dummy tricks,
+    #                          # or that plus the weighted likelihood of beating
+    #                          # (defence) / making (declarer fallback) the
+    #                          # contract -- the myopic mirror of strat_objective.
+    #                          # A defence that only maximises expected tricks
+    #                          # happily trades a contract-killing play for an
+    #                          # overtrick; P(beat) makes that trade explicit.
+    rank_make_bonus: float = 1.0  # weight of P(beat/make) inside "both"
+    tie_prefer_spots: bool = True  # among exact score ties prefer spots over
+    #                          # honours (and the cheapest honour among tied
+    #                          # honours), still at random within the preference
+    # ---- speed (same budgets, less wall-clock per decision) ----
+    batch_topup: bool = True   # draw a whole top-up cohort in ONE batched decoder
+    #                          # call per hidden seat and repair complement
+    #                          # violations by swapping, instead of up to
+    #                          # topup_tries sequential draws per candidate (the
+    #                          # pool phase used to dominate whole-hand latency)
     # ---- play-quality inference ("a player wouldn't have made a bad play") ----
     play_temp: float = 1.0     # temperature turning each observed hidden play's
     #                          # double-dummy cost into a likelihood factor
@@ -282,6 +331,14 @@ class PlaySession:
 
         self.pool: list[_Candidate] = []
         self.processed = 0                                    # plays folded in
+        # exact-match cache of _model_weights' per-seat decoder log-probs,
+        # keyed (seat, hand size, exclusion set). Cleared whenever the pool's
+        # hands change, so a hit means the torch pass would be bit-identical:
+        # a known-seat play (declarer acting, then dummy, in one trick)
+        # changes neither the pool nor any exclusion -- every played known
+        # card is already excluded through known_original -- yet the weights
+        # phase used to re-run both encoders for it every decision.
+        self._weight_cache: dict = {}
         # running mean of the double-dummy cost per (observed play, candidate)
         # pair, accumulated from every real _quality_pens solve: the estimator
         # _retro_score imputes budget-skipped reviews with (guarded by _lock)
@@ -393,6 +450,7 @@ class PlaySession:
             nxt.play_pen = cand.play_pen + (pens[j] if pens is not None else 0.0)
             keep.append(nxt)
         self.pool = keep
+        self._weight_cache.clear()          # pool hands changed under the cache
 
     def _quality_pens(self, seat, cid, idx, plays, hidden_hands):
         """The double-dummy cost of one observed hidden-seat play, per layout.
@@ -647,18 +705,111 @@ class PlaySession:
             free, R, {s: set() for s in self.hidden_seats}, rng, first)
         return _Candidate(hands=hands)
 
+    def _sample_targets(self, seat, excl_ids, R, n):
+        """Batched `_sample_target`: draw `n` still-held hands (R cards each)
+        for `seat` in ONE quantize+decode pass over the cached auction memory.
+        The decoder's banned mask guarantees each row is a valid R-subset of
+        the non-excluded cards, exactly like the single draw."""
+        import torch
+        if n <= 0:
+            return []
+        if R <= 0:
+            return [set() for _ in range(n)]
+        mem, mask = self._enc[seat]
+        excl = indicator_from_cards(sorted(excl_ids)).astype(np.float32)
+        with torch.no_grad():
+            z, _ = self.model.quantize(
+                mem.expand(n, -1, -1),
+                None if mask is None else mask.expand(n, -1, -1, -1),
+                sample=self.cfg.codes, temp=self.cfg.code_temp)
+            e = torch.from_numpy(excl).to(self.device)[None].expand(n, -1)
+            cards = self.model.generate(z, e, temp=self.cfg.sample_temp,
+                                        n_cards=R)
+        return [set(int(x) for x in row.tolist()) for row in cards]
+
+    @staticmethod
+    def _repair_pair(s_rem, s, o, free, R, excl):
+        """Split `free` between the hidden seats around a model draw for `s`.
+
+        The draw already honours s's exclusions; its complement may still hold
+        cards `o` cannot (those MUST sit with s). Each such violation is
+        swapped for a drawn card `o` may hold, which keeps the sample
+        model-shaped where the old per-candidate path re-rolled the whole hand
+        and often ended in a uniform fill. Returns {seat: hand}, or None when
+        unrepairable (a card neither seat may hold, or nothing swappable).
+        """
+        s_rem = set(s_rem)
+        if len(s_rem) != R[s] or (s_rem & excl[s]) or not s_rem <= free:
+            return None
+        o_rem = free - s_rem
+        if len(o_rem) != R[o]:
+            return None
+        for c in sorted(o_rem & excl[o]):
+            if c in excl[s]:
+                return None                    # neither seat may hold this card
+            swaps = [x for x in sorted(s_rem) if x not in excl[o]]
+            if not swaps:
+                return None
+            s_rem.discard(swaps[0])
+            s_rem.add(c)
+        return {s: s_rem, o: free - s_rem}
+
+    def _batch_candidates(self, need, info):
+        """Up to `need` candidates from ONE batched decoder call per hidden
+        seat (two calls per round, a second round from the other seat's
+        perspective for the draws whose complement was unrepairable). Each
+        candidate keeps the old alternation: half are dealt from one hidden
+        seat's perspective, half from the other's, so neither generator order
+        dominates the pool. May return fewer than `need`; the caller tops the
+        rest up through the per-candidate path."""
+        played = info["played_all"]
+        free = self.hidden_pool - set(played)
+        R = {s: 13 - len(info["played_by_seat"][s]) for s in self.hidden_seats}
+        if sum(R.values()) != len(free) or min(R.values()) < 0:
+            return []                          # let the safe path handle it
+        excl = {s: self._excl_for(s, played) for s in self.hidden_seats}
+        a, b = self.hidden_seats
+        firsts = [self.hidden_seats[(len(self.pool) + i) % 2]
+                  for i in range(need)]
+        out: list = [None] * need
+        for attempt in (0, 1):
+            todo = [i for i in range(need) if out[i] is None]
+            if not todo:
+                break
+            for persp in (a, b):
+                idxs = [i for i in todo
+                        if (firsts[i] if attempt == 0 else
+                            (b if firsts[i] == a else a)) == persp]
+                if not idxs:
+                    continue
+                other = b if persp == a else a
+                draws = self._sample_targets(persp, excl[persp], R[persp],
+                                             len(idxs))
+                for i, s_rem in zip(idxs, draws):
+                    pair = self._repair_pair(s_rem, persp, other, free, R, excl)
+                    if pair is not None:
+                        out[i] = _Candidate(hands=pair)
+        return [c for c in out if c is not None]
+
     def _topup(self, need, info):
-        rng = self.rng
+        need = max(0, need)
+        if not need:
+            return
         fresh = []
-        for _ in range(max(0, need)):
+        if self.model is not None and self.cfg.batch_topup:
+            try:
+                fresh = self._batch_candidates(need, info)
+            except Exception:
+                fresh = []                     # any batch failure -> old path
+        while len(fresh) < need:
             # alternate which hidden seat is generated first: half the pool
             # is dealt from one seat with the other taking the remainder,
             # half the other way round, so neither seat's generator order
             # dominates the candidates
-            first = self.hidden_seats[len(self.pool) % 2]
-            cand = self._gen_candidate(info, rng, first)
-            self.pool.append(cand)
-            fresh.append(cand)
+            first = self.hidden_seats[(len(self.pool) + len(fresh)) % 2]
+            fresh.append(self._gen_candidate(info, self.rng, first))
+        self.pool.extend(fresh)
+        self._weight_cache.clear()          # pool grew under the cache
         self._retro_score(fresh)
 
     def _min_pool(self, n_done):
@@ -756,27 +907,39 @@ class PlaySession:
             R = 13 - len(info["played_by_seat"][s])
             if R <= 0 or not all(len(c.hands[s]) == R for c in self.pool):
                 continue                          # ragged pool: skip this seat
-            excl = indicator_from_cards(sorted(self._excl_for(s, played))).astype(np.float32)
-            tokens = rotated_tokens(self.dealer, self.calls_ids, s)[None]
-            vuln = np.array([BiddingDataset.vuln_class(self.vuln, s)],
-                            dtype=np.int64)
-            seqs = np.array([sorted(c.hands[s]) for c in self.pool], dtype=np.int64)
-            with torch.no_grad():
-                mem, mask = self.model.memory(
-                    torch.from_numpy(tokens).to(dev),
-                    torch.from_numpy(vuln).to(dev),
-                    torch.from_numpy(excl).to(dev)[None], None)
-                z, _ = self.model.quantize(mem, mask, sample=False)
-                z = z.expand(n, -1, -1)
-                inp_t = torch.from_numpy(seqs).to(dev)
-                bos = torch.full((n, 1), n_cards, dtype=torch.long, device=dev)
-                inp = torch.cat([bos, inp_t[:, :-1]], dim=1)
-                excl_b = torch.from_numpy(excl).to(dev)[None].expand(n, -1)
-                logits = self.model._decode(z, inp).float().masked_fill(
-                    self.model._banned(inp, excl_b, hand_len=R), -1e9)
-                lp = (torch.log_softmax(logits, dim=-1)
-                      .gather(-1, inp_t[..., None]).squeeze(-1).sum(1))
-            logp += lp.detach().cpu().numpy()
+            excl_ids = sorted(self._excl_for(s, played))
+            # exact-match cache: the decoder pass below is deterministic in
+            # (seat, R, exclusions, pool hands), and the pool hands are pinned
+            # by the clear-on-mutation discipline (see __init__), so a hit is
+            # bit-identical to recomputing -- known-seat plays hit every time
+            ck = (s, R, tuple(excl_ids))
+            lp_np = self._weight_cache.get(ck)
+            if lp_np is None:
+                excl = indicator_from_cards(excl_ids).astype(np.float32)
+                tokens = rotated_tokens(self.dealer, self.calls_ids, s)[None]
+                vuln = np.array([BiddingDataset.vuln_class(self.vuln, s)],
+                                dtype=np.int64)
+                seqs = np.array([sorted(c.hands[s]) for c in self.pool],
+                                dtype=np.int64)
+                with torch.no_grad():
+                    mem, mask = self.model.memory(
+                        torch.from_numpy(tokens).to(dev),
+                        torch.from_numpy(vuln).to(dev),
+                        torch.from_numpy(excl).to(dev)[None], None)
+                    z, _ = self.model.quantize(mem, mask, sample=False)
+                    z = z.expand(n, -1, -1)
+                    inp_t = torch.from_numpy(seqs).to(dev)
+                    bos = torch.full((n, 1), n_cards, dtype=torch.long,
+                                     device=dev)
+                    inp = torch.cat([bos, inp_t[:, :-1]], dim=1)
+                    excl_b = torch.from_numpy(excl).to(dev)[None].expand(n, -1)
+                    logits = self.model._decode(z, inp).float().masked_fill(
+                        self.model._banned(inp, excl_b, hand_len=R), -1e9)
+                    lp = (torch.log_softmax(logits, dim=-1)
+                          .gather(-1, inp_t[..., None]).squeeze(-1).sum(1))
+                lp_np = lp.detach().cpu().numpy()
+                self._weight_cache[ck] = lp_np
+            logp += lp_np
         temp = float(self.cfg.weight_temp)
         if temp <= 0:
             return np.ones(n)
@@ -823,9 +986,30 @@ class PlaySession:
             L.weight /= total
         return layouts
 
-    def _pool_rank(self, info, known_rem, legal, layouts=None):
-        """Weighted expected double-dummy tricks per legal card over the
-        merged layouts -- the ranking defenders (and fallbacks) pick by."""
+    def _make_need(self, info, to_act):
+        """Board-trick threshold at which the acting side reaches its contract
+        goal, or None when there is no goal to weigh. Solved boards cover the
+        REMAINING tricks only, so the tricks already banked come off: the
+        declarer side makes with `target` total tricks, the defence beats the
+        contract by holding it to target-1, i.e. taking 14-target of its own."""
+        if self.target is None or to_act is None:
+            return None
+        if to_act in (self.declarer, self.dummy):
+            return self.target - int(info["tricks_decl"])
+        def_won = int(info["n_done"]) - int(info["tricks_decl"])
+        return (14 - self.target) - def_won
+
+    def _pool_rank(self, info, known_rem, legal, layouts=None, to_act=None):
+        """Weighted per-card score over the merged layouts -- the ranking
+        defenders (and declarer-side fallbacks) pick by.
+
+        The score is the expected double-dummy tricks for the acting side
+        plus, when cfg.rank_objective is "both", the contract target is known
+        and `to_act` is given, cfg.rank_make_bonus times the weighted
+        likelihood that the card's tricks reach the acting side's goal (beat
+        the contract for a defender, make it for the declarer side). `to_act`
+        None keeps the plain expectation the old ranking returned.
+        """
         if layouts is None:
             layouts = self._weighted_layouts(info, known_rem)
         if not layouts:
@@ -837,14 +1021,28 @@ class PlaySession:
             remaining.update(lay.rem)
             positions.append((remaining, info["leader"], cur))
         solved = fastsolve.solve_positions(positions, self.trump_int)
+        need = self._make_need(info, to_act)
+        both = (self.cfg.rank_objective == "both" and need is not None
+                and float(self.cfg.rank_make_bonus) > 0)
         total = {c: 0.0 for c in legal}
+        beat = {c: 0.0 for c in legal}
         count = {c: 0.0 for c in legal}
         for lay, board in zip(layouts, solved):
             for cid, tricks in board.items():
                 if cid in total:
                     total[cid] += tricks * lay.weight
                     count[cid] += lay.weight
-        return {c: (total[c] / count[c] if count[c] else 0.0) for c in legal}
+                    if both and tricks >= need:
+                        beat[cid] += lay.weight
+        out = {}
+        for c in legal:
+            if not count[c]:
+                out[c] = 0.0
+                continue
+            out[c] = total[c] / count[c]
+            if both:
+                out[c] += float(self.cfg.rank_make_bonus) * beat[c] / count[c]
+        return out
 
     def _strategy_card(self, info, known_rem, legal, layouts, to_act):
         """The declarer-side plan's first card, or None when the search cannot
@@ -864,6 +1062,9 @@ class PlaySession:
                 solve_budget=self.cfg.strat_solves, time_budget=self.cfg.strat_time,
                 objective=self.cfg.strat_objective,
                 make_bonus=self.cfg.strat_make_bonus, target=self.target,
+                fast_onestep=self.cfg.fast_onestep,
+                def_smart=self.cfg.def_smart,
+                endgame_skip=self.cfg.endgame_skip,
                 rng=self.rng)
             fresh = [Layout(rem=dict(L.rem), weight=L.weight) for L in layouts]
             card, diag = search.solve(
@@ -878,15 +1079,26 @@ class PlaySession:
     def _best_ranked(self, avg, cards):
         """The best-scoring card, chosen AT RANDOM among score ties.
 
-        Ties used to go to the lowest card id -- the highest rank -- which
-        made the bot predictable and happy to waste an honour where an equal
-        low card did the same job.
+        With cfg.tie_prefer_spots the tied set is first narrowed the way a
+        bridge player breaks ties: a spot card doing the same job as an
+        honour is played and the honour is saved for a trick it alone can
+        win, and among tied honours the cheapest goes. Equals within the
+        preferred class stay random. Ties used to go to the lowest card id --
+        the highest rank -- which made the bot predictable and happy to waste
+        an honour where an equal low card did the same job.
         """
         cards = sorted(cards)
         if not cards:
             return None
         best = max(avg[c] for c in cards)
         tied = [c for c in cards if avg[c] >= best - 1e-9]
+        if self.cfg.tie_prefer_spots and len(tied) > 1:
+            spots = [c for c in tied if not is_honour(c)]
+            if spots:
+                tied = spots
+            else:
+                lowest = max(c // 4 for c in tied)   # rank index: bigger = lower
+                tied = [c for c in tied if c // 4 == lowest]
         if len(tied) == 1 or self.rng is None:
             return tied[0]
         return tied[int(self.rng.integers(len(tied)))]
@@ -950,7 +1162,7 @@ class PlaySession:
             card = self._strategy_card(info, known_rem, legal, layouts, to_act)
             t4 = time.monotonic()
             if card is None:
-                avg = self._pool_rank(info, known_rem, legal, layouts)
+                avg = self._pool_rank(info, known_rem, legal, layouts, to_act)
                 card = self._best_ranked(avg, legal)
             t5 = time.monotonic()
             self._record_timing({"process": t1 - t0, "pool": t2 - t1,
@@ -990,7 +1202,7 @@ class PlaySession:
             card = self._strategy_card(info, known_rem, safe & legal, layouts, to_act)
             t4 = time.monotonic()
             if card is None:
-                avg = self._pool_rank(info, known_rem, legal, layouts)
+                avg = self._pool_rank(info, known_rem, legal, layouts, to_act)
                 card = self._best_ranked(avg, safe)
             t5 = time.monotonic()
             self._record_timing({"process": t1 - t0, "pool": t2 - t1,

@@ -38,7 +38,22 @@ Deliberate approximations, to keep solving time manageable:
     one representative;
   * the defence is modelled double-dummy-pessimistic for the first
     `def_depth` tricks and by a cheap heuristic beyond, and only the top
-    `def_branch` defender branches per node are expanded recursively;
+    `def_branch` defender branches per node are expanded recursively. The
+    cheap heuristic (`_smart_pick`) follows the basic table rules -- take a
+    trick declarer is about to win when last to play, after partner has
+    played, or to cover an honour; never overtake partner; otherwise play low
+    -- so plans cannot rely on defenders surrendering entries no one would give
+    up (always-lowest made the search optimistic exactly about entry-fighting
+    lines);
+  * a declarer node scores ALL its candidate cards with one DDS solve per
+    layout (`fast_onestep`): solutions=3 returns the double-dummy value of
+    every legal card of the side to move, which is exactly the per-card
+    one-step objective -- the legacy path re-solved the position after each
+    card instead, costing layouts x cards boards for the same numbers;
+  * when a card's one-step value reaches the theoretical ceiling (declarer
+    takes every remaining trick on every layout -- routine in run-out
+    endgames), the search stops right there: nothing can beat a proved
+    run-out, so the budget is not spent confirming it;
   * every solve goes through dd/fastsolve: positions become raw DDS structs
     (no string round-trips) and a shared LRU memoises results, because the
     same public position recurs across parents/children, beam slots and
@@ -181,7 +196,8 @@ class StrategySearch:
                  def_depth: int = 2, def_branch: int = 4,
                  solve_budget: int = 300, time_budget: float = 3.0,
                  objective: str = "both", make_bonus: float = 1.0,
-                 target: int | None = None, rng=None):
+                 target: int | None = None, fast_onestep: bool = True,
+                 def_smart: bool = True, endgame_skip: bool = True, rng=None):
         self.trump = trump
         self.trump_int = int(trump)      # DDS denom int for fastsolve
         self.declarer = int(declarer)
@@ -198,6 +214,15 @@ class StrategySearch:
         self.objective = objective if objective in ("ev", "make", "both") else "both"
         self.make_bonus = float(make_bonus)
         self.target = int(target) if target is not None else None
+        # one solve per layout scores every declarer card (DDS solutions=3)
+        # instead of one solve per (layout, card): same values, ~|cards|x fewer
+        # boards, so the same wall-clock budget searches deeper
+        self.fast_onestep = bool(fast_onestep)
+        # beyond def_depth, model the defence with the take/cover/overtake
+        # rules of _smart_pick instead of always-lowest _cheap_pick
+        self.def_smart = bool(def_smart)
+        # stop at the root when a card's one-step value proves a full run-out
+        self.endgame_skip = bool(endgame_skip)
         self.rng = rng            # breaks score ties at random (see solve())
         self.deadline = time.monotonic() + float(time_budget)
         self.solves = 0
@@ -238,6 +263,21 @@ class StrategySearch:
             return legal[0], self._stats(len(root.layouts), None)
 
         onestep = self._onestep_decl_cards(root, legal)
+        # Run-out shortcut: when a card's clairvoyant one-step value already
+        # attains the theoretical ceiling (declarer takes EVERY remaining
+        # trick on every layout), no search can beat it -- return among the
+        # cards that reach it instead of spending the budget confirming what
+        # double dummy already proved. Common in the last tricks, where it
+        # turns a full 1.5s decision into one batch of small solves.
+        ceiling = self._run_ceiling(root)
+        best1 = max(onestep.values())
+        if self.endgame_skip and best1 >= ceiling - 1e-9:
+            tied = [c for c in legal if onestep[c] >= best1 - 1e-9]
+            if len(tied) > 1 and self.rng is not None:
+                card = tied[int(self.rng.integers(len(tied)))]
+            else:
+                card = min(tied)
+            return card, self._stats(len(root.layouts), float(best1))
         # score-tied cards are shuffled, not ordered by rank: always taking the
         # highest of equals is predictable and (for the defence especially)
         # wastes honours; which tied card gets a beam slot is now random too
@@ -419,7 +459,8 @@ class StrategySearch:
                     if best is None or t > best:        # ties -> top of a run
                         best, c = t, x
             if c is None:
-                c = self._cheap_pick(L, allowed)
+                c = (self._smart_pick(node, L, allowed) if self.def_smart
+                     else self._cheap_pick(L, allowed))
             picks.append((L, c))
         return picks
 
@@ -434,6 +475,48 @@ class StrategySearch:
             by_suit.setdefault(c % 4, []).append(c)
         suit = max(sorted(by_suit), key=lambda s: len(by_suit[s]))
         return max(by_suit[suit])
+
+    def _beats(self, c: int, best: int) -> bool:
+        """True when card `c` beats the trick's current best card (card ids:
+        lower id = higher rank; trumps beat every side suit)."""
+        bs, cs = best & 3, c & 3
+        if cs == self.trump_int and bs != self.trump_int:
+            return True
+        return cs == bs and c < best
+
+    def _smart_pick(self, node: _Node, lay: Layout, allowed: set) -> int:
+        """No-solve defence one step more realistic than _cheap_pick.
+
+        A defender takes a trick the declaring side is about to win when it is
+        last to play or when partner has already played (and so could not win
+        it), and covers an honour the declaring side just played with the
+        cheapest honour that beats it -- but never with the ace, which wins
+        whenever it is played and is saved for exactly that. It never
+        overtakes partner's winner, and otherwise plays low (second hand low).
+        The always-lowest _cheap_pick let declarer's deeper plans steal tricks
+        no real defender would surrender, which made the search optimistic
+        about exactly the lines that hinge on a defensive entry or an
+        uncovered honour. Same-suit winners are preferred, conserving trumps.
+        """
+        if not lay.cur:
+            return self._cheap_pick(lay, allowed)
+        cids = [int(c) for _, c in lay.cur]
+        seats = [int(s) for s, _ in lay.cur]
+        widx = fastsolve.trick_winner(cids, self.trump_int)
+        if seats[widx] not in self.decl_seats:
+            return max(allowed)                  # partner is winning: play low
+        winners = {c for c in allowed if self._beats(c, cids[widx])}
+        if not winners:
+            return max(allowed)                  # cannot win the trick: low
+        partner = next(s for s in self.hidden_seats if s != node.to_act)
+        closing = len(lay.cur) == 3 or partner in seats
+        non_ace = {c for c in winners if (c // 4) > 0}
+        covering = seats[-1] in self.decl_seats and is_honour(cids[-1])
+        if not closing and not (covering and non_ace):
+            return max(allowed)                  # second hand low
+        pick = winners if closing else non_ace   # an ace never covers
+        same = {c for c in pick if (c & 3) == (cids[widx] & 3)}
+        return max(same or pick)                 # max id = cheapest winner
 
     # ---- deal building / solving ----------------------------------------------
 
@@ -505,10 +588,55 @@ class StrategySearch:
         make = 0.5 * wsum
         return make if self.objective == "make" else ev + self.make_bonus * make
 
+    def _run_ceiling(self, node: _Node) -> float:
+        """The objective's theoretical maximum: a line taking EVERY remaining
+        trick on every layout. A one-step value at the ceiling is unbeatable
+        (it holds even against double-dummy defence), so solve() can stop."""
+        wsum = sum(L.weight for L in node.layouts)
+        top = node.tricks_decl + (13 - node.tricks_done)
+        if self.objective == "make":
+            return wsum if (self.target is not None and top >= self.target) else 0.0
+        ev = wsum * top
+        if self.objective == "ev" or self.target is None:
+            return ev
+        return ev + self.make_bonus * (wsum if top >= self.target else 0.0)
+
     def _onestep_decl_cards(self, node: _Node, cards) -> dict:
         """Objective per candidate visible-seat card, assuming double-dummy
         (clairvoyant) play afterwards -- the beam-ranking heuristic and the
-        depth-limit leaf value."""
+        depth-limit leaf value.
+
+        With `fast_onestep` each layout's position is solved ONCE and every
+        card's score is read off the same board: DDS solutions=3 scores all
+        legal cards of the side to move, and that per-card entry IS the
+        double-dummy trick count for declarer's side after playing it -- the
+        same number the legacy path re-derived by solving the position AFTER
+        each card and converting the next side's best entry (zero-sum over
+        the remaining tricks). Values are identical, the board count drops
+        from layouts x cards to layouts, which is most of the search's cold
+        solving early in a hand. The legacy path had one side benefit -- it
+        pre-warmed the cache for the child nodes -- but only the beam's few
+        expanded cards ever reach those children, so solving all of them up
+        front was the worse trade."""
+        if self.fast_onestep:
+            solved = self._solve(
+                [self._position_for(node, L) for L in node.layouts])
+            if solved is None:
+                return {c: self._naive(node) for c in cards}
+            totals: dict = {c: [] for c in cards}
+            weights: dict = {c: [] for c in cards}
+            for i, L in enumerate(node.layouts):
+                board = solved[i]
+                if not board:
+                    continue
+                for c in cards:
+                    t = board.get(c)
+                    if t is None:
+                        continue
+                    totals[c].append(node.tricks_decl + t)
+                    weights[c].append(L.weight)
+            return {c: (self._objective(totals[c], weights[c]) if totals[c]
+                        else self._naive(node)) for c in cards}
         positions, meta = [], []
         for c in cards:
             for i, L in enumerate(node.layouts):
@@ -517,8 +645,8 @@ class StrategySearch:
         solved = self._solve(positions)
         if solved is None:
             return {c: self._naive(node) for c in cards}
-        totals: dict = {c: [] for c in cards}
-        weights: dict = {c: [] for c in cards}
+        totals = {c: [] for c in cards}
+        weights = {c: [] for c in cards}
         for (c, i), board in zip(meta, solved):
             L = node.layouts[i]
             if not board:
