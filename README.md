@@ -34,10 +34,14 @@ a holder of that hand wouldn't make — discount the layouts they cost tricks
 under), and merges candidates that differ only in low cards that cannot beat
 anything the visible hands hold. The declarer side then plans a **strategy**
 over those weighted layouts — a conditional line of play valued by how many
-layouts (weighted by likelihood) it works on, like a suit-combination solver —
-while defenders rank cards by their weighted double-dummy expectation. Cards
-that tie in score are chosen at random rather than defaulting to the highest.
-Everything runs inside per-decision solve/time budgets with graceful fallbacks
+layouts (weighted by likelihood) it works on, like a suit-combination solver,
+with the deeper defence modelled by the standard table rules (take a trick
+declarer is about to win, cover an honour, never overtake partner) — while
+defenders rank cards by their weighted double-dummy expectation *plus* the
+likelihood the card beats the contract, so the defence does not trade a kill
+for an overtrick. Cards that tie in score go to a spot over an honour (and to
+the cheapest of tied honours), chosen at random among equals. Everything runs
+inside per-decision solve/time budgets with graceful fallbacks
 (see `bidding-dt/src/bidding_dt/play_bot.py` and `play_strategy.py`). The
 board is then scored on the tricks actually taken versus double-dummy par.
 Your per-account history (boards, total and average IMPs/board) is kept in
@@ -57,14 +61,17 @@ stored on the account in `data/users.json`, delivered to the page by
 all three modes (a `playing_cards` / `view_agenda` icon).
 
 With `cards` (the default) your hand and the tabled dummy are drawn as the
-big overlapping card faces; with `diagram` they become compact suit lines
-(♠ A K 5 2 …) — the same look as the end-of-hand diagram — with identical
-interaction: legal ranks are clickable, the first tap lifts one (gold), the
-second plays it. In diagram mode the table reserves no card-row/card-column
-space for the dummy, so the single screen always fits, whether the dummy is
-your partner (row across the top) or an opponent (narrow column at a side
-seat). The drills claim reveal follows the setting too; review screens keep
-their always-diagram layout.
+big overlapping card faces; with `diagram` they become plain-text suit lines
+(♠ A K 5 2 …, no boxes around the ranks) — the same look as the end-of-hand
+diagram — with identical interaction: legal ranks are clickable, the first
+tap lifts one (gold with a soft glow), the second plays it. Your own hand is
+always **one suit per row**, and a long suit wraps onto a second line. In
+diagram mode the table reserves no card-row/card-column space for the dummy,
+and a side-seat (opponent) dummy is capped to a narrow column — long suits
+wrap instead of widening it — so the current trick always stays on screen,
+even on small phones, whether the dummy is your partner (row across the
+top) or an opponent. The drills claim reveal follows the setting too;
+review screens keep their always-diagram layout.
 
 An auction may run up to **80 calls** (20 per player). The bidding model itself
 only reads the first 36, so from there on the bots **pass automatically** rather

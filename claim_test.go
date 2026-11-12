@@ -647,7 +647,7 @@ func TestHandlePlayClaim(t *testing.T) {
 	if rr.Code != http.StatusConflict {
 		t.Fatalf("refused claim: %d %s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), "claim refused") {
+	if !strings.Contains(rr.Body.String(), "claim rejected") {
 		t.Fatalf("bad refusal body: %s", rr.Body.String())
 	}
 	if bad.Result != nil || bad.Play.Done || bad.Play.Claimed {

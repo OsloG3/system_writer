@@ -1364,15 +1364,10 @@ func handlePlayClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ok, err := b.checkClaim(seat, *body.Tricks)
-	switch {
-	case errors.Is(err, errClaimTimeout):
-		jsonError(w, http.StatusConflict, "claim refused: the position is "+err.Error())
-		return
-	case err != nil:
-		jsonError(w, http.StatusConflict, "claim refused: "+err.Error())
-		return
-	case !ok:
-		jsonError(w, http.StatusConflict, "claim refused: the other side could still take a trick")
+	if err != nil || !ok {
+		// any doubt refuses the claim -- a rejected correct claim is fine,
+		// an accepted wrong one is not
+		jsonError(w, http.StatusConflict, "claim rejected")
 		return
 	}
 	// the claim stands: the claiming side takes the next tricks it claimed
