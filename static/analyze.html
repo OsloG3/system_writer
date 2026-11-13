@@ -191,6 +191,13 @@
             .an-vpill.bad { background: #6b4a1f; color: #f6d9a8; }
             .an-vpill.crit { background: #7d2b23; color: #ffd7d1; }
             .an-vpill .material-symbols-outlined { font-size: 1rem; }
+            .an-vpill.info { background: #3d3a36; color: #bababa; }
+            .an-vpill.sm { font-size: 0.7rem; padding: 0.16rem 0.5rem; gap: 0.25rem; white-space: nowrap; }
+            .an-vpill.sm .material-symbols-outlined { font-size: 0.9rem; }
+            /* auction box header row: label on the left, the current-card verdict
+               pill tucked into the top-right corner of the bidding diagram */
+            .an-auc-top { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; margin-bottom: 0.35rem; }
+            .an-auc-top .an-h { margin: 0; }
             .an-kv { display: flex; flex-wrap: wrap; gap: 0.35rem 1.2rem; font-size: 0.84rem; color: #bababa; margin-top: 0.35rem; }
             .an-kv b { color: #e8e6e3; }
             .an-bestcards { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.5rem; }
@@ -402,7 +409,10 @@
             function isBid(c) { return /^[1-7][CDHSN]$/.test(c); }
             function auctionOver(calls) {
                 const n = calls.length;
-                return n >= 3 && calls[n - 1] === "P" && calls[n - 2] === "P" && calls[n - 3] === "P";
+                // >= 4, matching play.go's over(): three opening passes do NOT end
+                // the auction (the fourth hand may still open); it is over only
+                // after four passes, or a bid followed by three passes.
+                return n >= 4 && calls[n - 1] === "P" && calls[n - 2] === "P" && calls[n - 3] === "P";
             }
             function trickWinnerJS(trick, trump) {
                 // trick: [{seat, card}] in play order; trump: denom letter
@@ -443,6 +453,8 @@
                 return String(s || "")
                     .replace(/\{[^}]*\}/g, " ").replace(/;[^\n]*/g, " ")
                     .replace(/\([^()]*\)/g, " ").replace(/\$\d+/g, " ")
+                    .replace(/=\d+=/g, " ")          // Bridgedom note refs (=1=) in the movetext
+                    .replace(/\[[^\]]*\]/g, " ")      // any residual [Tag "..."] line
                     .split(/\s+/)
                     .filter((t) => t && !/^\d*\.+$/.test(t) && !PBN_RESULT.test(t));
             }
@@ -541,14 +553,25 @@
                 const vuln = pbnVuln(tags.vulnerable);
                 const aucMark = marks.find((x) => x.key === "auction");
                 const playMark = marks.find((x) => x.key === "play");
-                const afterTags = marks.reduce((e, x) => (x === aucMark || x === playMark) ? e : Math.max(e, x.end), 0);
-                const secStart = aucMark ? Math.max(afterTags, aucMark.end) : afterTags;
-                const secEnd = playMark && playMark.start >= secStart ? playMark.start : src.length;
-                const secToks = pbnTokens(src.slice(secStart, secEnd));
+                // The auction movetext runs from the [Auction] tag to the NEXT tag
+                // after it -- annotation tags such as [Note "..."] that follow the
+                // movetext must not be allowed to swallow it (they used to push the
+                // section start past the auction, so only note-free boards parsed).
+                // Without an [Auction] tag, scan the movetext after the header tags.
+                let secToks;
+                if (aucMark) {
+                    let nextTag = src.length;
+                    for (const mk of marks) if (mk.start >= aucMark.end && mk.start < nextTag) nextTag = mk.start;
+                    secToks = pbnTokens(src.slice(aucMark.end, nextTag));
+                } else {
+                    const afterTags = marks.reduce((e, x) => x === playMark ? e : Math.max(e, x.end), 0);
+                    const secEnd = playMark && playMark.start >= afterTags ? playMark.start : src.length;
+                    secToks = pbnTokens(src.slice(afterTags, secEnd));
+                }
                 const r = pbnAuction(secToks);
                 const calls = r.calls;
                 const playToks = playMark
-                    ? pbnTokens(src.slice(Math.max(afterTags, playMark.end)))
+                    ? pbnTokens(src.slice(playMark.end))
                     : secToks.slice(r.used).filter((t) => !/^AP$/i.test(t));
                 if (!auctionOver(calls)) throw new Error("Could not read a complete auction");
                 const contract = contractFromCalls(dealer, calls);
@@ -562,6 +585,7 @@
                 if (leader !== opener) throw new Error("Only a play from the opening lead can be read");
                 const plays = pbnPlays(playToks, hands, leader, contract.denom);
                 const rt = parseInt(tags.result, 10);
+                const bn = parseInt(tags.board, 10);
                 // [North]/[East]/[South]/[West] player names, indexed by seat
                 // (N=0 E=1 S=2 W=3); empty strings keep the cardinal labels.
                 const names = [tags.north, tags.east, tags.south, tags.west]
@@ -569,6 +593,7 @@
                 return {
                     title: String(tags.event || "").trim().slice(0, 60),
                     dealer, vuln, hands, calls, plays, contract, names,
+                    boardNo: Number.isFinite(bn) ? bn : null,
                     resultTricks: Number.isFinite(rt) ? rt : null,
                 };
             }
@@ -679,14 +704,16 @@
                     sourceError = "No analyzable boards found." + (errors.length ? " (" + errors[0] + ")" : "");
                     view = "source"; render(); return;
                 }
+                if (errors.length)
+                    sourceError = `Read ${parsed.length} of ${parsed.length + errors.length} boards \u2014 ${errors.length} could not be analyzed (${errors[0]}).`;
                 boards = parsed.map((p, k) => ({
-                    title: p.title || ("Board " + (k + 1)),
+                    title: p.title || ("Board " + (p.boardNo || k + 1)),
                     hands: p.hands, dealer: p.dealer, vuln: p.vuln, calls: p.calls,
-                    plays: p.plays, resultTricks: p.resultTricks, idxLabel: k + 1,
+                    plays: p.plays, resultTricks: p.resultTricks, idxLabel: p.boardNo || k + 1,
                     names: p.names, contractStr: contractTextNamed(p.contract, p.names),
                 }));
                 boardResults = {}; sourceKind = "pbn";
-                if (boards.length === 1) { openBoard(0); }
+                if (boards.length === 1 && !errors.length) { openBoard(0); }
                 else { view = "list"; render(); }
             }
 
@@ -702,7 +729,7 @@
             function stepTo(i) {
                 const a = curAnalysis(); const n = a ? a.plays.length : 0;
                 step = Math.max(0, Math.min(n - 1, i)); render();
-                const el = $("an-verdict-card"); if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+                const el = $("an-table-card"); if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
             }
             function stepDelta(d) { stepTo(step + d); }
             function nextMistake() {
@@ -914,7 +941,7 @@
 
                 return `<div class="an-wrap">
                     ${top}
-                    ${headerCard(board, a, actual, made)}
+                    ${headerCard(board, a, actual, made, stepIdx)}
                     ${tableCard(board, a, stepIdx)}
                     ${a.plays.length ? stepperCard(board, a, stepIdx) : `<div class="an-card an-muted">No cards were played in this hand, so there is nothing to step through. The deal-level double-dummy facts above still apply.</div>`}
                     ${a.plays.length ? seatTable(seatSummary(a), target, board.names, a.contract.declarer) : ""}
@@ -922,7 +949,21 @@
                 </div>`;
             }
 
-            function headerCard(board, a, actual, made) {
+            // A compact at-a-glance verdict for the card in focus, tucked into the
+            // top-right corner of the bidding diagram (the full detail stays below
+            // the table). Shows who played what and whether it cost tricks.
+            function miniVerdict(a, stepIdx) {
+                const p = a.plays[stepIdx];
+                if (!p) return "";
+                const who = SEAT_LETTER[p.seat], card = cardPretty(p.card);
+                if (p.best == null) return `<span class="an-vpill info sm">${who} ${card} \u00b7 n/a</span>`;
+                if (!p.mistake) return `<span class="an-vpill ok sm" title="Double-dummy accurate \u2014 best play"><span class="material-symbols-outlined">check</span>${who} ${card}</span>`;
+                const cls = p.critical ? "crit" : "bad";
+                const t = p.critical ? "Contract-critical mistake" : "Mistake";
+                return `<span class="an-vpill ${cls} sm" title="${t}: gave up ${p.cost} trick${p.cost === 1 ? "" : "s"}"><span class="material-symbols-outlined">trending_down</span>${who} ${card} \u2212${p.cost}${p.critical ? " \u26a0" : ""}</span>`;
+            }
+
+            function headerCard(board, a, actual, made, stepIdx) {
                 const c = a.contract;
                 const flags = [];
                 if (actual != null) {
@@ -957,7 +998,7 @@
                                     : `<span class="an-flag info" title="Neither side can make a game with best play on this deal.">No makeable game</span>`}
                             </div>
                         </div>
-                        <div class="an-head-auc">${auctionBox(board)}</div>
+                        <div class="an-head-auc">${auctionBox(board, miniVerdict(a, stepIdx))}</div>
                     </div>
                 </div>`;
             }
@@ -984,7 +1025,19 @@
                         : s === (a.contract.declarer + 2) % 4 ? " \u00b7 dummy" : "";
                     return `<div class="an-seat"><div class="nm"><b>${escapeHtml(nameFor(board.names, s))}</b> \u00b7 ${hcpOf(board.hands[s])} hcp${role}</div>${lines}</div>`;
                 };
-                return `<div class="an-card">
+                const n = a.plays.length;
+                // transport lives with the cards so the diagram and the arrows
+                // fit on screen together while stepping
+                const controls = n ? `<div class="an-stepper" style="margin-top:.85rem">
+                        <button class="an-btn sm" id="s-first" ${stepIdx === 0 ? "disabled" : ""} title="First card"><span class="material-symbols-outlined">skip_previous</span></button>
+                        <button class="an-btn sm" id="s-prev" ${stepIdx === 0 ? "disabled" : ""} title="Previous card"><span class="material-symbols-outlined">chevron_left</span></button>
+                        <span class="an-count">${stepIdx + 1} / ${n}</span>
+                        <button class="an-btn sm" id="s-next" ${stepIdx >= n - 1 ? "disabled" : ""} title="Next card"><span class="material-symbols-outlined">chevron_right</span></button>
+                        <button class="an-btn sm" id="s-last" ${stepIdx >= n - 1 ? "disabled" : ""} title="Last card"><span class="material-symbols-outlined">skip_next</span></button>
+                        <span class="an-bar"><i style="width:${Math.round(((stepIdx + 1) / n) * 100)}%"></i></span>
+                        <button class="an-btn gold sm" id="s-mistake" title="Jump to the next card that was not double-dummy accurate"><span class="material-symbols-outlined">skip_next</span>Next mistake</button>
+                    </div>` : "";
+                return `<div class="an-card" id="an-table-card">
                     <div class="an-h">Deal \u2014 cards dim once played; the trick in focus is in the centre</div>
                     <div class="an-table-layout">
                         <div class="an-tl-n">${seatHtml(0)}</div>
@@ -993,6 +1046,7 @@
                         <div class="an-tl-e">${seatHtml(1)}</div>
                         <div class="an-tl-s">${seatHtml(2)}</div>
                     </div>
+                    ${controls}
                 </div>`;
             }
 
@@ -1018,7 +1072,7 @@
                 return `<div class="an-tc">${slot(0)}${slot(3)}<div class="an-tc-mid">${mid}</div>${slot(1)}${slot(2)}</div>`;
             }
 
-            function auctionBox(board) {
+            function auctionBox(board, verdictHtml) {
                 const dealer = board.dealer;
                 const rows = [];
                 for (let i = 0; i < board.calls.length; i++) {
@@ -1033,7 +1087,7 @@
                     for (let k = 0; k < 4; k++) cells += `<span>${row && row[k] ? callChip(row[k]) : ""}</span>`;
                     return `<div class="an-auc-row">${cells}</div>`;
                 }).join("");
-                return `<div class="an-h">Auction</div><div class="an-auc-head">${head}</div>${body}`;
+                return `<div class="an-auc-top"><span class="an-h">Auction</span>${verdictHtml || ""}</div><div class="an-auc-head">${head}</div>${body}`;
             }
             function callChip(c) {
                 if (c === "P") return `<span class="an-call an-call-p">pass</span>`;
@@ -1045,20 +1099,11 @@
 
             function stepperCard(board, a, stepIdx) {
                 const p = a.plays[stepIdx];
+                if (!p) return "";
                 const trickIdx = Math.floor(stepIdx / 4);
-                const n = a.plays.length;
                 return `<div class="an-card" id="an-verdict-card">
-                    <div class="an-h">Trick ${trickIdx + 1} \u00b7 card ${stepIdx + 1} of ${n} \u00b7 ${escapeHtml(nameFor(board.names, p.seat))} to play</div>
+                    <div class="an-h">Trick ${trickIdx + 1} \u00b7 card ${stepIdx + 1} of ${a.plays.length} \u00b7 ${escapeHtml(nameFor(board.names, p.seat))} to play</div>
                     ${verdictPanel(a, p, stepIdx, board.names)}
-                    <div class="an-stepper" style="margin-top:.9rem">
-                        <button class="an-btn sm" id="s-first" ${stepIdx === 0 ? "disabled" : ""}><span class="material-symbols-outlined">skip_previous</span></button>
-                        <button class="an-btn sm" id="s-prev" ${stepIdx === 0 ? "disabled" : ""}><span class="material-symbols-outlined">chevron_left</span></button>
-                        <span class="an-count">${stepIdx + 1} / ${n}</span>
-                        <button class="an-btn sm" id="s-next" ${stepIdx >= n - 1 ? "disabled" : ""}><span class="material-symbols-outlined">chevron_right</span></button>
-                        <button class="an-btn sm" id="s-last" ${stepIdx >= n - 1 ? "disabled" : ""}><span class="material-symbols-outlined">skip_next</span></button>
-                        <span class="an-bar"><i style="width:${Math.round(((stepIdx + 1) / n) * 100)}%"></i></span>
-                        <button class="an-btn gold sm" id="s-mistake"><span class="material-symbols-outlined">skip_next</span>Next mistake</button>
-                    </div>
                 </div>`;
             }
 

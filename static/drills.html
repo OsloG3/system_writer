@@ -2373,7 +2373,10 @@
             function bidRank(c) { return isBid(c) ? parseInt(c[0]) * 10 + "CDHSN".indexOf(c[1]) : -1; }
             function auctionOver(calls) {
                 const n = calls.length;
-                return n >= 3 && calls[n - 1] === "P" && calls[n - 2] === "P" && calls[n - 3] === "P";
+                // >= 4, matching play.go's over(): three opening passes do NOT end
+                // the auction (the fourth hand may still open); it is over only
+                // after four passes, or a bid followed by three passes.
+                return n >= 4 && calls[n - 1] === "P" && calls[n - 2] === "P" && calls[n - 3] === "P";
             }
             // legal continuations of an auction, for the authoring bidding box.
             // A double is legal over an opponents' bid with only passes in
@@ -3696,6 +3699,8 @@
                     .replace(/;[^\n]*/g, " ")     // rest-of-line comments
                     .replace(/\([^()]*\)/g, " ")  // variations
                     .replace(/\$\d+/g, " ")       // NAGs
+                    .replace(/=\d+=/g, " ")       // Bridgedom note refs (=1=) in the movetext
+                    .replace(/\[[^\]]*\]/g, " ")  // any residual [Tag "..."] line
                     .split(/\s+/)
                     .filter((t) => t && !/^\d*\.+$/.test(t) && !PBN_RESULT.test(t));
             }
@@ -3821,18 +3826,28 @@
                 const dealer = Math.max(0, "NESW".indexOf(String(tags.dealer || "N").trim().toUpperCase()[0]));
                 const vuln = pbnVuln(tags.vulnerable);
                 // [Auction] / [Play] tags delimit their sections; without them
-                // the movetext is scanned: auction tokens first, then cards
+                // the movetext is scanned: auction tokens first, then cards.
+                // The auction movetext runs from the [Auction] tag to the NEXT
+                // tag after it -- annotation tags such as [Note "..."] that follow
+                // the movetext must not be allowed to swallow it (they used to
+                // push the section start past the auction, so only note-free
+                // boards parsed).
                 const aucMark = marks.find((x) => x.key === "auction");
                 const playMark = marks.find((x) => x.key === "play");
-                const afterTags = marks.reduce((e, x) =>
-                    (x === aucMark || x === playMark) ? e : Math.max(e, x.end), 0);
-                const secStart = aucMark ? Math.max(afterTags, aucMark.end) : afterTags;
-                const secEnd = playMark && playMark.start >= secStart ? playMark.start : src.length;
-                const secToks = pbnTokens(src.slice(secStart, secEnd));
+                let secToks;
+                if (aucMark) {
+                    let nextTag = src.length;
+                    for (const mk of marks) if (mk.start >= aucMark.end && mk.start < nextTag) nextTag = mk.start;
+                    secToks = pbnTokens(src.slice(aucMark.end, nextTag));
+                } else {
+                    const afterTags = marks.reduce((e, x) => x === playMark ? e : Math.max(e, x.end), 0);
+                    const secEnd = playMark && playMark.start >= afterTags ? playMark.start : src.length;
+                    secToks = pbnTokens(src.slice(afterTags, secEnd));
+                }
                 const r = pbnAuction(secToks);
                 const calls = r.calls;
                 const playToks = playMark
-                    ? pbnTokens(src.slice(Math.max(afterTags, playMark.end)))
+                    ? pbnTokens(src.slice(playMark.end))
                     : secToks.slice(r.used).filter((t) => !/^AP$/i.test(t));
                 if (!auctionOver(calls)) throw new Error("Could not read a complete auction");
                 const contract = contractFromCalls(dealer, calls);
