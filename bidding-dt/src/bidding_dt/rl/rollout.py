@@ -68,8 +68,8 @@ import numpy as np
 import torch
 from torch.distributions import Categorical
 
-from ..conventions import (ConventionConfig, HandInfo, check_call,
-                           convention_bonus)
+from ..conventions import (ConventionConfig, HandInfo, SystemEnforcer,
+                           check_call, convention_bonus)
 from ..conventions.auction import AuctionReader
 from ..data.hands import HAND_DIM
 from ..data.vocab import VOCAB_SIZE
@@ -229,6 +229,7 @@ def partner_greedy_dev(buf: RolloutBuffer) -> np.ndarray:
 
 def convention_penalties(buf: RolloutBuffer, env: AuctionBatch,
                          cfg: ConventionConfig | None = None,
+                         spec=None,
                          ) -> tuple[np.ndarray, list[list[str]], np.ndarray]:
     """(penalties (n,), violation codes per row, bonuses (n,)) for a rollout.
 
@@ -237,6 +238,12 @@ def convention_penalties(buf: RolloutBuffer, env: AuctionBatch,
     actual call against the enforced system. Only uses information the
     model itself sees: hero's hand + public auction + dealer/vuln. Hand
     features (K&R count, lengths) are computed once per (deal, seat).
+
+    `spec` is the parsed system file (conventions/system_file.py): when
+    given, its sequence-pattern entries take precedence over the rule-code
+    checks (a matched entry with weight > 0 replaces them for that call) and
+    add the file-driven force/double discipline (f_pass, to_pass,
+    penalty_pull) -- see conventions/patterns.SystemEnforcer.
 
     The bonus per row is the small reward for one clean use of an
     artificial convention (rules.convention_bonus): cfg.conv_bonus when the
@@ -251,6 +258,7 @@ def convention_penalties(buf: RolloutBuffer, env: AuctionBatch,
     if n == 0:
         return pens, codes, bonuses
     cfg = cfg or ConventionConfig()
+    enforcer = SystemEnforcer(spec, cfg) if spec is not None else None
     hands: dict[tuple[int, int], HandInfo] = {}
     readers: dict[int, AuctionReader] = {}
     for i in range(n):
@@ -274,7 +282,10 @@ def convention_penalties(buf: RolloutBuffer, env: AuctionBatch,
         while reader.n < ci:
             reader.feed(int(env.calls[di, reader.n]))
         action = int(buf.action[i])
-        vs = check_call(reader, seat, hi, action, cfg)
+        if enforcer is not None:
+            vs = enforcer.check(reader, seat, hi, action)
+        else:
+            vs = check_call(reader, seat, hi, action, cfg)
         if vs:
             pens[i] = sum(v.weight for v in vs)
             codes[i] = [v.code for v in vs]
@@ -529,7 +540,8 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
                     rng: np.random.Generator | None = None, cache=None,
                     opponent=None, greedy: bool = False, temp: float = 1.0,
                     record: bool = True, amp: bool = False,
-                    presolve=None, conv_cfg=None) -> TeamRollout:
+                    presolve=None, conv_cfg=None,
+                    conv_spec=None) -> TeamRollout:
     """Play every deal at two tables (team match) and score the comparison.
 
     opponent given (league): the learner team is N-S at table 0 and E-W at
@@ -548,6 +560,9 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
     bidding system and roll.conv_pen/conv_codes/conv_bonus carry the
     weighted per-call penalties and the small convention-usage rewards
     (applied in row_rewards via conv_weight / unscaled).
+    conv_spec: optional parsed system file (conventions/system_file.py) --
+    its sequence-pattern entries extend/override the rule-code checks
+    (see convention_penalties).
     """
     b = len(deals)
     dealer2 = np.concatenate([dealer, dealer]).astype(np.int64)
@@ -569,7 +584,8 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
     conv_pen = conv_codes = conv_bonus = None
     if buf is not None and conv_cfg is not None:
         conv_pen, conv_codes, conv_bonus = convention_penalties(buf, env,
-                                                                conv_cfg)
+                                                                conv_cfg,
+                                                                conv_spec)
     return TeamRollout(buf=buf, env=env, n_deals=b, team_imps=team_imps,
                        diverge=diverge, diverged=diverged,
                        par_imps_ns=par_imps, score_ns=score_ns,

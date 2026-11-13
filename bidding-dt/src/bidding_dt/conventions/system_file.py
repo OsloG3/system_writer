@@ -6,33 +6,44 @@ The file is the single source of truth for the system the bots follow:
     section's `weight` into the convention-penalty rule weights and every
     numeric key into the matching ConventionConfig threshold (rl/train_ppo.py
     builds its conv_cfg from it, so editing a range in the file re-tunes what
-    the RL loop enforces);
-  * the website generates its bid alerts from the same file -- `section_for`
-    resolves a classified call (auction.py CallInfo) to the one section whose
-    agreement it is, and `SystemSpec.alert_for` renders that section's alert
-    template ({call} {suit} {other} {trump} {partner_suit} {shows} {level}
-    placeholders). The Go server (system_writer/system_file.go) implements the
-    same resolution over the same file; keep the two in lockstep.
+    the RL loop enforces), and the sequence-pattern entries (patterns.py)
+    are enforced per call by patterns.SystemEnforcer (rl/rollout.py);
+  * the website generates its bid alerts from the same file --
+    `SystemSpec.alert_for_call` resolves a call in its auction first against
+    the pattern entries, then via `section_for` against the rule-code
+    sections, and renders the match's alert text. The Go server
+    (system_writer/system_file.go + patterns.go) implements the same
+    resolution over the same file; keep the two in lockstep.
 
-Format (INI-like, # and ; comments)::
+Format (INI-like, # and ; comments). Rule-code sections::
 
     [section]            rule code (rules.DEFAULT_WEIGHTS) or one of the
                          alert-only kinds (general, rkcb_ask, resp_2c_waiting,
                          balancing_takeout, penalty_double)
-    alert = text         website alert text (placeholders above)
+    alert = text         website alert text ({call} {suit} {other} {trump}
+                         {partner_suit} {shows} {level} placeholders)
     artificial = yes     the call carries the alert (spade) marker on the site
     weight = N           convention-penalty weight (rule-code sections only)
     steps = a | b | c | d   RKCB step texts ({shows})
     <param> = value      ConventionConfig threshold: number, "lo-hi" range
-                         or yes/no boolean
+                         or yes/no boolean ([general] also takes the
+                         enforcer's SPEC_PARAMS keys, e.g. to_pass_min_len)
+
+Any other `lhs = rhs` line is a sequence-pattern entry -- the flexible layer
+that describes bids by the auction sequence itself (generic suits X/Y/Z/W,
+opponent calls in parentheses, rank/state clauses, OR branches, F/GF, TO/
+PENALTY doubles). See patterns.py for the full grammar and semantics.
 """
 
 import os
 import re
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .auction import DENOM_N, MAJORS, CallInfo, is_game_or_above
+from .patterns import (_DESC_SEP, SPEC_PARAMS, MatchState, fold_state,
+                       match_first, parse_entry, render_desc)
 from .rules import DEFAULT_WEIGHTS, ConventionConfig
 
 SYM = ("♣", "♦", "♥", "♠")          # project denom order C,D,H,S
@@ -58,6 +69,28 @@ def _param_fields() -> frozenset:
             f.name for f in dataclasses.fields(ConventionConfig)
             if f.name != "weights")
     return _PARAM_FIELDS
+
+
+# key = value lines the parser knows (everything else is a pattern entry)
+_KV_KEYS = None
+
+# bare identifiers are key = value lines -- unless they are a call token,
+# which makes them a (single-step) pattern entry like "P = ..."
+_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_CALL_STEP_TOKENS = {"P", "PASS", "X", "DBL", "D", "XX", "RDBL", "RD"}
+
+
+def _is_kv_line(lhs: str) -> bool:
+    return (bool(_IDENT.fullmatch(lhs))
+            and lhs.upper() not in _CALL_STEP_TOKENS)
+
+
+def _kv_keys() -> frozenset:
+    global _KV_KEYS
+    if _KV_KEYS is None:
+        _KV_KEYS = (frozenset({"alert", "artificial", "weight", "steps"})
+                    | _param_fields() | frozenset(SPEC_PARAMS))
+    return _KV_KEYS
 
 
 def _number(s: str):
@@ -94,22 +127,40 @@ class Section:
 
 @dataclass
 class SystemSpec:
-    """Parsed system file: sections in file order, keyed by name."""
+    """Parsed system file: rule-code sections keyed by name, plus the
+    sequence-pattern entries (patterns.py) in file order."""
     path: str | None = None
     sections: dict = field(default_factory=dict)   # name -> Section
+    entries: list = field(default_factory=list)    # pattern entries, file order
+    _states: dict = field(default_factory=dict)    # replay-state memo
 
     # -- config for training -------------------------------------------------
+
+    @property
+    def spec_params(self) -> dict:
+        """Enforcer-level params (SPEC_PARAMS keys, e.g. to_pass_min_len),
+        conventionally set in [general]; later sections win."""
+        out = dict(SPEC_PARAMS)
+        for sec in self.sections.values():
+            for k, v in sec.params.items():
+                if k in SPEC_PARAMS:
+                    out[k] = v
+        return out
 
     def config(self, rule_overrides: dict | None = None,
                param_overrides: dict | None = None) -> ConventionConfig:
         """ConventionConfig with the file's weights and thresholds applied.
 
         YAML/CLI overrides (rl.conv_rules / rl.conv_params) layer on top of
-        the file, exactly as they used to layer on the code defaults.
+        the file, exactly as they used to layer on the code defaults. The
+        enforcer-level SPEC_PARAMS keys belong to the pattern layer
+        (spec_params) and are filtered out here.
         """
         weights, params = {}, {}
         for sec in self.sections.values():
-            params.update(sec.params)
+            for k, v in sec.params.items():
+                if k not in SPEC_PARAMS:
+                    params[k] = v
             if sec.weight is not None:
                 weights[sec.name] = sec.weight
         weights.update(rule_overrides or {})
@@ -123,7 +174,7 @@ class SystemSpec:
 
     def alert_for(self, info: CallInfo) -> str | None:
         """Rendered alert text for a classified call, or None when the system
-        file defines no meaning for it."""
+        file defines no meaning for it (rule-code sections only)."""
         name = section_for(info)
         if name is None:
             return None
@@ -131,6 +182,42 @@ class SystemSpec:
         if sec is None or sec.alert is None:
             return None
         return render(sec.alert, info, sec.steps)
+
+    def replay(self, dealer: int, calls):
+        """Memoized pattern-layer state of an auction prefix; extends the
+        parent prefix's state (one fold per new call)."""
+        calls = tuple(int(c) for c in calls)
+        key = (dealer, calls)
+        st = self._states.get(key)
+        if st is not None:
+            return st
+        if calls:
+            st = deepcopy(self.replay(dealer, calls[:-1]))
+            fold_state(self.entries, dealer, st, len(calls) - 1, calls[-1])
+        else:
+            st = MatchState().fresh(dealer)
+        self._states[key] = st
+        return st
+
+    def match_call(self, dealer: int, calls, action: int):
+        """(entry, binds) of the first pattern entry matching `action` after
+        `calls`, or (None, None)."""
+        if not self.entries:
+            return None, None
+        return match_first(self.entries, dealer, calls, action,
+                           state=self.replay(dealer, calls))
+
+    def alert_for_call(self, reader, action: int) -> str | None:
+        """Alert text for `action` in `reader`'s auction: the pattern layer
+        first (an entry whose rendered description is empty suppresses the
+        alert), then the rule-code sections."""
+        if self.entries:
+            entry, binds = self.match_call(reader.dealer, list(reader.calls),
+                                           int(action))
+            if entry is not None:
+                return render_desc(entry, binds) or None
+        info = reader.classify(int(action))
+        return self.alert_for(info)
 
 
 def parse_system_file(path: str | Path) -> SystemSpec:
@@ -155,29 +242,38 @@ def parse_system_file(path: str | Path) -> SystemSpec:
             cur = Section(name)
             spec.sections[name] = cur
             continue
-        if "=" not in line:
-            raise ValueError(f"{where}: expected key = value")
-        key, _, val = line.partition("=")
-        key, val = key.strip(), val.strip()
-        if cur is None:
-            raise ValueError(f"{where}: key outside any section")
-        if key == "alert":
-            cur.alert = val
-        elif key == "artificial":
-            cur.artificial = parse_value(val) is True
-        elif key == "weight":
-            if cur.name not in DEFAULT_WEIGHTS:
-                raise ValueError(
-                    f"{where}: [{cur.name}] is alert-only and has no weight")
-            cur.weight = float(val)
-        elif key == "steps":
-            cur.steps = [s.strip() for s in val.split("|")]
-        else:
-            if key not in _param_fields():
-                raise ValueError(f"{where}: unknown parameter {key!r}")
-            cur.params[key] = parse_value(val)
-    if not spec.sections:
-        raise ValueError(f"{path}: no sections found")
+        m = _DESC_SEP.search(line)
+        lhs = line[:m.start()].strip() if m else line.strip()
+        if _is_kv_line(lhs):
+            if m is None:
+                raise ValueError(f"{where}: expected key = value")
+            if lhs not in _kv_keys():
+                raise ValueError(f"{where}: unknown parameter {lhs!r}")
+            val = line[m.end():].strip()
+            if cur is None:
+                raise ValueError(f"{where}: key outside any section")
+            if lhs == "alert":
+                cur.alert = val
+            elif lhs == "artificial":
+                cur.artificial = parse_value(val) is True
+            elif lhs == "weight":
+                if cur.name not in DEFAULT_WEIGHTS:
+                    raise ValueError(
+                        f"{where}: [{cur.name}] is alert-only and has no "
+                        f"weight")
+                cur.weight = float(val)
+            elif lhs == "steps":
+                cur.steps = [s.strip() for s in val.split("|")]
+            else:
+                cur.params[lhs] = parse_value(val)
+            continue
+        # not a key = value line: a sequence-pattern entry (patterns.py)
+        try:
+            spec.entries.append(parse_entry(line))
+        except ValueError as e:
+            raise ValueError(f"{where}: {e}") from None
+    if not spec.sections and not spec.entries:
+        raise ValueError(f"{path}: no sections or pattern entries found")
     return spec
 
 

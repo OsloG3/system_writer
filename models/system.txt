@@ -7,28 +7,68 @@
 #   * bidding-dt interprets it at the START OF TRAINING (rl/train_ppo.py
 #     --system / rl.system_file, default search: models/system.txt then
 #     ../models/system.txt): every `weight` becomes a convention-penalty rule
-#     weight and every numeric key a ConventionConfig threshold, so editing a
-#     range here re-tunes what the RL loop enforces (rl.conv_weight).
+#     weight, every numeric key a ConventionConfig threshold, and every
+#     sequence-pattern entry (below) a per-call check -- so editing this file
+#     re-tunes what the RL loop enforces (rl.conv_weight).
 #   * the website (system_writer) reads the same file and GENERATES THE BID
-#     ALERTS from it: the Go server classifies the live auction against the
-#     system and serves the matching section's `alert` text for every bot
-#     call (and for each of the human's legal options). No self-play
-#     statistics are involved.
+#     ALERTS from it: the Go server matches the live auction against the
+#     system and serves the matching entry's / section's alert text for
+#     every bot call (and for each of the human's legal options). No
+#     self-play statistics are involved.
 #
-# Format (INI-like):
-#   [section]                 one section per call kind; section names are the
-#                             convention rule codes (bidding_dt.conventions.
-#                             rules.DEFAULT_WEIGHTS) plus a few alert-only
-#                             kinds (rkcb_ask, resp_2c_waiting,
-#                             balancing_takeout, penalty_double)
+# TWO KINDS OF DEFINITIONS live in this file:
+#
+# 1. SEQUENCE-PATTERN ENTRIES (the flexible layer, checked FIRST, in file
+#    order -- first match wins). One line each:
+#
+#      PATTERN[; CLAUSES] = DESCRIPTION [@weight] [@!]
+#
+#    PATTERN   calls joined by "-", matched from the start of the auction
+#              (leading passes skipped; opponent passes between our calls
+#              skipped implicitly; own passes must be written out) or
+#              ANYWHERE when prefixed with "...-". Steps: 1H / 2NT literal,
+#              1X / 2Z generic suits (X Y Z W bind to pairwise-different
+#              suits, a repeated letter to the same suit), P pass, X or DBL
+#              double, XX or RDBL redouble; opponent calls in parentheses:
+#              (1Y), (P). The LAST step is the call being described.
+#    CLAUSES   after ";" (or ":"), OR-combined groups of AND atoms:
+#                suit order:  X<Z, Z>Y          (order C<D<H<S<N)
+#                state:       gf | uncontested | contested | balancing |
+#                             passed | we_xx | they_xx | dbls_by_us>=N |
+#                             dbls_by_them>=N | their_bid>=4S | our_bid>=1C
+#    DESCRIPTION
+#              the alert text AND the training spec. " OR " splits multiway
+#              alternatives (the hand must satisfy ALL checkable tokens of
+#              ANY branch; a text-only branch is a wildcard). Tokens the
+#              trainer enforces: 5+X / 4-6H / 8+any (lengths), p>16 /
+#              p15-17 (K&R points +- kr_tolerance), balanced, F (one-round
+#              force: partner passing it is penalized), GF (game force:
+#              passing below game is penalized), and for doubles TO /
+#              PENALTY (the PARTNER is penalized for passing a TO double
+#              without to_pass_min_len trumps, or for pulling a PENALTY
+#              double with more than penalty_pull_max_len -- the doubler's
+#              own hand is deliberately NOT described). Everything else is
+#              free alert text.
+#    @weight   penalty weight (default 1.0; @0 = alert-only: nothing is
+#              enforced or latched and the rule-code sections below keep
+#              their checks). A matched entry with weight>0 REPLACES the
+#              rule-code checks for that call.
+#    @!        artificial: the website shows the alert marker.
+#    A matched entry with an empty description suppresses the alert.
+#
+# 2. RULE-CODE SECTIONS (the fallback for calls no pattern entry matches):
+#    INI-style, one [section] per call kind, named after the convention rule
+#    codes (bidding_dt.conventions.rules.DEFAULT_WEIGHTS) plus a few
+#    alert-only kinds (rkcb_ask, resp_2c_waiting, balancing_takeout,
+#    penalty_double):
 #   alert = text              what the website shows for a call of this kind;
 #                             placeholders: {call} {suit} {other} {trump}
 #                             {partner_suit} {shows} {level}
-#   artificial = yes          mark the call with the alert (⚠) symbol on the
+#   artificial = yes          mark the call with the alert marker on the
 #                             website (default: no)
 #   weight = N                convention-penalty weight used by training
 #                             (0 disables the rule; only valid on rule codes)
-#   steps = a | b | c | d     RKCB step-response texts ({shows} placeholder)
+#   steps = a | b | c | d     RKCB step-response texts ({shows})
 #   <param> = value           numeric threshold interpreted by training
 #                             (ConventionConfig field names; ranges "lo-hi",
 #                             booleans yes/no)
@@ -36,12 +76,46 @@
 #
 # Strength numbers are Kaplan-Rubens points (conventions/kr.py), applied with
 # +-kr_tolerance slack. Ship this file to the server next to the checkpoint it
-# describes (models/system.txt); SYSTEM_FILE overrides the path.
+# describes (models/system.txt); SYSTEM_FILE overrides the path. The Go
+# server re-reads it whenever it changes on disk.
 # ============================================================================
+
+# ---- sequence-pattern entries (checked first; first match wins) ------------
+
+# opener's reverse: a new suit at the 2 level ranking above the opening suit
+# (1C-1H-2D, 1D-1S-2H, ...): 5+ first suit, 4+ second, 16+, forcing one round
+1X-1Y-2Z; X<Z = reverse: 5+X 4+Z p>16 F @2.0
+
+# stayman over 1NT/2NT: asks for a 4-card major (multiway OR)
+1NT-2C = 4+H OR 4+S stayman ask @!
+2NT-3C = 4+H OR 4+S stayman ask @!
+
+# XYZ after an uncontested 1x-1y-1z (alert text only -- the [xyz_2c]/[xyz_2d]
+# sections below keep enforcing, hence @0)
+1X-1Y-1Z-2C = p<9.5 5+D weak diamond signoff OR p9.5-12.5 any invite @! @0
+1X-1Y-1Z-2D = p>11.5 artificial GF @! @0
+
+# 2/1 in competition: a non-jump 2-level new suit over an overcall, when
+# bidding it at the 1 level was impossible (the new suit ranks below theirs),
+# stays game forcing (alert-only; [two_one_gf] keeps enforcing)
+1X-(1Y)-2C; C<Y = 2/1: 3+C p>11.5 GF @0
+1X-(1Y)-2Z; Z<Y = 2/1: 4+Z p>11.5 GF @0
+
+# doubles: penalty once a redouble by us, two prior doubles by us, a game
+# force, or their 4S+ bid says the auction belongs to us -- otherwise takeout.
+# TO/PENALTY describe the PARTNER's discipline, not the doubler's hand.
+...-X; we_xx OR dbls_by_us>=2 OR gf OR their_bid>=4S = PENALTY -- partner pulls only with shortness in their suit
+...-X = TO -- partner passes only with a trump stack in their suit
 
 [general]
 kr_tolerance = 1.0
 conv_bonus = 0.05
+# pattern-layer discipline params:
+f_pass_weight = 2.0
+to_pass_weight = 1.0
+penalty_pull_weight = 1.0
+to_pass_min_len = 4
+penalty_pull_max_len = 2
 
 # ---- openings ---------------------------------------------------------------
 
@@ -260,6 +334,8 @@ weight = 0.5
 overcall_nt_bal_range = 11.5-15.5
 
 [takeout_double]
+# superseded by the "...-X = TO" pattern entry above (kept as the fallback
+# for when that entry is removed, and for its training thresholds)
 alert = {call}: takeout -- opening-ish values, 3+ in every unbid major; an 18+ power double needs no shape
 weight = 1.0
 takeout_min_kr = 10.0
@@ -271,10 +347,12 @@ takeout_power_kr = 18.0
 alert = {call}: balancing takeout -- 8+, shape requirements relaxed
 
 [negative_double]
+# superseded by the "...-X" pattern entries above (kept as the fallback)
 alert = {call}: negative double -- values or an unbid 4-card major
 weight = 1.5
 negative_min_kr = 5.5
 negative_values_kr = 8.5
 
 [penalty_double]
+# superseded by the "...-X; ... = PENALTY" pattern entry above (fallback)
 alert = {call}: penalty-oriented -- our side has bid

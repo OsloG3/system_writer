@@ -32,6 +32,9 @@ codes and their defaults.
 from .alerts import RKCB_STEPS, convention_alert
 from .auction import AuctionReader, CallInfo, is_game_or_above
 from .kr import kr_points, kr_suit
+from .patterns import (SPEC_PARAMS, Entry, MatchState, SystemEnforcer,
+                       call_id_of, fold_state, hand_violations, match_first,
+                       parse_entry, render_desc, replay_state)
 from .rules import (DEFAULT_WEIGHTS, ConventionConfig, HandInfo, Violation,
                     call_bonus, call_penalty, call_violations, check_call,
                     convention_bonus, convention_kind)
@@ -42,6 +45,9 @@ __all__ = [
     "RKCB_STEPS", "convention_alert",
     "AuctionReader", "CallInfo", "is_game_or_above",
     "kr_points", "kr_suit",
+    "SPEC_PARAMS", "Entry", "MatchState", "SystemEnforcer", "call_id_of",
+    "fold_state", "hand_violations", "match_first", "parse_entry",
+    "render_desc", "replay_state",
     "DEFAULT_WEIGHTS", "ConventionConfig", "HandInfo", "Violation",
     "call_bonus", "call_penalty", "call_violations", "check_call",
     "convention_bonus", "convention_kind",

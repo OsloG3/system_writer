@@ -140,10 +140,18 @@ def node_to_json(node: dict, reader: AuctionReader | None = None,
     children = {}
     for c in kids:
         call = int(c["call"])
+        if spec is not None:
+            # pattern entries first, then the rule-code sections (the spec
+            # needs the auction before this call, so classify before feeding)
+            conv = spec.alert_for_call(reader, call)
+        else:
+            conv = None
         child_reader = reader.copy()
         info = child_reader.feed(call)
+        if spec is None:
+            conv = convention_alert(info)
         children[id_to_call(call)] = node_to_json(
-            c, child_reader, convention_alert(info, spec), spec)
+            c, child_reader, conv, spec)
     out["children"] = children
     return out
 

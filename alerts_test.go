@@ -393,6 +393,33 @@ func TestRealSystemFile(t *testing.T) {
 	if a == nil || !strings.Contains(a.Text, "0 or 3 keycards") || !a.Artificial {
 		t.Errorf("shipped RKCB response alert wrong: %+v", a)
 	}
+	// the shipped pattern entries: reverse, stayman, conditional doubles
+	if len(spec.entries) < 8 {
+		t.Errorf("shipped file carries %d pattern entries, want >= 8", len(spec.entries))
+	}
+	alerts := spec.callAlerts(0, []string{"1C", "P", "1H", "P", "2D"}, 0)
+	rev, _ := alerts[4].(*bidAlert)
+	if rev == nil || !strings.Contains(rev.Text, "reverse: 5+ ♣ 4+ ♦") ||
+		!strings.Contains(rev.Text, "forcing") || strings.Contains(rev.Text, "{") {
+		t.Errorf("shipped reverse alert wrong: %+v", alerts[4])
+	}
+	alerts = spec.callAlerts(0, []string{"1N", "P", "2C"}, 0)
+	stay, _ := alerts[2].(*bidAlert)
+	if stay == nil || !stay.Artificial || !strings.Contains(stay.Text, "4+ ♥ or 4+ ♠") {
+		t.Errorf("shipped stayman alert wrong: %+v", alerts[2])
+	}
+	// plain double of their opening: takeout
+	alerts = spec.callAlerts(0, []string{"1H", "X"}, 0)
+	tbl, _ := alerts[1].(*bidAlert)
+	if tbl == nil || !strings.Contains(tbl.Text, "takeout") {
+		t.Errorf("shipped TO double alert wrong: %+v", alerts[1])
+	}
+	// double of their 4S: penalty
+	alerts = spec.callAlerts(0, []string{"P", "4S", "X"}, 0)
+	pen, _ := alerts[2].(*bidAlert)
+	if pen == nil || !strings.HasPrefix(pen.Text, "penalty") {
+		t.Errorf("shipped PENALTY double alert wrong: %+v", alerts[2])
+	}
 	// every rendered alert must be placeholder-free for a sample auction
 	for _, calls := range [][]string{
 		{"1N"}, {"2C"}, {"2H"}, {"1S", "P", "2S"},
@@ -400,10 +427,11 @@ func TestRealSystemFile(t *testing.T) {
 		{"1N", "P", "2C", "P", "2D", "P", "3S"},
 		{"1S", "P", "2S", "P", "4N", "P", "5D"},
 		{"1H", "1S", "2S"}, {"1H", "P", "P", "1N"},
+		{"1C", "P", "1H", "P", "2D"}, {"1H", "X", "P", "P"},
+		{"P", "4S", "X", "P", "5C"},
 	} {
-		last := calls[len(calls)-1]
-		if a := spec.alertFor(classifyNext(t, calls[:len(calls)-1], last)); a != nil {
-			if strings.Contains(a.Text, "{") {
+		for _, entry := range spec.callAlerts(0, calls, 0) {
+			if a, ok := entry.(*bidAlert); ok && strings.Contains(a.Text, "{") {
 				t.Errorf("unfilled placeholder for %v: %s", calls, a.Text)
 			}
 		}

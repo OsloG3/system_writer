@@ -178,6 +178,7 @@ def main():
     # numeric thresholds build the ConventionConfig, and the same file is what
     # the website generates its bid alerts from (system_writer/system_file.go).
     conv_cfg = None
+    conv_spec = None
     system_path = None
     if rl.conv_weight > 0:
         try:
@@ -187,18 +188,20 @@ def main():
             ap.error(str(e))
         if system_path:
             try:
-                spec = parse_system_file(system_path)
+                conv_spec = parse_system_file(system_path)
             except ValueError as e:
                 ap.error(f"bad system file: {e}")
-            conv_cfg = spec.config(rl.conv_rules, rl.conv_params)
+            conv_cfg = conv_spec.config(rl.conv_rules, rl.conv_params)
         else:
             conv_cfg = ConventionConfig.from_overrides(rl.conv_rules,
                                                        rl.conv_params)
             print("no system file found (models/system.txt); using the "
                   "built-in convention defaults")
         n_on = sum(1 for w in conv_cfg.weights.values() if w > 0)
+        n_pat = len(conv_spec.entries) if conv_spec is not None else 0
         print(f"convention penalties on: conv_weight={rl.conv_weight} "
-              f"({n_on} rules, kr_tolerance={conv_cfg.kr_tolerance})"
+              f"({n_on} rules, {n_pat} pattern entries, "
+              f"kr_tolerance={conv_cfg.kr_tolerance})"
               + (f", system file {system_path}" if system_path else ""))
 
     out_dir = Path(args.out) if args.out else Path("runs") / ("rl-" + time.strftime("%Y%m%d-%H%M%S"))
@@ -354,7 +357,7 @@ def main():
                                cache=cache, opponent=opp_model,
                                greedy=rl.greedy, temp=rl.rollout_temp,
                                amp=rollout_amp, presolve=presolve,
-                               conv_cfg=conv_cfg)
+                               conv_cfg=conv_cfg, conv_spec=conv_spec)
         if member is not None:
             league.update_result(member, roll.team_imps)
 

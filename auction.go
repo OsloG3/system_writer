@@ -139,6 +139,7 @@ const (
 type auctionReader struct {
 	dealer int
 	n      int
+	calls  []int // every call fed so far, dealer order (pattern-layer prefix)
 
 	highest        int // highest bid call id (0 = none)
 	highDenom      int
@@ -159,6 +160,12 @@ type auctionReader struct {
 	oppBids    int // opponent *bid* calls (2/1 exception)
 
 	strong2cSide int
+
+	// game-force bookkeeping (mirrors the Python reader's gf tracking, so
+	// the pattern layer's `gf` clause sees the same state on both sides)
+	gf             [2]bool
+	s2cWaiting     bool
+	s2cOpenerCalls int
 
 	xyzStage  int
 	xyzOpener int
@@ -447,11 +454,42 @@ func (r *auctionReader) feed(call int) callInfo {
 		}
 	}
 
+	// strong 2C: responder's 2D is the waiting bid (it makes opener's 2NT
+	// rebid invitational instead of a game force)
+	if r.strong2cSide == side && seat == (r.opener+2)%4 &&
+		info.firstCall && call == bidID(2, 1) {
+		r.s2cWaiting = true
+	}
+
+	r.updateGF(seat, side, info)
 	r.updateXYZ(call, seat, info)
 	r.updateStayman(call, seat, info)
 	r.updateRKCB(call, seat, info)
+	r.calls = append(r.calls, call)
 	r.n++
 	return info
+}
+
+// updateGF tracks the per-side game force, mirroring AuctionReader._update_gf.
+func (r *auctionReader) updateGF(seat, side int, info callInfo) {
+	if info.kind != kindBid {
+		return
+	}
+	// strong 2C: after a 2D waiting response, opener's 2NT rebid is
+	// invitational (22-24), not a game force
+	if r.strong2cSide == side && seat == r.opener {
+		r.s2cOpenerCalls++
+		if r.s2cOpenerCalls == 2 && r.s2cWaiting &&
+			info.level == 2 && info.denom == denomN {
+			r.gf[side] = false
+		}
+	}
+	if info.is2over1 || info.fourthSuit || info.xyz2d || info.smolen {
+		r.gf[side] = true
+	}
+	if isGameOrAbove(info.level, info.denom) {
+		r.gf[side] = false // obligation fulfilled
+	}
 }
 
 func (r *auctionReader) updateXYZ(call, seat int, info callInfo) {

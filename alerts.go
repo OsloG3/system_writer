@@ -33,23 +33,26 @@ type bidAlert struct {
 // what each bot bid shows per the system file. Entries are nil for human
 // seats (bit s set in humanMask) and for calls the file attaches no meaning
 // to; an all-nil result collapses to nil so the field is omitted from the
-// payload.
+// payload. The auction walks forward with the pattern-layer state and the
+// structural reader, so pattern entries see the same context the trainer's
+// matcher sees.
 func (s *systemSpec) callAlerts(dealer int, calls []string, humanMask uint8) []any {
 	out := make([]any, len(calls))
 	found := false
-	r := newAuctionReader(dealer)
+	st := newMatchState(dealer)
 	for i, c := range calls {
 		id, ok := vocabID(c)
 		if !ok {
 			break
 		}
 		if seat := (dealer + i) % 4; humanMask&(1<<uint(seat)) == 0 {
-			if a := s.alertFor(r.classify(int(id), seat)); a != nil {
+			info := st.reader.classify(int(id), seat)
+			if a := s.alertForCall(st, int(id), info); a != nil {
 				out[i] = a
 				found = true
 			}
 		}
-		r.feed(int(id))
+		foldState(s.entries, dealer, st, i, int(id))
 	}
 	if !found {
 		return nil
@@ -61,15 +64,13 @@ func (s *systemSpec) callAlerts(dealer int, calls []string, humanMask uint8) []a
 // position after calls (dealer-relative): what bidding it would show per the
 // system file.
 func (s *systemSpec) optionAlerts(dealer int, calls, legal []string) []any {
-	r := newAuctionReader(dealer)
-	seat := r.nextSeat()
-	for _, c := range calls {
+	st := newMatchState(dealer)
+	for i, c := range calls {
 		id, ok := vocabID(c)
 		if !ok {
 			return nil
 		}
-		r.feed(int(id))
-		seat = r.nextSeat()
+		foldState(s.entries, dealer, st, i, int(id))
 	}
 	out := make([]any, len(legal))
 	found := false
@@ -78,7 +79,8 @@ func (s *systemSpec) optionAlerts(dealer int, calls, legal []string) []any {
 		if !ok {
 			continue
 		}
-		if a := s.alertFor(r.classify(int(id), seat)); a != nil {
+		info := st.reader.classify(int(id), st.reader.nextSeat())
+		if a := s.alertForCall(st, int(id), info); a != nil {
 			out[i] = a
 			found = true
 		}

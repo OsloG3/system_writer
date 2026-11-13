@@ -274,6 +274,46 @@
                 const sym = c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom];
                 return `${c.level}${sym}${pen} by ${SEAT_NAMES[c.declarer]}`;
             }
+            // Player names: a board carries names[N,E,S,W] (from the PBN roster
+            // tags, or the logged-in user for South on a history board). Empty
+            // slots fall back to the cardinal seat name.
+            function nameFor(names, seat) {
+                const n = names && names[seat] ? String(names[seat]).trim() : "";
+                return n || SEAT_NAMES[seat];
+            }
+            function contractTextNamed(c, names) {
+                if (!c) return "passed out";
+                const pen = ["", "X", "XX"][c.penalty] || "";
+                const sym = c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom];
+                return `${c.level}${sym}${pen} by ${nameFor(names, c.declarer)}`;
+            }
+            // A pair label for the pair stats: cardinal pair plus both players'
+            // names when the board set supplies them (already HTML-escaped).
+            function pairName(names, pair) {
+                const [x, y] = pair === "ns" ? [0, 2] : [1, 3];
+                const nx = names && names[x] ? String(names[x]).trim() : "";
+                const ny = names && names[y] ? String(names[y]).trim() : "";
+                const card = pair === "ns" ? "N-S" : "E-W";
+                return (nx && ny)
+                    ? `${card} \u00b7 ${escapeHtml(nx)} &amp; ${escapeHtml(ny)}`
+                    : card;
+            }
+            // Bulk runs cover many boards; take each seat's most common name.
+            function bulkSeatNames(results) {
+                const counts = [{}, {}, {}, {}];
+                for (const { board } of results) {
+                    if (!board || !board.names) continue;
+                    for (let s = 0; s < 4; s++) {
+                        const nm = String(board.names[s] || "").trim();
+                        if (nm) counts[s][nm] = (counts[s][nm] || 0) + 1;
+                    }
+                }
+                return [0, 1, 2, 3].map((s) => {
+                    let best = "", bestN = 0;
+                    for (const nm in counts[s]) if (counts[s][nm] > bestN) { best = nm; bestN = counts[s][nm]; }
+                    return best;
+                });
+            }
             function resultText(c, tricks) {
                 if (!c || tricks == null) return "";
                 const pen = ["", "X", "XX"][c.penalty] || "";
@@ -477,9 +517,13 @@
                 if (leader !== opener) throw new Error("Only a play from the opening lead can be read");
                 const plays = pbnPlays(playToks, hands, leader, contract.denom);
                 const rt = parseInt(tags.result, 10);
+                // [North]/[East]/[South]/[West] player names, indexed by seat
+                // (N=0 E=1 S=2 W=3); empty strings keep the cardinal labels.
+                const names = [tags.north, tags.east, tags.south, tags.west]
+                    .map((s) => String(s || "").trim().slice(0, 40));
                 return {
                     title: String(tags.event || "").trim().slice(0, 60),
-                    dealer, vuln, hands, calls, plays, contract,
+                    dealer, vuln, hands, calls, plays, contract, names,
                     resultTricks: Number.isFinite(rt) ? rt : null,
                 };
             }
@@ -538,6 +582,8 @@
                         resultTricks: (r.played != null ? r.played : null),
                         ts: r.ts, imps: r.imps, parNs: r.parNs, ddTricks: r.tricks,
                         contractStr: r.contract, claimed: !!r.claimed, idxLabel: k + 1,
+                        // the human always sat South; the other seats are bots
+                        names: ["", "", window.currentUser || "", ""],
                     }));
                     if (!boards.length) sourceError = "No played-out hands in your history yet. Play a few hands in \u201cPlay bridge\u201d first.";
                 } catch (e) {
@@ -570,7 +616,7 @@
                     title: p.title || ("Board " + (k + 1)),
                     hands: p.hands, dealer: p.dealer, vuln: p.vuln, calls: p.calls,
                     plays: p.plays, resultTricks: p.resultTricks, idxLabel: k + 1,
-                    contractStr: contractText(p.contract),
+                    names: p.names, contractStr: contractTextNamed(p.contract, p.names),
                 }));
                 boardResults = {}; sourceKind = "pbn";
                 if (boards.length === 1) { openBoard(0); }
@@ -713,7 +759,7 @@
                         : `<button class="an-btn sm" id="pasteShow"><span class="material-symbols-outlined">content_paste</span>Paste PBN text</button>`}
                     </div>
                     <input type="file" id="pbnFile" accept=".pbn,text/plain" class="an-hiddenfile" />
-                    <p class="an-note" style="margin-top:1rem">Double-dummy analysis is computed by the bridge engine, so it needs the bot sidecar to be running (the same one Play bridge uses). Everything runs on the submitted deal \u2014 all four hands are known (god-mode), which is what makes the per-card verdicts exact.</p>
+                    <p class="an-note" style="margin-top:1rem">Everything runs on the submitted deal \u2014 all four hands are known (god-mode), which is what makes the per-card verdicts exact.</p>
                 </div>`;
             }
 
@@ -775,7 +821,7 @@
                     ${headerCard(board, a, actual, made)}
                     ${dealCard(board, a, stepIdx)}
                     ${a.plays.length ? stepperCard(board, a, stepIdx) : `<div class="an-card an-muted">No cards were played in this hand, so there is nothing to step through. The deal-level double-dummy facts above still apply.</div>`}
-                    ${a.plays.length ? seatTable(seatSummary(a), target) : ""}
+                    ${a.plays.length ? seatTable(seatSummary(a), target, board.names) : ""}
                     ${a.plays.length ? logCard(board, a, stepIdx) : ""}
                 </div>`;
             }
@@ -796,7 +842,7 @@
                 if (opt.ew.game) optBits.push("E-W game"); if (opt.ew.small_slam) optBits.push("E-W slam");
                 return `<div class="an-card">
                     <div class="an-sumbar">
-                        <span class="big">${colorSuits(contractText(c))}</span>
+                        <span class="big">${colorSuits(contractTextNamed(c, board.names))}</span>
                         <span class="an-muted" style="font-size:.82rem">Dealer ${SEAT_LETTER[board.dealer]} \u00b7 Vuln ${VULN_NAMES[board.vuln]}</span>
                     </div>
                     <div class="an-kv" style="margin-top:.6rem">
@@ -830,7 +876,7 @@
                         }).join("");
                         return `<div class="an-suitline"><span class="an-su ${SUIT_CLASS[sym]}">${SUIT_SYMBOL[sym]}</span><span>${ranks || "\u2014"}</span></div>`;
                     }).join("");
-                    return `<div class="an-seat"><div class="nm"><b>${SEAT_NAMES[s]}</b> \u00b7 ${hcpOf(board.hands[s])} hcp${s === a.contract.declarer ? " \u00b7 declarer" : ""}</div>${lines}</div>`;
+                    return `<div class="an-seat"><div class="nm"><b>${escapeHtml(nameFor(board.names, s))}</b> \u00b7 ${hcpOf(board.hands[s])} hcp${s === a.contract.declarer ? " \u00b7 declarer" : ""}</div>${lines}</div>`;
                 }).join("");
                 return `<div class="an-card">
                     <div class="an-h">Deal \u2014 cards dim once played</div>
@@ -874,7 +920,7 @@
                 return `<div class="an-card" id="an-verdict-card">
                     <div class="an-h">Trick ${trickIdx + 1} \u00b7 card ${stepIdx + 1} of ${n} \u00b7 ${SEAT_NAMES[p.seat]} to play</div>
                     ${currentTrick(board, a, stepIdx, trickStart)}
-                    ${verdictPanel(a, p, stepIdx)}
+                    ${verdictPanel(a, p, stepIdx, board.names)}
                     <div class="an-stepper" style="margin-top:.9rem">
                         <button class="an-btn sm" id="s-first" ${stepIdx === 0 ? "disabled" : ""}><span class="material-symbols-outlined">skip_previous</span></button>
                         <button class="an-btn sm" id="s-prev" ${stepIdx === 0 ? "disabled" : ""}><span class="material-symbols-outlined">chevron_left</span></button>
@@ -910,8 +956,8 @@
                 return `<div class="an-trick" style="margin-bottom:.8rem">${cells}</div>`;
             }
 
-            function verdictPanel(a, p, stepIdx) {
-                const seatName = SEAT_NAMES[p.seat];
+            function verdictPanel(a, p, stepIdx, names) {
+                const seatName = escapeHtml(nameFor(names, p.seat));
                 const sideName = p.decl_side ? "declarer side" : "defence";
                 let pill, body;
                 if (p.best == null) {
@@ -942,9 +988,9 @@
                     ${body}${bestCards}`;
             }
 
-            function seatTable(summary, target) {
+            function seatTable(summary, target, names) {
                 const rows = summary.map((s) => `<tr>
-                    <td><span class="seat-badge">${SEAT_LETTER[s.seat]}</span> <span style="margin-left:.4rem">${SEAT_NAMES[s.seat]}</span></td>
+                    <td><span class="seat-badge">${SEAT_LETTER[s.seat]}</span> <span style="margin-left:.4rem">${escapeHtml(nameFor(names, s.seat))}</span></td>
                     <td class="n">${s.cards}</td>
                     <td class="n" style="color:${s.mistakes ? "#f6d9a8" : "#8fd694"}">${s.mistakes}</td>
                     <td class="n">${s.tricksLost}</td>
@@ -1008,8 +1054,9 @@
                 if (busy || !bulk.agg) return `<div class="an-wrap">${top}${prog}</div>`;
 
                 const ag = bulk.agg;
+                const bnames = bulkSeatNames(bulk.results);
                 const seatRows = ag.perSeat.map((s) => `<tr>
-                    <td><span class="seat-badge">${SEAT_LETTER[s.seat]}</span> <span style="margin-left:.4rem">${SEAT_NAMES[s.seat]}</span></td>
+                    <td><span class="seat-badge">${SEAT_LETTER[s.seat]}</span> <span style="margin-left:.4rem">${escapeHtml(nameFor(bnames, s.seat))}</span></td>
                     <td class="n">${s.cards}</td>
                     <td class="n" style="color:${s.mistakes ? "#f6d9a8" : "#8fd694"}">${s.mistakes}</td>
                     <td class="n">${(s.mistakes / (ag.boards || 1)).toFixed(2)}</td>
@@ -1032,7 +1079,7 @@
                     const crit = a.plays.filter((p) => p.critical).length;
                     const lost = a.plays.reduce((e, p) => e + (p.cost || 0), 0);
                     return `<tr class="an-browtr" data-open="${i}" style="cursor:pointer">
-                        <td>${colorSuits(contractText(c))}</td>
+                        <td>${colorSuits(contractTextNamed(c, board.names))}</td>
                         <td class="n">${actual != null ? resultText(c, actual) : "\u2013"}</td>
                         <td class="n">${made == null ? "\u2013" : made ? "<span style='color:#8fd694'>made</span>" : "<span style='color:#f1948a'>down</span>"}</td>
                         <td class="n">${a.dd_tricks}</td>
@@ -1071,7 +1118,7 @@
                         <div class="an-h">By pair \u2014 contracts, missed games & slams</div>
                         <table class="an-table">
                             <thead><tr><th>Pair</th><th class="n">Declared</th><th class="n">Made %</th><th class="n">Missed games</th><th class="n">Missed slams</th></tr></thead>
-                            <tbody>${sideRow("N-S", ag.side.ns)}${sideRow("E-W", ag.side.ew)}</tbody>
+                            <tbody>${sideRow(pairName(bnames, "ns"), ag.side.ns)}${sideRow(pairName(bnames, "ew"), ag.side.ew)}</tbody>
                         </table>
                         <p class="an-note" style="margin-top:.5rem">\u201cMissed\u201d counts boards where double-dummy says the pair could make a game / slam but the final contract was not one of theirs at that level. \u201cUnmakeable made\u201d counts contracts double-dummy says should fail but were made anyway (defensive errors).</p>
                     </div>

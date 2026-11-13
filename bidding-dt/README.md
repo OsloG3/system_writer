@@ -329,8 +329,50 @@ The system the bots are trained to follow is written in one **text file** --
 `models/system.txt` in the website repo (the deployed server reads it from
 there; `BIDDING_SYSTEM_FILE` / `--system` / `rl.system_file` override, and
 the default search also tries `../models/system.txt` from a nested checkout).
-It is INI-like: one `[section]` per call kind, named after the convention
-rule codes (`conventions/rules.DEFAULT_WEIGHTS`) plus a few alert-only kinds
+The file has two layers:
+
+**1. Sequence-pattern entries** -- the flexible layer, one line each, checked
+first (file order, first match wins):
+
+```
+PATTERN[; CLAUSES] = DESCRIPTION [@weight] [@!]
+
+1X-1Y-2Z; X<Z = reverse: 5+X 4+Z p>16 F @2.0
+1X-(1Y)-2Z; Z<Y = 2/1: 4+Z p>11.5 GF @0
+1NT-2C = 4+H OR 4+S stayman ask @!
+1X-1Y-1Z-2C = p<9.5 5+D weak diamond signoff OR p9.5-12.5 any invite @! @0
+...-X; we_xx OR dbls_by_us>=2 OR gf OR their_bid>=4S = PENALTY
+...-X = TO
+```
+
+- **Pattern**: calls joined by `-`, anchored at the auction start (leading
+  passes skipped, opponent passes skipped implicitly) or matched anywhere
+  with a `...-` prefix. Steps are literal (`1H`, `2NT`, `P`, `X`/`DBL`,
+  `XX`/`RDBL`) or generic suits `X Y Z W` (pairwise distinct, a repeated
+  letter binds the same suit); opponent calls go in parentheses (`(1Y)`).
+  The last step is the call being described.
+- **Clauses** (after `;` or `:`): OR-combined groups of AND atoms -- suit
+  comparisons (`X<Z`, order C<D<H<S<N) and state conditions (`gf`,
+  `uncontested`, `contested`, `balancing`, `passed`, `we_xx`, `they_xx`,
+  `dbls_by_us>=N`, `dbls_by_them>=N`, `their_bid>=4S`, `our_bid>=1C`).
+- **Description**: the alert text AND the training spec. ` OR ` splits
+  multiway meanings (the hand must satisfy all checkable tokens of any
+  branch; a text-only branch is a wildcard). Enforced tokens: lengths
+  (`5+X`, `4-6H`, `8+any`), K&R points (`p>16`, `p15-17`, `p<10`),
+  `balanced`, `F` (one-round force -- partner passing it is penalized),
+  `GF` (game force -- passing below game is penalized), and for doubles
+  `TO` / `PENALTY`: the doubler's hand is deliberately NOT described;
+  instead the partner is penalized for passing a TO double without
+  `to_pass_min_len` trumps or pulling a PENALTY double with more than
+  `penalty_pull_max_len`. Everything else is free alert text.
+- **Attributes**: `@N` penalty weight (default 1.0; `@0` = alert-only, and
+  a matched entry with weight>0 REPLACES the rule-code checks for that
+  call), `@!` = artificial (⚠ marker on the site). An entry with an empty
+  description suppresses the alert for matching calls.
+
+**2. Rule-code sections** -- the fallback for calls no pattern matches,
+INI-style, one `[section]` per call kind, named after the convention rule
+codes (`conventions/rules.DEFAULT_WEIGHTS`) plus a few alert-only kinds
 (`rkcb_ask`, `resp_2c_waiting`, `balancing_takeout`, `penalty_double`):
 
 ```ini
@@ -347,28 +389,41 @@ weight = 1.0
 xyz_2d_min_kr = 11.5
 ```
 
+`[general]` carries `kr_tolerance` / `conv_bonus` plus the pattern-layer
+discipline params (`f_pass_weight`, `to_pass_weight`, `penalty_pull_weight`,
+`to_pass_min_len`, `penalty_pull_max_len`).
+
 Two consumers, one file:
 
 - **Training interprets it at startup** (`rl/train_ppo.py`, when
-  `rl.conv_weight > 0`): every `weight` becomes a convention-penalty rule
-  weight and every numeric key a `ConventionConfig` threshold
-  (`conventions/system_file.SystemSpec.config`), with `rl.conv_rules` /
-  `rl.conv_params` from the YAML layering on top for experiments. The init
-  log line records which file was read; a missing explicit `--system` path
-  is a hard error, a missing default falls back to the built-in values.
+  `rl.conv_weight > 0`): section `weight`s become convention-penalty rule
+  weights and numeric keys `ConventionConfig` thresholds
+  (`system_file.SystemSpec.config`, with `rl.conv_rules` / `rl.conv_params`
+  from the YAML layering on top for experiments), and the pattern entries
+  are enforced per call by `patterns.SystemEnforcer` (wired through
+  `rl/rollout.convention_penalties`): a matched entry with weight>0 replaces
+  the rule-code check for that call, OR branches are checked against the
+  hero's hand in K&R points, and F/GF/TO/PENALTY add the force and
+  double-discipline penalties (`f_pass`, `gf_pass`, `to_pass`,
+  `penalty_pull`, `pat:<pattern>` violation codes in the log's `conv_top`).
+  The init log line records which file was read; a missing explicit
+  `--system` path is a hard error, a missing default falls back to the
+  built-in values.
 - **The website generates its bid alerts from it** (system_writer's
-  `system_file.go` + `auction.go`): the Go server classifies the live
-  auction with a port of `conventions/auction.AuctionReader`, resolves each
-  bot call to the matching section (`sectionFor` mirrors
-  `system_file.section_for` -- keep them in lockstep) and serves the
-  rendered `alert` text. No self-play statistics are involved, so alerts
-  exist for every position the file covers, and editing the file refreshes
-  them without a server restart.
+  `system_file.go` + `patterns.go` + `auction.go`): the Go server replays
+  the live auction through a port of `conventions/auction.AuctionReader`
+  and the pattern matcher, resolves each bot call to the first matching
+  entry (or, failing that, to its rule-code section via `sectionFor`, the
+  mirror of `system_file.section_for`) and serves the rendered text with
+  the suit variables resolved. No self-play statistics are involved, so
+  alerts exist for every position the file covers, and editing the file
+  refreshes them without a server restart.
 
 When you deploy a new checkpoint, copy the system file it was trained with
 next to it (`models/system.txt`), so the alerts always describe the system
-the bots actually enforce. `tests/test_system_file.py` and the Go
-`TestSectionFor` golden table keep the two resolutions in sync.
+the bots actually enforce. `tests/test_patterns.py` + `tests/
+test_system_file.py` and the Go `TestPattern*` / `TestSectionFor` golden
+tables keep the two implementations in lockstep.
 
 ## Hand inference (VQ encoder-decoder)
 

@@ -847,8 +847,6 @@ function renderLayout(options) {
             <div id="sidebarBackdrop" onclick="closeSidebar()"></div>
             <aside id="sidebar" class="w-64 bg-gradient-to-b from-ink to-ink-light text-white flex flex-col h-full py-6 gap-y-1 border-r-2 border-black/30">
                 <div class="px-6 mb-2">
-                    <h2 class="font-headline font-bold text-white tracking-tight">Library</h2>
-                    <p class="text-[10px] uppercase tracking-[0.25em] text-gold/80 font-label">Personal Workspace</p>
                     ${sideAction}
                 </div>
                 <nav class="flex-grow space-y-1 overflow-y-auto">

@@ -49,7 +49,8 @@ type systemSection struct {
 // systemSpec is the parsed system file.
 type systemSpec struct {
 	sections map[string]*systemSection
-	nAlerts  int // sections carrying alert text
+	entries  []*patEntry // sequence-pattern entries, in file order
+	nAlerts  int         // sections carrying alert text
 }
 
 // systemFilePath resolves the system file: SYSTEM_FILE, else the default.
@@ -62,6 +63,8 @@ func systemFilePath() string {
 
 // parseSystem turns system-file text into a spec. Malformed structural lines
 // fail loudly; unknown keys are the training side's business and skipped.
+// A line whose left-hand side is not a bare identifier is a sequence-pattern
+// entry (patterns.go) -- same routing as the Python parser.
 func parseSystem(text string) (*systemSpec, error) {
 	spec := &systemSpec{sections: map[string]*systemSection{}}
 	var cur *systemSection
@@ -87,14 +90,26 @@ func parseSystem(text string) (*systemSpec, error) {
 			spec.sections[curName] = cur
 			continue
 		}
-		key, val, ok := strings.Cut(line, "=")
-		if !ok {
+		lhs := line
+		if idx := descSepIndex(line); idx >= 0 {
+			lhs = strings.TrimSpace(line[:idx])
+		}
+		if !isKVLine(lhs) {
+			e, err := parseEntryLine(line)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %v", where, err)
+			}
+			spec.entries = append(spec.entries, e)
+			continue
+		}
+		idx := descSepIndex(line)
+		if idx < 0 {
 			return nil, fmt.Errorf("%s: expected key = value", where)
 		}
+		key, val := lhs, strings.TrimSpace(line[idx+1:])
 		if cur == nil {
 			return nil, fmt.Errorf("%s: key outside any section", where)
 		}
-		key, val = strings.TrimSpace(key), strings.TrimSpace(val)
 		switch key {
 		case "alert":
 			cur.alert = val
@@ -108,7 +123,7 @@ func parseSystem(text string) (*systemSpec, error) {
 			}
 		}
 	}
-	if len(spec.sections) == 0 {
+	if len(spec.sections) == 0 && len(spec.entries) == 0 {
 		return nil, errors.New("no sections found")
 	}
 	return spec, nil
@@ -335,7 +350,7 @@ func renderAlert(sec *systemSection, info callInfo) string {
 }
 
 // alertFor renders the client-visible alert for a classified call, or nil
-// when the system file has no meaning for it.
+// when the system file has no meaning for it (rule-code sections only).
 func (s *systemSpec) alertFor(info callInfo) *bidAlert {
 	name := sectionFor(info)
 	if name == "" {
@@ -346,6 +361,23 @@ func (s *systemSpec) alertFor(info callInfo) *bidAlert {
 		return nil
 	}
 	return &bidAlert{Text: renderAlert(sec, info), Artificial: sec.artificial}
+}
+
+// alertForCall renders the alert for one candidate call in the auction the
+// match state was built from: the sequence-pattern entries first (first
+// match wins; an entry whose rendered description is empty suppresses the
+// alert), then the rule-code sections as the fallback.
+func (s *systemSpec) alertForCall(st *matchState, call int, info callInfo) *bidAlert {
+	if len(s.entries) > 0 {
+		if e, binds := matchFirst(s.entries, st.reader.dealer, st.reader.calls,
+			call, st); e != nil {
+			if text := renderDesc(e, binds); text != "" {
+				return &bidAlert{Text: text, Artificial: e.artificial}
+			}
+			return nil // matched an entry with an empty description
+		}
+	}
+	return s.alertFor(info)
 }
 
 // ---- Loading (with mtime-based refresh) ----
@@ -381,8 +413,8 @@ func systemReady() *systemSpec {
 		return nil
 	}
 	sysState.spec, sysState.mod, sysState.size = spec, fi.ModTime(), fi.Size()
-	log.Printf("Bid alerts ready: %d sections (%d with alert text) from %s",
-		len(spec.sections), spec.nAlerts, sysPath)
+	log.Printf("Bid alerts ready: %d pattern entries + %d sections (%d with alert text) from %s",
+		len(spec.entries), len(spec.sections), spec.nAlerts, sysPath)
 	return spec
 }
 

@@ -56,14 +56,18 @@ board keeps that mode for its whole life.
 
 The bots' conventions are written in **`models/system.txt`** — one text file,
 two consumers. bidding-dt interprets it at the start of training (rule
-weights + thresholds for the convention enforcement, see
-`bidding-dt/README.md` "System file"), and the site **generates its bid
-alerts from it**: the Go server classifies the live auction (`auction.go`, a
-port of the Python auction reader), resolves every bot call — and every
-legal option on your turn — to the matching section of the file
-(`system_file.go`) and shows that section's `alert` text. Conventional calls
-(XYZ, RKCB, splinter, smolen, fourth suit, support cuebid, weak two, strong
-2♣, …) carry the ⚠ marker; natural calls the file covers (openings,
+weights + thresholds for the convention enforcement, plus the sequence-
+pattern entries it checks every call against; see `bidding-dt/README.md`
+"System file"), and the site **generates its bid alerts from it**: the Go
+server replays the live auction (`auction.go` + `patterns.go`, ports of the
+Python auction reader and pattern matcher), resolves every bot call — and
+every legal option on your turn — to the first matching **pattern entry**
+(e.g. `1X-1Y-2Z; X<Z = reverse: 5+X 4+Z p>16 F`, with generic suits X/Y/Z/W,
+opponent calls in parentheses, `...`-prefixed tail matching and state
+clauses like `gf` / `balancing` / `their_bid>=4S`), or failing that to the
+matching **rule-code section**, and shows the resolved text. Conventional
+calls (XYZ, RKCB, splinter, smolen, fourth suit, support cuebid, weak two,
+strong 2♣, …) carry the ⚠ marker; natural calls the file covers (openings,
 responses, raises, rebids, 2/1, overcalls, doubles) show their meaning as
 plain text; calls the file does not cover show no alert. No self-play
 statistics are involved, so alerts never depend on tree coverage. Editing
