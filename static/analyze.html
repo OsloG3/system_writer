@@ -192,12 +192,11 @@
             .an-vpill.crit { background: #7d2b23; color: #ffd7d1; }
             .an-vpill .material-symbols-outlined { font-size: 1rem; }
             .an-vpill.info { background: #3d3a36; color: #bababa; }
-            .an-vpill.sm { font-size: 0.7rem; padding: 0.16rem 0.5rem; gap: 0.25rem; white-space: nowrap; }
-            .an-vpill.sm .material-symbols-outlined { font-size: 0.9rem; }
-            /* auction box header row: label on the left, the current-card verdict
-               pill tucked into the top-right corner of the bidding diagram */
-            .an-auc-top { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; margin-bottom: 0.35rem; }
-            .an-auc-top .an-h { margin: 0; }
+            .an-vpill.sm { font-size: 0.72rem; padding: 0.2rem 0.6rem; gap: 0.3rem; white-space: nowrap; }
+            .an-vpill.sm .material-symbols-outlined { font-size: 0.95rem; }
+            /* the quick verdict for the card in focus, centred above the transport
+               inside the deal card so it stays in view while stepping */
+            .an-nowverdict { display: flex; justify-content: center; align-items: center; gap: 0.5rem; margin: 0.8rem 0 0.55rem; }
             .an-kv { display: flex; flex-wrap: wrap; gap: 0.35rem 1.2rem; font-size: 0.84rem; color: #bababa; margin-top: 0.35rem; }
             .an-kv b { color: #e8e6e3; }
             .an-bestcards { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.5rem; }
@@ -941,7 +940,7 @@
 
                 return `<div class="an-wrap">
                     ${top}
-                    ${headerCard(board, a, actual, made, stepIdx)}
+                    ${headerCard(board, a, actual, made)}
                     ${tableCard(board, a, stepIdx)}
                     ${a.plays.length ? stepperCard(board, a, stepIdx) : `<div class="an-card an-muted">No cards were played in this hand, so there is nothing to step through. The deal-level double-dummy facts above still apply.</div>`}
                     ${a.plays.length ? seatTable(seatSummary(a), target, board.names, a.contract.declarer) : ""}
@@ -963,7 +962,7 @@
                 return `<span class="an-vpill ${cls} sm" title="${t}: gave up ${p.cost} trick${p.cost === 1 ? "" : "s"}"><span class="material-symbols-outlined">trending_down</span>${who} ${card} \u2212${p.cost}${p.critical ? " \u26a0" : ""}</span>`;
             }
 
-            function headerCard(board, a, actual, made, stepIdx) {
+            function headerCard(board, a, actual, made) {
                 const c = a.contract;
                 const flags = [];
                 if (actual != null) {
@@ -998,7 +997,7 @@
                                     : `<span class="an-flag info" title="Neither side can make a game with best play on this deal.">No makeable game</span>`}
                             </div>
                         </div>
-                        <div class="an-head-auc">${auctionBox(board, miniVerdict(a, stepIdx))}</div>
+                        <div class="an-head-auc">${auctionBox(board)}</div>
                     </div>
                 </div>`;
             }
@@ -1026,9 +1025,13 @@
                     return `<div class="an-seat"><div class="nm"><b>${escapeHtml(nameFor(board.names, s))}</b> \u00b7 ${hcpOf(board.hands[s])} hcp${role}</div>${lines}</div>`;
                 };
                 const n = a.plays.length;
-                // transport lives with the cards so the diagram and the arrows
-                // fit on screen together while stepping
-                const controls = n ? `<div class="an-stepper" style="margin-top:.85rem">
+                // The quick verdict for the card in focus lives INSIDE this card,
+                // right above the transport, so it stays in view while stepping
+                // (the header/auction card scrolls away). Transport sits with the
+                // cards too, so the diagram, the verdict and the arrows all fit
+                // on screen together.
+                const controls = n ? `<div class="an-nowverdict">${miniVerdict(a, stepIdx)}</div>
+                    <div class="an-stepper">
                         <button class="an-btn sm" id="s-first" ${stepIdx === 0 ? "disabled" : ""} title="First card"><span class="material-symbols-outlined">skip_previous</span></button>
                         <button class="an-btn sm" id="s-prev" ${stepIdx === 0 ? "disabled" : ""} title="Previous card"><span class="material-symbols-outlined">chevron_left</span></button>
                         <span class="an-count">${stepIdx + 1} / ${n}</span>
@@ -1072,7 +1075,7 @@
                 return `<div class="an-tc">${slot(0)}${slot(3)}<div class="an-tc-mid">${mid}</div>${slot(1)}${slot(2)}</div>`;
             }
 
-            function auctionBox(board, verdictHtml) {
+            function auctionBox(board) {
                 const dealer = board.dealer;
                 const rows = [];
                 for (let i = 0; i < board.calls.length; i++) {
@@ -1087,7 +1090,7 @@
                     for (let k = 0; k < 4; k++) cells += `<span>${row && row[k] ? callChip(row[k]) : ""}</span>`;
                     return `<div class="an-auc-row">${cells}</div>`;
                 }).join("");
-                return `<div class="an-auc-top"><span class="an-h">Auction</span>${verdictHtml || ""}</div><div class="an-auc-head">${head}</div>${body}`;
+                return `<div class="an-h">Auction</div><div class="an-auc-head">${head}</div>${body}`;
             }
             function callChip(c) {
                 if (c === "P") return `<span class="an-call an-call-p">pass</span>`;
