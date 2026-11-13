@@ -42,6 +42,12 @@ class RLConfig:
     # artificial convention (XYZ, RKCB, splinter, smolen, fourth suit,
     # cuebid raise) adds the small flat conv_params.conv_bonus reward.
     conv_weight: float = 0.0       # 0 disables the convention penalty
+    system_file: str = ""          # the conventions text file (alert texts +
+                                   # rule weights + thresholds) interpreted at
+                                   # the start of training and served by the
+                                   # website as bid alerts; empty = search
+                                   # models/system.txt, ../models/system.txt
+                                   # (--system / BIDDING_SYSTEM_FILE win)
     conv_rules: dict = field(default_factory=dict)   # rule code -> weight
                                    # override (0 disables one rule)
     conv_params: dict = field(default_factory=dict)  # ConventionConfig

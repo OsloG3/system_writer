@@ -1,0 +1,280 @@
+# ============================================================================
+# The bidding bot's system -- conventions in one text file.
+#
+# This file is the single source of truth for the system the bots are trained
+# to follow and for the bid alerts the website shows:
+#
+#   * bidding-dt interprets it at the START OF TRAINING (rl/train_ppo.py
+#     --system / rl.system_file, default search: models/system.txt then
+#     ../models/system.txt): every `weight` becomes a convention-penalty rule
+#     weight and every numeric key a ConventionConfig threshold, so editing a
+#     range here re-tunes what the RL loop enforces (rl.conv_weight).
+#   * the website (system_writer) reads the same file and GENERATES THE BID
+#     ALERTS from it: the Go server classifies the live auction against the
+#     system and serves the matching section's `alert` text for every bot
+#     call (and for each of the human's legal options). No self-play
+#     statistics are involved.
+#
+# Format (INI-like):
+#   [section]                 one section per call kind; section names are the
+#                             convention rule codes (bidding_dt.conventions.
+#                             rules.DEFAULT_WEIGHTS) plus a few alert-only
+#                             kinds (rkcb_ask, resp_2c_waiting,
+#                             balancing_takeout, penalty_double)
+#   alert = text              what the website shows for a call of this kind;
+#                             placeholders: {call} {suit} {other} {trump}
+#                             {partner_suit} {shows} {level}
+#   artificial = yes          mark the call with the alert (⚠) symbol on the
+#                             website (default: no)
+#   weight = N                convention-penalty weight used by training
+#                             (0 disables the rule; only valid on rule codes)
+#   steps = a | b | c | d     RKCB step-response texts ({shows} placeholder)
+#   <param> = value           numeric threshold interpreted by training
+#                             (ConventionConfig field names; ranges "lo-hi",
+#                             booleans yes/no)
+#   # comment                 lines starting with # or ; are ignored
+#
+# Strength numbers are Kaplan-Rubens points (conventions/kr.py), applied with
+# +-kr_tolerance slack. Ship this file to the server next to the checkpoint it
+# describes (models/system.txt); SYSTEM_FILE overrides the path.
+# ============================================================================
+
+[general]
+kr_tolerance = 1.0
+conv_bonus = 0.05
+
+# ---- openings ---------------------------------------------------------------
+
+[open_1nt_range]
+alert = {call}: 15-17 balanced
+weight = 1.0
+nt_range = 15-17
+
+[open_2nt_range]
+alert = {call}: 20-21 balanced
+weight = 1.0
+nt2_range = 20-21
+
+[open_2c_strong]
+alert = {call}: strong artificial -- 20.5+ or a long strong suit; game force until opener rebids 2NT
+artificial = yes
+weight = 1.0
+two_c_min_kr = 20.5
+two_c_suit_len = 6
+two_c_suit_min_kr = 16.5
+two_c_longsuit_len = 8
+
+[open_major_5card]
+alert = {call}: 5+ {suit}, opening values (rule of 20; lighter in 3rd/4th seat)
+weight = 1.0
+
+[open_minor_length]
+alert = {call}: opening values, 3+ diamonds / 2+ clubs, no biddable 5-card major
+weight = 0.5
+
+[open_weak2]
+alert = {call}: weak two -- 6-card {suit} (5-7 allowed), about 5-10 HCP
+artificial = yes
+weight = 0.1
+weak2_range = 4-12
+weak2_len = 5-7
+
+[open_values]
+# training-only: opening strength (no alert text; the shape rules above speak)
+weight = 0.5
+open_min_kr = 11.0
+open_min_kr_late = 9.5
+open_rule20 = yes
+
+# ---- responses --------------------------------------------------------------
+
+[resp_2c_waiting]
+alert = {call}: waiting response to strong 2♣ -- any hand
+artificial = yes
+
+[resp_2c_positive]
+alert = {call}: positive response to strong 2♣ -- 7.5+, 5+ cards in the bid suit
+weight = 0.5
+resp_2c_pos_min_kr = 7.5
+resp_2c_pos_min_len = 5
+
+[resp_1nt]
+alert = {call}: 5-12, denies a biddable 4-card major
+weight = 0.5
+resp_1nt_range = 5-12
+
+[resp_raise]
+alert = {call}: raise -- 3+ {suit} (4+ for a minor), 5-12.5
+weight = 0.5
+raise_range = 5-12.5
+raise_support_major = 3
+raise_support_minor = 4
+
+[resp_jump_raise]
+alert = {call}: limit raise -- 3+ {suit} (4+ for a minor), 10-13
+weight = 0.5
+jump_raise_range = 10-13
+jump_raise_support_major = 3
+jump_raise_support_minor = 4
+
+[resp_2nt]
+alert = {call}: 10.5-12.5 balanced
+weight = 0.5
+resp_2nt_range = 10.5-12.5
+
+[resp_3nt]
+alert = {call}: 12.5-15.5 balanced
+weight = 0.5
+resp_3nt_range = 12.5-15.5
+
+[two_one_gf]
+alert = {call}: 2/1 game force -- 11.5+, 4+ {suit} (3+ clubs)
+weight = 1.0
+two_one_min_kr = 11.5
+two_one_min_len = 4
+two_one_min_len_clubs = 3
+
+[inv_jump_shift]
+alert = {call}: invitational jump shift -- exactly 6+ {suit}, 10-11 (in competition too)
+weight = 2.0
+js_range = 10.5-12.5
+js_min_len = 6
+
+# ---- opener rebids ----------------------------------------------------------
+
+[rebid_1nt]
+alert = {call}: opener's rebid -- 11.5-14.5
+weight = 0.5
+rebid_1nt_range = 11.5-14.5
+
+[rebid_2nt]
+alert = {call}: opener's jump rebid -- 17.5-19.5 balanced
+weight = 0.5
+rebid_2nt_range = 17.5-19.5
+
+[strong_jump_rebid]
+alert = {call}: opener's jump shift -- strong, 17+ (or 6+ {suit} and 14+)
+weight = 0.5
+strong_js_min_kr = 17.0
+strong_js_alt_kr = 14.0
+strong_js_alt_len = 6
+
+# ---- game-forcing conventions -----------------------------------------------
+
+[fourth_suit]
+alert = {call}: fourth suit -- artificial, game force
+artificial = yes
+weight = 1.0
+fourth_suit_min_kr = 10.0
+
+[xyz_2c]
+alert = {call}: XYZ relay -- any invite, or a diamond signoff
+artificial = yes
+weight = 1.0
+xyz_2c_max_kr = 12.5
+xyz_inv_min_kr = 9.5
+xyz_signoff_min_d = 5
+
+[xyz_2d]
+alert = {call}: XYZ -- artificial game force
+artificial = yes
+weight = 1.0
+xyz_2d_min_kr = 11.5
+
+[xyz_relay]
+alert = {call}: XYZ -- opener completes with 2♦ without extras (15.5+ may bypass)
+artificial = yes
+weight = 2.5
+xyz_relay_break_kr = 15.5
+
+[xyz_pass]
+alert = diamond signoff -- passing the forced XYZ relay, below invitational values
+artificial = yes
+weight = 2.5
+
+[gf_pass]
+# training-only: never pass below game once a game force is on
+weight = 2.0
+
+# ---- slam conventions -------------------------------------------------------
+
+[rkcb_ask]
+alert = {call}: RKCB for {trump} -- keycard ask (5♣ 0/3, 5♦ 1/4, 5♥ 2 without, 5♠ 2 with the trump queen)
+artificial = yes
+rkcb_min_kr = 11.0
+rkcb_min_fit = 3
+
+[rkcb_response]
+alert = {call}: RKCB response for {trump} -- {shows}
+artificial = yes
+weight = 1.0
+steps = 0 or 3 keycards | 1 or 4 keycards | 2 keycards without the trump queen | 2 keycards with the trump queen
+
+[splinter]
+alert = {call}: splinter -- singleton/void {suit}, fit for partner's {partner_suit}, slam interest
+artificial = yes
+weight = 2.0
+splinter_min_kr = 12.0
+splinter_max_len = 1
+splinter_fit_major = 4
+splinter_fit_minor = 5
+
+[smolen]
+alert = {call}: Smolen -- 4 {suit} and 5+ {other}, game force
+artificial = yes
+weight = 1.0
+smolen_bid_len = 4
+smolen_other_len = 5
+
+[cuebid_support]
+alert = {call}: cuebid of their {suit} -- invitational or better support for partner's {partner_suit}
+artificial = yes
+weight = 1.0
+cuebid_min_kr = 10.0
+cuebid_fit_major = 3
+cuebid_fit_minor = 4
+
+# ---- competition ------------------------------------------------------------
+
+[overcall]
+alert = {call}: overcall -- 5+ {suit} (4 only with 13+ at the 1 level), values by level, lighter in balancing seat
+weight = 1.0
+overcall1_min_kr = 7.0
+overcall2_min_kr = 10.0
+overcall3_min_kr = 12.5
+overcall1_bal_min_kr = 6.5
+overcall2_bal_min_kr = 8.0
+overcall_min_len = 5
+overcall3_min_len = 6
+overcall_bal1_min_len = 4
+overcall_short_ok_kr = 13.0
+
+[overcall_1nt]
+alert = {call}: 1NT overcall -- 15-18 with a stopper in their suit
+weight = 0.5
+overcall_nt_range = 14.5-18.5
+
+[overcall_1nt_bal]
+alert = {call}: balancing 1NT -- 12-15
+weight = 0.5
+overcall_nt_bal_range = 11.5-15.5
+
+[takeout_double]
+alert = {call}: takeout -- opening-ish values, 3+ in every unbid major; an 18+ power double needs no shape
+weight = 1.0
+takeout_min_kr = 10.0
+takeout_bal_min_kr = 8.0
+takeout_major_len = 3
+takeout_power_kr = 18.0
+
+[balancing_takeout]
+alert = {call}: balancing takeout -- 8+, shape requirements relaxed
+
+[negative_double]
+alert = {call}: negative double -- values or an unbid 4-card major
+weight = 1.5
+negative_min_kr = 5.5
+negative_values_kr = 8.5
+
+[penalty_double]
+alert = {call}: penalty-oriented -- our side has bid

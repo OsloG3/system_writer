@@ -125,3 +125,77 @@ def test_score_known_deal(svc, tmp_path):
     assert passout["contract"] is None and passout["tricks"] is None
     assert passout["score_ns"] == 0 and passout["par_ns"] == 430
     assert passout["imps"] == pytest.approx(-10.0)  # IMPs(0 - 430)
+
+
+def _legal_play_out(hands, opener, trump_int):
+    """Play all 52 cards in true order (following suit) -> [[seat, 'AS'], ...]."""
+    from bidding_dt.data.hands import str_to_cards
+    from bidding_dt.dd import fastsolve
+    ranks = "AKQJT98765432"
+    rem = [set(str_to_cards(h).tolist()) for h in hands]
+    cs = lambda cid: ranks[cid // 4] + "SHDC"[cid % 4]  # noqa: E731
+    plays, leader = [], opener
+    for _ in range(13):
+        trick = []
+        for k in range(4):
+            s = (leader + k) % 4
+            if k == 0:
+                card = min(rem[s])
+            else:
+                ls = trick[0][1] % 4
+                follow = [c for c in rem[s] if c % 4 == ls]
+                card = min(follow) if follow else min(rem[s])
+            rem[s].discard(card)
+            trick.append((s, card))
+            plays.append([s, cs(card)])
+        leader = trick[fastsolve.trick_winner([c for _, c in trick], trump_int)][0]
+    return plays
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_analyze_full_hand(svc):
+    from bidding_dt.data.vocab import call_to_id
+    from bidding_dt.dd.reward import contract_from_auction
+    from bidding_dt.dd.solver import _PROJ_DENOM_TO_ENDPLAY
+
+    calls = "1H P 2H P P P".split()
+    contract = contract_from_auction(0, [call_to_id(c) for c in calls])
+    trump_int = _PROJ_DENOM_TO_ENDPLAY[contract.denom]
+    opener = (contract.declarer + 1) % 4
+    plays = _legal_play_out(DEAL1, opener, trump_int)
+
+    out = svc.analyze({"dealer": 0, "vuln": 2, "calls": calls, "hands": DEAL1,
+                       "plays": plays})
+    assert out["contract"] == {"level": 2, "denom": "H", "declarer": 0, "penalty": 0}
+    assert out["target"] == 8 and out["dd_tricks"] == 10
+    assert out["n"] == 52 and out["actual_tricks"] is not None
+    assert len(out["plays"]) == 52
+    # opening-lead invariant: DD-best declarer total == the deal's DD tricks
+    assert out["plays"][0]["best_decl"] == out["dd_tricks"]
+    for p in out["plays"]:
+        assert p["cost"] >= 0 and isinstance(p["mistake"], bool)
+        assert p["mistake"] == (p["cost"] > 0)
+        if p["decl_side"]:
+            assert p["best_decl"] >= p["played_decl"]
+        else:
+            assert p["best_decl"] <= p["played_decl"]
+    for side in ("ns", "ew"):
+        assert set(out["optimal"][side]) == {
+            "best_tricks", "game", "small_slam", "grand_slam"}
+    assert len(out["table"]) == 4 and all(len(r) == 5 for r in out["table"])
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_analyze_rejects_bad_input(svc):
+    # passed out -> nothing to analyze
+    with pytest.raises(ServiceError):
+        svc.analyze({"dealer": 0, "vuln": 0, "calls": ["P"] * 4,
+                     "hands": DEAL1, "plays": []})
+    # a card the acting seat does not hold (K of spades sits with South)
+    with pytest.raises(ServiceError):
+        svc.analyze({"dealer": 0, "vuln": 2, "calls": "1H P 2H P P P".split(),
+                     "hands": DEAL1, "plays": [[0, "KS"]]})
+    # an incomplete deal
+    with pytest.raises(ServiceError):
+        svc.analyze({"dealer": 0, "vuln": 0, "calls": "1H P 2H P P P".split(),
+                     "hands": [DEAL1[0]] * 4, "plays": []})

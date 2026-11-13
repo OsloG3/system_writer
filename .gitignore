@@ -10,7 +10,8 @@ data/game/*.json
 data/*.tmp
 data/*/*.tmp
 
-# compiled bid-alert cache (regenerated from models/last.json on startup)
+# legacy compiled bid-alert caches (the stats tree is no longer served;
+# alerts now come from models/system.txt)
 models/*.bin
 models/*.tmp
 

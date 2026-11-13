@@ -25,10 +25,12 @@ the print with --min-n / --depth; the JSON always holds the full tree):
 (root = the deals played; every other node = one bot bid in one sequence)
 
 A node whose call is one of the system's artificial conventions in that
-sequence additionally carries a "conv" field with the alert text (XYZ,
-RKCB ask/response, splinter, smolen, fourth-suit GF, support cuebid --
-conventions/alerts.py); the Go alert loader (system_writer/alerts.go)
-serves it to the client alongside the stat ranges.
+sequence additionally carries a "conv" field with the alert text. The texts
+come from the system file (--system, the conventions text file training
+interprets and the website serves its alerts from) when one is found, else
+from conventions/alerts.py. The website itself no longer reads this tree --
+it generates its bid alerts straight from the system file -- so this dump is
+a debugging/inspection report of what the model actually bids.
 """
 
 import argparse
@@ -41,6 +43,7 @@ import torch
 
 from ..conventions.alerts import convention_alert
 from ..conventions.auction import AuctionReader
+from ..conventions.system_file import find_system_file, parse_system_file
 from ..data.hands import SUITS
 from ..data.vocab import id_to_call
 from ..env.auction_env import AuctionBatch
@@ -112,15 +115,16 @@ def selfplay_tree(model, deals, dealer: np.ndarray, vuln: np.ndarray, device,
 
 
 def node_to_json(node: dict, reader: AuctionReader | None = None,
-                 conv: str | None = None) -> dict:
+                 conv: str | None = None, spec=None) -> dict:
     """JSON view: call names, children sorted by frequency; the root (and
     any never-observed node) carries null hand stats.
 
     `reader` is the auction state before this node's call (dealer-relative:
     the tree is keyed by the sequence from the dealer, so seat = depth) and
     `conv` the alert text of this node's call, classified with the
-    conventions reader in the parent frame. Convention nodes carry it as
-    the "conv" field for the Go alert loader.
+    conventions reader in the parent frame. `spec` is an optional parsed
+    system file (conventions/system_file.py) whose alert texts replace the
+    built-in ones. Convention nodes carry the text as the "conv" field.
     """
     if reader is None:
         reader = AuctionReader(0, 0)
@@ -139,7 +143,7 @@ def node_to_json(node: dict, reader: AuctionReader | None = None,
         child_reader = reader.copy()
         info = child_reader.feed(call)
         children[id_to_call(call)] = node_to_json(
-            c, child_reader, convention_alert(info))
+            c, child_reader, convention_alert(info, spec), spec)
     out["children"] = children
     return out
 
@@ -204,9 +208,22 @@ def main():
                     help="max print depth in calls from the dealer (default all)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default=None)
+    ap.add_argument("--system", default=None,
+                    help="system file whose alert texts stamp the conv fields "
+                         "(default search: BIDDING_SYSTEM_FILE, "
+                         "models/system.txt, ../models/system.txt)")
     ap.add_argument("--out", default=None,
                     help="write the full tree JSON here (.zst/.gz compress)")
     args = ap.parse_args()
+
+    spec = None
+    try:
+        sys_path = find_system_file(args.system)
+    except FileNotFoundError as e:
+        ap.error(str(e))
+    if sys_path:
+        spec = parse_system_file(sys_path)
+        print(f"convention alerts from the system file: {sys_path}")
 
     device = pick_device(args.device)
     rng = np.random.default_rng(args.seed)
@@ -226,7 +243,7 @@ def main():
         report = {"ckpt": args.ckpt, "deals": args.deals, "seed": args.seed,
                   "greedy": bool(args.greedy),
                   "temp": None if args.greedy else args.temp,
-                  "tree": node_to_json(root)}
+                  "tree": node_to_json(root, spec=spec)}
         write_report(report, args.out)
         print(f"\nfull tree written to {args.out}")
 

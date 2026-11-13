@@ -1695,14 +1695,14 @@
                 return Math.floor(hrs / 24) + "d ago";
             }
 
-            // ---- Bid alerts (from the bot model's self-play tree) ----
+            // ---- Bid alerts (generated from the bots' system file) ----
             // state.alerts parallels state.calls (null for human seats and
-            // unseen positions); state.optionAlerts parallels state.legal.
-            // An alert may carry a.conv: the system's convention alert text
-            // (XYZ, RKCB, splinter, smolen, fourth suit, support cuebid),
-            // shown first when present.
-            const ALERT_SUITS = ["♠", "♥", "♦", "♣"]; // S,H,D,C server order
-
+            // for calls the system file attaches no meaning to);
+            // state.optionAlerts parallels state.legal. Each alert is the
+            // system file's text for that call in that auction ({text});
+            // a.artificial marks the system's conventional calls (XYZ, RKCB,
+            // splinter, smolen, fourth suit, support cuebid, weak two, ...)
+            // with the ⚠ symbol.
             function callLabel(c) {
                 if (!c) return "";
                 if (c === "P") return "pass";
@@ -1713,15 +1713,7 @@
 
             function alertText(a) {
                 if (!a) return "";
-                const suits = a.suits
-                    .map((r, i) => `${ALERT_SUITS[i]} ${r[0]}–${r[1]}`)
-                    .join(" · ");
-                const pct =
-                    a.pct > 0
-                        ? ` · picked ${(a.pct * 100).toFixed(1)}% here`
-                        : "";
-                const conv = a.conv ? `⚠ ${a.conv} · ` : "";
-                return `${conv}${a.hcp[0]}–${a.hcp[1]} HCP · ${suits} · ${a.n.toLocaleString()} self-play deals${pct}`;
+                return (a.artificial ? "⚠ " : "") + a.text;
             }
 
             function alertBoxLine(label, text, dim) {
@@ -1776,7 +1768,7 @@
                 }
                 return alertBoxLine(
                     "",
-                    "Bid alerts: tap a marked bid to see what it promises; hover or tap % on your own options.",
+                    "Bid alerts: tap a marked bid to see what it shows; hover your own options for what they would promise.",
                     true,
                 );
             }
@@ -2543,10 +2535,7 @@
                     if (!a) return { t: "", b: "" };
                     return {
                         t: ` title="${escapeHtml(alertText(a))}"`,
-                        b:
-                            a.pct > 0
-                                ? `<i class="cb-pct">${Math.round(a.pct * 100)}%</i>`
-                                : "",
+                        b: a.artificial ? `<i class="cb-pct">⚠</i>` : "",
                     };
                 };
                 const tiles = SUIT_ORDER.map((d) => {

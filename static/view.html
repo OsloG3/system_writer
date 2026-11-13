@@ -61,6 +61,9 @@
                     treeData.name ||
                     (treeData.roots[0] && treeData.roots[0].name) ||
                     id;
+                // The page heading is tucked behind the info button, so keep
+                // the system name visible in the browser tab.
+                document.title = `${treeData.name || id} | Garbridge`;
                 const wanted = new URLSearchParams(
                     window.location.search,
                 ).get("root");

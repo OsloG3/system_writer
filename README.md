@@ -2,9 +2,10 @@
 
 A website to build Bridge bidding systems and practice.
 
-The menu has four sections: **Collections** (`/`, build/edit your bidding
-systems), **Bid only** (`/play?m=bid`), **Play bridge** (`/play?m=play`) and
-**Card problems** (`/drills`, author and practise scripted card-play problems).
+The menu has five sections: **Collections** (`/`, build/edit your bidding
+systems), **Bid only** (`/play?m=bid`), **Play bridge** (`/play?m=play`),
+**Card problems** (`/drills`, author and practise scripted card-play problems)
+and **Hand analysis** (`/analyze`, double-dummy breakdown of a played hand).
 
 ## Bid only (`/play?m=bid`)
 
@@ -50,6 +51,25 @@ the full auction and the play.
 
 Both solo sections send `{"mode":"bid"|"play"}` to `POST /api/play/new`; the
 board keeps that mode for its whole life.
+
+### Bid alerts (the bots' system file)
+
+The bots' conventions are written in **`models/system.txt`** — one text file,
+two consumers. bidding-dt interprets it at the start of training (rule
+weights + thresholds for the convention enforcement, see
+`bidding-dt/README.md` "System file"), and the site **generates its bid
+alerts from it**: the Go server classifies the live auction (`auction.go`, a
+port of the Python auction reader), resolves every bot call — and every
+legal option on your turn — to the matching section of the file
+(`system_file.go`) and shows that section's `alert` text. Conventional calls
+(XYZ, RKCB, splinter, smolen, fourth suit, support cuebid, weak two, strong
+2♣, …) carry the ⚠ marker; natural calls the file covers (openings,
+responses, raises, rebids, 2/1, overcalls, doubles) show their meaning as
+plain text; calls the file does not cover show no alert. No self-play
+statistics are involved, so alerts never depend on tree coverage. Editing
+the file refreshes the alerts without a restart (re-read on mtime change);
+`SYSTEM_FILE` overrides the path. Ship the file next to the checkpoint it
+describes.
 
 ### Hand display setting (cards / diagram)
 
@@ -196,6 +216,47 @@ author via `GET /api/drills/{id}`. Ratings are set with
 `POST /api/drills/{id}/rate` (`{stars, sessionId}`), which requires a finished
 session of that problem by the caller.
 
+## Hand analysis (`/analyze`)
+
+A full **double-dummy** breakdown of a played hand, card by card. A hand comes
+either from the caller's own **play history** (the played-out boards in
+`data/game/play_stats.json`'s `recentPlay`, where the human sat South) or from
+an **uploaded/pasted PBN** (one board or a whole session). The page sends the
+deal, its auction and the cards played to `POST /api/analyze/board`, a thin
+stateless proxy to the bidding-dt sidecar's `POST /analyze`, which owns the DDS
+solver. Because all four hands are known (god-mode), the verdicts are exact.
+
+For **every card**, the sidecar solves the position *before* that card and
+compares the played card's double-dummy trick count (for the acting side) with
+the best any legal card achieves (`dd/fastsolve.solve_positions`, the same
+primitive the card bot's `_dd_safe` gate uses — a whole hand is solved in one
+memoised batch). A card below the best is a **DD mistake** that **cost** that
+many tricks; one that flips the contract between make and defeat (DD-best vs.
+the card actually played, target = level + 6) is **contract-critical**. Each
+response also carries the deal's DD table, par, the played contract's DD trick
+count, and each side's makeable **game/slam** (for the bulk stats).
+
+- **Single hand** — step card by card (arrow keys, or the transport buttons)
+  with the current trick, the acting hand, and the verdict for the card in
+  focus (best alternative cards, tricks given up, whether it was
+  contract-critical). **Next mistake** jumps to the next card that was not
+  double-dummy accurate. The four-hand diagram dims each card once played, and
+  the colour-coded play log (tap any card to jump) shows the whole hand at a
+  glance. A per-player table gives each seat's DD mistakes, tricks lost
+  (over/under DD) and contract-critical count.
+- **Bulk** — analyze a whole set of boards (all of your history, or a
+  multi-board PBN) one request per board with a progress bar, then read the
+  aggregate: DD mistakes **by each player** (count, per-board, tricks lost,
+  contract-critical), **missed games and slams** and **% of contracts made per
+  pair**, **unmakeable contracts made** (DD says it should fail, poor defence
+  let it through), average contract level, and average tricks over/under DD.
+
+`/api/analyze/board` needs no login (anyone may analyze a submitted PBN); the
+play **history** it can pull from is itself login-gated (`GET /api/play/stats`).
+Like the rest of the bot-backed features, analysis requires the bidding-dt
+sidecar to be running (see below). A hand that passes out is rejected — there
+is no play to analyze.
+
 ## Rankings
 
 Three separate leaderboards (`GET /api/play/rankings`, shown in both lobbies):
@@ -250,6 +311,8 @@ the installed app. The service worker (Web Push) is registered site-wide from
 Environment:
 
 - `BIDDING_DT_URL` — sidecar URL (default `http://127.0.0.1:8081`)
+- `SYSTEM_FILE` — the bots' conventions file the bid alerts are generated
+  from (default `models/system.txt`; the same file training interprets)
 - `PLAY_BOTS` — optional per-seat model names for multi-model sidecars,
   e.g. `PLAY_BOTS="N=tiny,E=rl,W=rl"`
 - `ATHENEUM_DATA_DIR` — where accounts/trees/play stats live (default `./data`)

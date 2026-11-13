@@ -717,7 +717,7 @@ function renderLayout(options) {
     // options: { mode: 'view' | 'edit' | 'practice' | 'play' | 'index', title: '', titleId: '', subtitle: '', badge: '', badgeColor: '' }
     const mode = options.mode || 'index';
     const badgeColor = options.badgeColor || 'bg-gold/90 text-on-gold';
-    const modeLabel = mode === 'edit' ? 'Edit Mode' : mode === 'view' ? 'View Mode' : mode === 'practice' ? 'Practice Mode' : mode === 'bridge' ? 'Play Bridge' : mode === 'play' ? 'Bid Only' : mode === 'drill' ? 'Card Problems' : 'Home';
+    const modeLabel = mode === 'edit' ? 'Edit Mode' : mode === 'view' ? 'View Mode' : mode === 'practice' ? 'Practice Mode' : mode === 'bridge' ? 'Play Bridge' : mode === 'play' ? 'Bid Only' : mode === 'drill' ? 'Card Problems' : mode === 'analyze' ? 'Hand Analysis' : 'Home';
 
     const btnGhost = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-[#3d3a36] text-[#e8e6e3] border border-white/10 rounded font-label text-sm hover:bg-[#4a4642] transition-all no-underline active:translate-y-px";
     const btnPrimary = "flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 bg-gradient-to-b from-gold-light to-gold text-on-gold rounded font-label text-sm hover:brightness-105 shadow-[0_2px_0_rgba(0,0,0,0.3)] transition-all no-underline active:translate-y-px active:shadow-none";
@@ -785,6 +785,17 @@ function renderLayout(options) {
         `;
     }
 
+    // The badge/title/subtitle block is tucked away by default; the info
+    // button in the top app bar reveals it.
+    const hasIntro = !!(options.badge || options.title || options.subtitle);
+    const infoBtn = hasIntro
+        ? `
+            <button id="pageInfoBtn" onclick="togglePageInfo()" aria-controls="pageIntro" aria-expanded="false" title="About this page" aria-label="About this page" class="flex items-center justify-center w-9 h-9 shrink-0 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors">
+                <span class="material-symbols-outlined text-lg">info</span>
+            </button>
+        `
+        : '';
+
     const sideBase = "flex items-center gap-3 h-11 px-4 mx-3 rounded-xl font-label text-xs uppercase tracking-widest transition-all no-underline";
     const sideActive = `${sideBase} bg-white/10 text-gold-light shadow-[inset_0_0_0_1px_rgba(232,230,227,0.3)]`;
     const sideIdle = `${sideBase} text-white/55 hover:text-white hover:bg-white/8`;
@@ -822,6 +833,7 @@ function renderLayout(options) {
                     <span class="w-2 h-2 rounded-full bg-gold mr-2 animate-pulse-dot"></span>
                     ${modeLabel}
                 </div>
+                ${infoBtn}
                 ${headerActions ? `
                     <div class="hidden sm:block h-6 w-[1px] bg-white/15"></div>
                     <div class="flex items-center gap-1.5 sm:gap-2.5">
@@ -840,7 +852,7 @@ function renderLayout(options) {
                     ${sideAction}
                 </div>
                 <nav class="flex-grow space-y-1 overflow-y-auto">
-                    <a href="/" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' || mode === 'bridge' || mode === 'drill' ? sideIdle : sideActive}">
+                    <a href="/" onclick="closeSidebar()" class="${sideLink} ${mode === 'play' || mode === 'bridge' || mode === 'drill' || mode === 'analyze' ? sideIdle : sideActive}">
                         <span class="material-symbols-outlined text-lg">account_tree</span>
                         Collections
                     </a>
@@ -857,6 +869,10 @@ function renderLayout(options) {
                         <span class="material-symbols-outlined text-lg">style</span>
                         Card problems
                     </a>
+                    <a href="/analyze" onclick="closeSidebar()" class="${sideLink} ${mode === 'analyze' ? sideActive : sideIdle}">
+                        <span class="material-symbols-outlined text-lg">query_stats</span>
+                        Hand analysis
+                    </a>
                 </nav>
                 <div class="px-6 pt-4 mt-4 border-t border-white/10 text-[10px] text-white/35 font-label tracking-[0.2em] uppercase">
                     Bid · Practice · Conquer
@@ -866,7 +882,8 @@ function renderLayout(options) {
             <!-- Main Content Area -->
             <main class="flex-grow overflow-y-auto bg-background min-w-0">
                 <div class="max-w-4xl mx-auto p-4 sm:p-6 md:p-12 page-enter">
-                    <header class="mb-8 md:mb-10">
+                    ${hasIntro ? `
+                    <header id="pageIntro" class="page-intro mb-8 md:mb-10 hidden">
                         ${options.badge ? `
                             <div class="flex items-center gap-3 mb-4">
                                 <span class="inline-flex items-center px-3 py-1 ${badgeColor} text-[10px] font-extrabold rounded-full uppercase tracking-[0.15em] shadow-sm">${options.badge}</span>
@@ -879,11 +896,31 @@ function renderLayout(options) {
                             <p class="text-base md:text-lg text-on-surface-variant leading-relaxed max-w-2xl font-body">${options.subtitle}</p>
                         ` : ''}
                     </header>
+                    ` : ''}
                     <div id="main-content"></div>
                 </div>
             </main>
         </div>
     `;
+}
+
+// ---- Page info block ----
+
+// The badge/title/subtitle at the top of each page stays out of the way;
+// the info button in the top app bar reveals it again.
+function togglePageInfo(force) {
+    const intro = document.getElementById("pageIntro");
+    if (!intro) return;
+    const show =
+        typeof force === "boolean"
+            ? force
+            : intro.classList.contains("hidden");
+    intro.classList.toggle("hidden", !show);
+    const btn = document.getElementById("pageInfoBtn");
+    if (btn) {
+        btn.setAttribute("aria-expanded", show ? "true" : "false");
+        btn.title = show ? "Hide page info" : "About this page";
+    }
 }
 
 // ---- Mobile sidebar drawer ----
@@ -911,7 +948,10 @@ function closeSidebar() {
 }
 
 document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeSidebar();
+    if (e.key === "Escape") {
+        closeSidebar();
+        togglePageInfo(false);
+    }
 });
 
 window.addEventListener("resize", () => {

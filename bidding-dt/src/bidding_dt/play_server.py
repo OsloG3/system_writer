@@ -37,6 +37,12 @@ Endpoints (all JSON):
     POST /play/result -> {"contract", "tricks", "dd_tricks", "par_ns",
                           "score_ns", "imps"}  score the *actually played*
                      tricks vs double-dummy par. Body: /score body + "tricks".
+    POST /analyze -> {"contract", "target", "dd_tricks", "par_ns", "table",
+                      "optimal", "actual_tricks", "plays": [per-card verdict]}
+                     god-mode double-dummy breakdown of a played hand: for
+                     every card, whether it matched double-dummy best play, the
+                     tricks it cost and whether it was contract-critical. Body:
+                     /score body + "plays": [[seat, "AS"], ...] in play order.
 
 Run (torch + endplay come from the cpu/cuda and rl extras, so repeat them):
 
@@ -59,9 +65,11 @@ try:
     import numpy as np
 
     from .bid import auction_over, load_model, predict, random_deal, seat_to_act
+    from .dd import fastsolve
     from .dd.reward import contract_from_auction, deal_reward
     from .dd.scoring import contract_score, declarer_is_vul, points_to_imps
-    from .dd.solver import TableCache
+    from .dd.solver import (TableCache, _PROJ_DENOM_TO_ENDPLAY, dd_table,
+                            deal_key, par_score)
     from .play_bot import PlayBot, PlayConfig, PlaySession, card_to_str, str_to_card
 except ImportError as e:  # torch / endplay / numpy not installed
     raise SystemExit(
@@ -395,6 +403,172 @@ class Service:
                 "par_ns": int(r.par_ns), "score_ns": int(score_ns),
                 "imps": float(points_to_imps(score_ns - int(r.par_ns)))}
 
+    def analyze(self, body: dict) -> dict:
+        """Full double-dummy breakdown of a played hand, card by card.
+
+        Unlike /play/choose (which hides two hands and reasons from a pool of
+        candidates), this is pure god-mode analysis on the REAL deal: for every
+        card actually played, the position *before* that card is solved and the
+        played card's double-dummy trick count for the acting side is compared
+        against the best any legal card achieves. A card below the best is a
+        mistake that cost tricks; one that flips the contract between make and
+        defeat (best play vs. the card actually played, both then defended
+        optimally) is contract-critical.
+
+        Body: /score body (hands, dealer, vuln, calls) + "plays": [[seat, "AS"],
+        ...] in play order (a claim/short hand may stop before 52). Returns the
+        per-card verdicts plus the deal's DD table, par and each side's
+        makeable game/slam, so a whole session can be aggregated for stats.
+        """
+        dealer, vuln, ids = self._auction(body)
+        hands = self._hand_strings(body)
+        contract = contract_from_auction(dealer, ids)
+        if contract is None:
+            raise ServiceError("the auction passed out; there is no play to analyze")
+        plays = self._plays(body)
+
+        declarer = int(contract.declarer)
+        dummy = (declarer + 2) % 4
+        opener = (declarer + 1) % 4
+        denom = int(contract.denom)
+        trump_int = _PROJ_DENOM_TO_ENDPLAY[denom]
+        target = 6 + int(contract.level)
+        all_cards = [set(str_to_cards(h).tolist()) for h in hands]
+        seen: set[int] = set()
+        for cs in all_cards:
+            if len(cs) != 13 or (seen & cs):
+                raise ServiceError("each hand must hold 13 distinct cards and "
+                                   "no card may appear in two hands")
+            seen |= cs
+        if len(seen) != 52:
+            raise ServiceError("the four hands must be a complete 52-card deal")
+
+        # Deal-level facts: the DD table, par and the played contract's DD
+        # trick count. The table is cached, so a bulk run over repeated deals
+        # never re-solves one.
+        key = deal_key(hands)
+        table = self.table_cache.get(key) if self.table_cache else None
+        if table is None:
+            table = dd_table(hands)
+            if self.table_cache:
+                self.table_cache.put(key, table)
+        par_ns = int(par_score(table, vuln, dealer))
+        dd_tricks = int(table[declarer, denom])
+
+        # Pass 1: build every pre-play position (each depends only on the cards
+        # already down), so the whole hand solves in one memoised DDS batch.
+        played_by_seat: list[set] = [set() for _ in range(4)]
+        tricks_decl = 0
+        positions: list = []
+        ctx: list[dict] = []
+        for i, (seat, cid) in enumerate(plays):
+            seat, cid = int(seat), int(cid)
+            if cid not in all_cards[seat] or cid in played_by_seat[seat]:
+                raise ServiceError(
+                    f"play {i + 1}: {card_to_str(cid)} is not a card seat "
+                    f"{seat} still holds")
+            n_done = i // 4
+            cur = plays[4 * n_done:i]
+            if cur:
+                first = int(cur[0][0])
+            elif n_done == 0:
+                first = opener
+            else:
+                last = plays[4 * (n_done - 1):4 * n_done]
+                first = (int(last[0][0]) + fastsolve.trick_winner(
+                    [int(c) for _, c in last], trump_int)) % 4
+            to_act = (first + len(cur)) % 4
+            remaining = [all_cards[s] - played_by_seat[s] for s in range(4)]
+            positions.append((remaining, first, [int(c) for _, c in cur]))
+            ctx.append({"seat": seat, "cid": cid, "n_done": n_done,
+                        "to_act": to_act, "decl_side": to_act in (declarer, dummy),
+                        "tricks_decl": tricks_decl})
+            # fold this play into the position that follows it
+            played_by_seat[seat].add(cid)
+            if (i + 1) % 4 == 0:
+                trick = plays[i - 3:i + 1]
+                w = (int(trick[0][0]) + fastsolve.trick_winner(
+                    [int(c) for _, c in trick], trump_int)) % 4
+                if w in (declarer, dummy):
+                    tricks_decl += 1
+
+        try:
+            solved = fastsolve.solve_positions(positions, trump_int)
+        except Exception:
+            solved = [{} for _ in positions]
+
+        analyzed: list[dict] = []
+        for i, c in enumerate(ctx):
+            results = solved[i] or {}
+            rec = {"seat": c["seat"], "card": card_to_str(c["cid"]),
+                   "to_act": c["to_act"], "decl_side": c["decl_side"]}
+            if results:
+                remaining_tricks = 13 - c["n_done"]
+                decl_side = c["decl_side"]
+                base = c["tricks_decl"]
+
+                def to_decl(v, _rt=remaining_tricks, _ds=decl_side, _b=base):
+                    return _b + (v if _ds else _rt - v)
+
+                best = max(results.values())
+                played_val = results.get(c["cid"])
+                rec["best"] = int(best)
+                rec["best_decl"] = int(to_decl(best))
+                rec["best_cards"] = sorted(card_to_str(x) for x, v
+                                           in results.items() if v == best)
+                if played_val is not None:
+                    pv = int(played_val)
+                    rec["played"] = pv
+                    rec["played_decl"] = int(to_decl(pv))
+                    cost = int(best) - pv
+                    rec["cost"] = max(0, cost)
+                    rec["mistake"] = bool(cost > 0)
+                    rec["critical"] = bool(
+                        (rec["best_decl"] >= target) != (rec["played_decl"] >= target))
+                else:
+                    rec.update({"played": None, "played_decl": None, "cost": 0,
+                                "mistake": False, "critical": False})
+            else:
+                rec.update({"best": None, "best_decl": None, "played": None,
+                            "played_decl": None, "cost": 0, "mistake": False,
+                            "critical": False, "best_cards": []})
+            analyzed.append(rec)
+
+        # actual declarer tricks when the whole hand was played out
+        actual = None
+        if len(plays) == 52:
+            actual = 0
+            for t in range(13):
+                trick = plays[4 * t:4 * t + 4]
+                w = (int(trick[0][0]) + fastsolve.trick_winner(
+                    [int(c) for _, c in trick], trump_int)) % 4
+                if w in (declarer, dummy):
+                    actual += 1
+
+        def side_opt(seats):
+            best_tricks, game, small, grand = 0, False, False, False
+            for s in seats:
+                for d in range(5):
+                    t = int(table[s, d])
+                    best_tricks = max(best_tricks, t)
+                    if t >= (11, 11, 10, 10, 9)[d]:   # game thresholds C D H S N
+                        game = True
+                    if t >= 12:
+                        small = True
+                    if t >= 13:
+                        grand = True
+            return {"best_tricks": best_tricks, "game": game,
+                    "small_slam": small, "grand_slam": grand}
+
+        return {
+            "contract": {"level": int(contract.level), "denom": DENOMS[denom],
+                         "declarer": declarer, "penalty": int(contract.penalty)},
+            "target": target, "dd_tricks": dd_tricks, "par_ns": par_ns,
+            "table": [[int(table[s, d]) for d in range(5)] for s in range(4)],
+            "optimal": {"ns": side_opt([0, 2]), "ew": side_opt([1, 3])},
+            "actual_tricks": actual, "n": len(plays), "plays": analyzed,
+        }
+
     def play_drop(self, body: dict) -> dict:
         prefix = body.get("prefix")
         key = body.get("session")
@@ -443,6 +617,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         endpoints = {"/deal": self.svc.deal, "/legal": self.svc.legal,
                      "/bid": self.svc.bid, "/score": self.svc.score,
+                     "/analyze": self.svc.analyze,
                      "/play/choose": self.svc.play_choose,
                      "/play/result": self.svc.play_result,
                      "/play/drop": self.svc.play_drop}

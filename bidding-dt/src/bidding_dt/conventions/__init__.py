@@ -9,8 +9,11 @@ together: given the hero's hand, the auction so far and a candidate call,
 `call_violations` reports the system conventions that call would break, each
 with a weight, `call_penalty` sums them, and `call_bonus` rewards one clean
 use of an artificial convention. `alerts.py` renders the alert text of a
-convention call (dumped into the self-play tree by rl/analyze.py and served
-to the client by the Go side).
+convention call (dumped into the self-play tree by rl/analyze.py).
+`system_file.py` reads the bot's system file (models/system.txt): the text
+file the RL trainer interprets at startup (rule weights + thresholds) and
+the website generates its bid alerts from -- the Go server implements the
+same section resolution over the same file.
 
 Used by the RL trainer (rl/rollout.py + rl/train_ppo.py, `rl.conv_weight`)
 to penalize the decision-transformer policy for bids inconsistent with the
@@ -21,8 +24,9 @@ after 1/2NT stayman, RKCB step responses (the 4NT ask itself is free),
 support cuebids of the opponents' suit, XYZ, takeout doubles (power doubles
 with 18+ need no shape), fourth-suit GF and standard natural bidding.
 Correctly using XYZ, RKCB, splinter, smolen, fourth suit or a support
-cuebid earns the small `conv_bonus` reward. See rules.py for the full list
-of rule codes and thresholds.
+cuebid earns the small `conv_bonus` reward. The enforced numbers live in the
+system file (models/system.txt); see rules.py for the full list of rule
+codes and their defaults.
 """
 
 from .alerts import RKCB_STEPS, convention_alert
@@ -31,6 +35,8 @@ from .kr import kr_points, kr_suit
 from .rules import (DEFAULT_WEIGHTS, ConventionConfig, HandInfo, Violation,
                     call_bonus, call_penalty, call_violations, check_call,
                     convention_bonus, convention_kind)
+from .system_file import (ALERT_ONLY, Section, SystemSpec, find_system_file,
+                          parse_system_file, section_for)
 
 __all__ = [
     "RKCB_STEPS", "convention_alert",
@@ -39,4 +45,6 @@ __all__ = [
     "DEFAULT_WEIGHTS", "ConventionConfig", "HandInfo", "Violation",
     "call_bonus", "call_penalty", "call_violations", "check_call",
     "convention_bonus", "convention_kind",
+    "ALERT_ONLY", "Section", "SystemSpec", "find_system_file",
+    "parse_system_file", "section_for",
 ]

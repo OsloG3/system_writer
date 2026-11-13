@@ -290,7 +290,10 @@ uv run python -m bidding_dt.rl.eval_rl --ckpt runs/rl_small/best.pt \
 # seats, sampled at --temp or deterministic with --greedy) and every auction
 # that happens is merged into one prefix tree; each node records how often
 # the bot made that bid in that sequence and the min/max HCP and min/max
-# length per suit of the hands it held doing it
+# length per suit of the hands it held doing it. This is a debugging report
+# about what the model ACTUALLY bids -- the website's bid alerts no longer
+# read it; they are generated from the system file (see below). --system
+# points at that file for the "conv" alert texts stamped into the dump.
 uv run python -m bidding_dt.rl.analyze --ckpt runs/rl_small/best.pt \
     --deals 4000 --out runs/rl_small/tree.json
 
@@ -319,6 +322,53 @@ clipfrac. Expect human top-1 agreement to *drop* as conventions diverge --
 that is the point; judge by IMPs and the analyze report.
 `bidding_dt.rl.plot` renders any run's log.jsonl into an eight-panel
 progress figure (and prints a one-line summary for headless use).
+
+## System file (conventions)
+
+The system the bots are trained to follow is written in one **text file** --
+`models/system.txt` in the website repo (the deployed server reads it from
+there; `BIDDING_SYSTEM_FILE` / `--system` / `rl.system_file` override, and
+the default search also tries `../models/system.txt` from a nested checkout).
+It is INI-like: one `[section]` per call kind, named after the convention
+rule codes (`conventions/rules.DEFAULT_WEIGHTS`) plus a few alert-only kinds
+(`rkcb_ask`, `resp_2c_waiting`, `balancing_takeout`, `penalty_double`):
+
+```ini
+[open_1nt_range]
+alert = {call}: 15-17 balanced     # website alert text ({suit}, {trump},
+                                   # {other}, {partner_suit}, {shows}, ...)
+weight = 1.0                       # convention-penalty rule weight
+nt_range = 15-17                   # ConventionConfig threshold (K&R points)
+
+[xyz_2d]
+alert = {call}: XYZ -- artificial game force
+artificial = yes                   # the site marks the call with ⚠
+weight = 1.0
+xyz_2d_min_kr = 11.5
+```
+
+Two consumers, one file:
+
+- **Training interprets it at startup** (`rl/train_ppo.py`, when
+  `rl.conv_weight > 0`): every `weight` becomes a convention-penalty rule
+  weight and every numeric key a `ConventionConfig` threshold
+  (`conventions/system_file.SystemSpec.config`), with `rl.conv_rules` /
+  `rl.conv_params` from the YAML layering on top for experiments. The init
+  log line records which file was read; a missing explicit `--system` path
+  is a hard error, a missing default falls back to the built-in values.
+- **The website generates its bid alerts from it** (system_writer's
+  `system_file.go` + `auction.go`): the Go server classifies the live
+  auction with a port of `conventions/auction.AuctionReader`, resolves each
+  bot call to the matching section (`sectionFor` mirrors
+  `system_file.section_for` -- keep them in lockstep) and serves the
+  rendered `alert` text. No self-play statistics are involved, so alerts
+  exist for every position the file covers, and editing the file refreshes
+  them without a server restart.
+
+When you deploy a new checkpoint, copy the system file it was trained with
+next to it (`models/system.txt`), so the alerts always describe the system
+the bots actually enforce. `tests/test_system_file.py` and the Go
+`TestSectionFor` golden table keep the two resolutions in sync.
 
 ## Hand inference (VQ encoder-decoder)
 
@@ -547,6 +597,12 @@ src/bidding_dt/
   dd/bench.py          # solver throughput benchmark
   env/deals.py         # random 52-card deals + vectorized encoding
   env/auction_env.py   # batched auction env (hero-rotated obs, legal masks)
+  conventions/kr.py    # Kaplan-Rubens point count (26-step evaluator)
+  conventions/auction.py # sequential auction reader: structural classification
+  conventions/rules.py # system-convention violations + convention bonuses
+  conventions/alerts.py # built-in alert texts (fallback for system_file)
+  conventions/system_file.py # models/system.txt: parsed at training start,
+                       # drives the website's alerts (section_for + render)
   rl/config.py         # RLConfig / RLTrainConfig (YAML)
   rl/model.py          # RLModel: trunk + value head, BC/RL ckpt loading
   rl/league.py         # opponent league: snapshots + external BC/RL members,

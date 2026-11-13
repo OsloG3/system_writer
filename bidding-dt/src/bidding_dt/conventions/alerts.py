@@ -1,15 +1,17 @@
 """Human-readable alert texts for the system's artificial (convention) calls.
 
 `convention_alert` takes a classified call (auction.py CallInfo) and returns
-the alert the bid requires -- or None for natural, non-alertable calls. It
-covers exactly the conventions the rules reward (rules.convention_kind):
-XYZ 2C/2D, RKCB asks and step responses, splinters, Smolen, fourth-suit GF
-and support cuebids of the opponents' suit.
+the alert the bid requires -- or None for natural, non-alertable calls. When
+a parsed system file is given (system_file.SystemSpec, the conventions text
+file the website serves its alerts from) its alert texts win; the built-in
+strings below are the fallback and cover exactly the conventions the rules
+reward (rules.convention_kind): XYZ 2C/2D, RKCB asks and step responses,
+splinters, Smolen, fourth-suit GF and support cuebids of the opponents' suit.
 
 rl/analyze.py stamps the text into the dumped self-play tree ("conv" field
-of each node), and the Go play server (system_writer/alerts.go) serves it
-verbatim to the client alongside the HCP/shape ranges, so a human sees what
-a bot's convention bid promised.
+of each node) for debugging; the live website no longer reads that tree --
+the Go server generates its bid alerts straight from the system file
+(system_writer/system_file.go + alerts.go).
 """
 
 from .auction import DENOM_N, MAJORS, CallInfo
@@ -29,8 +31,16 @@ def _suit(denom: int) -> str:
     return _SYM[denom] if 0 <= denom < DENOM_N else "?"
 
 
-def convention_alert(info: CallInfo) -> str | None:
-    """Alert text for a classified call, or None if it is not a convention."""
+def convention_alert(info: CallInfo, spec=None) -> str | None:
+    """Alert text for a classified call, or None if it is not a convention.
+
+    `spec` is an optional parsed system file (system_file.SystemSpec): when
+    given, its sections drive both the call -> convention resolution and the
+    alert text, so the website and the training-side dumps speak from the
+    same file. Without it the built-in texts below are used.
+    """
+    if spec is not None:
+        return spec.alert_for(info)
     if info.kind != "bid":
         return None
     if info.xyz_2c:

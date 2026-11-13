@@ -918,15 +918,15 @@ func (b *PlayBoard) stateLocked(stats PlayStats) map[string]any {
 			st["legal"] = b.Legal
 		}
 	}
-	// Alerts from the model's self-play tree: what each bot bid promised and
-	// what each of the human's legal calls would show. Both are omitted
-	// until the tree finishes loading in the background.
-	if t := alertTreeReady(); t != nil {
-		if a := t.callAlerts(b.Dealer, b.Calls, 1<<humanSeat); a != nil {
+	// Alerts from the bots' system file (models/system.txt): what each bot
+	// bid shows and what each of the human's legal calls would show. Omitted
+	// when the file is missing or unparsable.
+	if s := systemReady(); s != nil {
+		if a := s.callAlerts(b.Dealer, b.Calls, 1<<humanSeat); a != nil {
 			st["alerts"] = a
 		}
 		if st["legal"] != nil {
-			if a := t.optionAlerts(b.Calls, b.Legal); a != nil {
+			if a := s.optionAlerts(b.Dealer, b.Calls, b.Legal); a != nil {
 				st["optionAlerts"] = a
 			}
 		}

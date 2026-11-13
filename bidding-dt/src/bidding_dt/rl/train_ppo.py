@@ -30,16 +30,21 @@ RL checkpoint against the models of its league:
 
 System conventions (rl.conv_weight > 0 / --conv-weight, see
 configs/rl_conv.yaml): every learner call is additionally checked against
-the enforced bidding system (conventions/: 5-card majors, 15-17 1NT, strong
-2C, 20-21 2NT, GF 2/1, invitational jump shifts also in competition,
-standard overcalls with a 12-15 balancing 1NT, splinter double jumps below
-4H, smolen after 1/2NT stayman, RKCB step responses showing the right
-keycard count, support cuebids of the opponents' suit, XYZ, takeout doubles
-with shape-free power doubles, fourth-suit GF, standard natural structure --
-hands evaluated in Kaplan-Rubens points), and the weighted sum of the
-violated rules is subtracted from that decision's row reward. Correctly
+the enforced bidding system -- written in the conventions TEXT FILE
+(models/system.txt, --system / rl.system_file / BIDDING_SYSTEM_FILE) that is
+interpreted at the start of training: each section's `weight` is a rule
+weight and each numeric key a ConventionConfig threshold (5-card majors,
+15-17 1NT, strong 2C, 20-21 2NT, GF 2/1, invitational jump shifts also in
+competition, standard overcalls with a 12-15 balancing 1NT, splinter double
+jumps below 4H, smolen after 1/2NT stayman, RKCB step responses showing the
+right keycard count, support cuebids of the opponents' suit, XYZ, takeout
+doubles with shape-free power doubles, fourth-suit GF, standard natural
+structure -- hands evaluated in Kaplan-Rubens points). The weighted sum of
+the violated rules is subtracted from that decision's row reward. Correctly
 using an artificial convention (XYZ, RKCB, splinter, smolen, fourth suit,
-cuebid raise) earns the small flat conv_params.conv_bonus reward instead.
+cuebid raise) earns the small flat conv_bonus reward instead. The same file's
+`alert` texts are what the website serves as bid alerts, so what the bots are
+trained to play and what the site explains always agree.
 Per-iteration logs carry conv_pen_mean / conv_viol_rate / conv_top /
 conv_bonus_mean.
 
@@ -73,7 +78,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from ..conventions import ConventionConfig
+from ..conventions import ConventionConfig, find_system_file, parse_system_file
 from ..env.deals import random_deals
 from ..dd.reward import warm_cache
 from ..dd.solver import TableCache
@@ -131,6 +136,14 @@ def main():
                          ">0 checks every learner call against the enforced "
                          "bidding system (conventions/) and subtracts the "
                          "weighted violations from that call's reward")
+    ap.add_argument("--system", default=None,
+                    help="path to the system file (conventions text file, "
+                         "default search: rl.system_file, "
+                         "BIDDING_SYSTEM_FILE, models/system.txt, "
+                         "../models/system.txt); interpreted at the start of "
+                         "training: rule weights + thresholds for the "
+                         "convention checker, and the alert texts the website "
+                         "serves from the same file")
     ap.add_argument("--cache", default=None, help="DD table sqlite path")
     ap.add_argument("--resume", default=None, help="checkpoint path or 'last'")
     args = ap.parse_args()
@@ -159,14 +172,34 @@ def main():
         rl.conv_weight = args.conv_weight
 
     # system-convention enforcement (conventions/): weighted per-call penalty
-    # for bids inconsistent with the system, subtracted from row rewards
+    # for bids inconsistent with the system, subtracted from row rewards. The
+    # system itself is written in a text file (models/system.txt) that is
+    # interpreted here, at the start of training: every section's weight and
+    # numeric thresholds build the ConventionConfig, and the same file is what
+    # the website generates its bid alerts from (system_writer/system_file.go).
     conv_cfg = None
+    system_path = None
     if rl.conv_weight > 0:
-        conv_cfg = ConventionConfig.from_overrides(rl.conv_rules,
-                                                   rl.conv_params)
+        try:
+            system_path = find_system_file(args.system or rl.system_file
+                                           or None)
+        except FileNotFoundError as e:
+            ap.error(str(e))
+        if system_path:
+            try:
+                spec = parse_system_file(system_path)
+            except ValueError as e:
+                ap.error(f"bad system file: {e}")
+            conv_cfg = spec.config(rl.conv_rules, rl.conv_params)
+        else:
+            conv_cfg = ConventionConfig.from_overrides(rl.conv_rules,
+                                                       rl.conv_params)
+            print("no system file found (models/system.txt); using the "
+                  "built-in convention defaults")
         n_on = sum(1 for w in conv_cfg.weights.values() if w > 0)
         print(f"convention penalties on: conv_weight={rl.conv_weight} "
-              f"({n_on} rules, kr_tolerance={conv_cfg.kr_tolerance})")
+              f"({n_on} rules, kr_tolerance={conv_cfg.kr_tolerance})"
+              + (f", system file {system_path}" if system_path else ""))
 
     out_dir = Path(args.out) if args.out else Path("runs") / ("rl-" + time.strftime("%Y%m%d-%H%M%S"))
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -295,7 +328,7 @@ def main():
     log({"event": "init", "params": model.num_params(), "device": str(device),
          "cfg": cfg.to_dict(), "bc_ckpt": args.bc_ckpt,
          "init_kind": init_kind, "league": league.names(),
-         "conv_weight": rl.conv_weight})
+         "conv_weight": rl.conv_weight, "system_file": system_path})
 
     def draw_deals():
         d = random_deals(rng, rl.deals_per_iter)

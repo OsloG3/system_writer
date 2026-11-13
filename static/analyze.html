@@ -1,0 +1,1135 @@
+<!doctype html>
+
+<html class="light" lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>Bridge Trainer | Hand Analysis</title>
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta name="theme-color" content="#161512" />
+        <link rel="apple-touch-icon" href="/static/icon-192.png" />
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Work+Sans:wght@300;400;500&amp;family=Inter:wght@400;500;600&amp;display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+            rel="stylesheet"
+        />
+        <script src="/static/shared.js"></script>
+        <link rel="stylesheet" href="/static/shared.css" />
+        <style>
+            body.cb-page { background: #161512; }
+            body.cb-page main { background: #161512 !important; }
+            body.cb-page .page-enter > header h1 { color: #e8e6e3; }
+            body.cb-page .page-enter > header p { color: #908f8d; }
+            body.cb-page .unlock-card { background: #302e2c; border-color: rgba(255,255,255,0.1); }
+
+            .an-wrap { max-width: 60rem; margin: 0 auto; }
+            .an-card {
+                background: #262421;
+                border: 1px solid rgba(255,255,255,0.07);
+                border-radius: 0.9rem;
+                padding: 0.9rem 1rem;
+                margin-bottom: 0.9rem;
+            }
+            .an-card.tight { padding: 0.7rem 0.85rem; }
+            .an-h {
+                font-family: Inter, sans-serif; font-size: 0.66rem; letter-spacing: 0.14em;
+                text-transform: uppercase; color: #787572; margin-bottom: 0.55rem; font-weight: 600;
+            }
+            .an-title { font-family: Manrope, sans-serif; font-weight: 800; color: #e8e6e3; }
+            .an-muted { color: #908f8d; }
+            .an-btn {
+                display: inline-flex; align-items: center; gap: 0.35rem;
+                padding: 0.5rem 0.85rem; border-radius: 0.6rem; border: 1px solid rgba(255,255,255,0.1);
+                background: #3d3a36; color: #e8e6e3; font-family: Inter, sans-serif; font-size: 0.8rem;
+                font-weight: 600; cursor: pointer; transition: background 0.15s, transform 0.05s;
+            }
+            .an-btn:hover:not(:disabled) { background: #4a4642; }
+            .an-btn:active:not(:disabled) { transform: translateY(1px); }
+            .an-btn:disabled { opacity: 0.4; cursor: default; }
+            .an-btn.gold {
+                background: linear-gradient(180deg,#e8e6e3,#bababa); color: #161512; border-color: transparent;
+            }
+            .an-btn.gold:hover:not(:disabled) { filter: brightness(1.06); }
+            .an-btn.sm { padding: 0.32rem 0.6rem; font-size: 0.74rem; }
+            .an-btn .material-symbols-outlined { font-size: 1.05rem; }
+
+            .an-srcgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
+            @media (max-width: 640px) { .an-srcgrid { grid-template-columns: 1fr; } }
+            .an-src {
+                background: #262421; border: 1px solid rgba(255,255,255,0.08); border-radius: 1rem;
+                padding: 1.3rem 1.2rem; cursor: pointer; transition: border-color 0.15s, transform 0.08s;
+                text-align: left;
+            }
+            .an-src:hover { border-color: rgba(232,230,227,0.35); }
+            .an-src:active { transform: translateY(1px); }
+            .an-src .ic {
+                display: inline-flex; align-items: center; justify-content: center; width: 2.6rem; height: 2.6rem;
+                border-radius: 0.8rem; background: #3d3a36; margin-bottom: 0.7rem; color: #e8e6e3;
+            }
+            .an-src .ic .material-symbols-outlined { font-size: 1.5rem; }
+            .an-src h3 { font-family: Manrope, sans-serif; font-weight: 800; color: #e8e6e3; font-size: 1.05rem; margin-bottom: 0.3rem; }
+            .an-src p { font-size: 0.82rem; color: #908f8d; line-height: 1.45; }
+
+            .an-boardlist { display: flex; flex-direction: column; gap: 0.5rem; }
+            .an-brow {
+                display: flex; align-items: center; gap: 0.7rem; padding: 0.65rem 0.8rem;
+                background: #262421; border: 1px solid rgba(255,255,255,0.07); border-radius: 0.7rem;
+                cursor: pointer; transition: border-color 0.15s;
+            }
+            .an-brow:hover { border-color: rgba(232,230,227,0.3); }
+            .an-brow .n { font-family: Manrope, sans-serif; font-weight: 800; color: #787572; width: 1.6rem; text-align: center; flex-shrink: 0; }
+            .an-brow .m { flex: 1; min-width: 0; }
+            .an-brow .m .t { font-family: Manrope, sans-serif; font-weight: 700; color: #e8e6e3; font-size: 0.9rem; }
+            .an-brow .m .s { font-size: 0.74rem; color: #908f8d; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+            /* result / DD summary bar */
+            .an-sumbar { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; align-items: baseline; }
+            .an-sumbar .big { font-family: Manrope, sans-serif; font-weight: 800; font-size: 1.15rem; color: #e8e6e3; }
+            .an-stat { display: flex; flex-direction: column; gap: 1px; }
+            .an-stat .k { font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; color: #787572; font-family: Inter, sans-serif; }
+            .an-stat .v { font-family: Manrope, sans-serif; font-weight: 800; font-size: 1rem; color: #e8e6e3; }
+            .an-flag { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-family: Inter, sans-serif; font-weight: 600; }
+            .an-flag.good { background: #2e5d43; color: #cfe8d4; }
+            .an-flag.bad { background: #5d2b26; color: #f0cfca; }
+            .an-flag.warn { background: #5d4a26; color: #f0e2ca; }
+            .an-flag.info { background: #3d3a36; color: #bababa; }
+
+            /* hands diagram */
+            .an-dealgrid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 0.9rem; }
+            @media (max-width: 640px) { .an-dealgrid { grid-template-columns: 1fr; } }
+            .an-hands { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 0.9rem; }
+            @media (max-width: 520px) { .an-hands { grid-template-columns: 1fr 1fr; } }
+            .an-seat .nm { font-family: Inter, sans-serif; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; color: #908f8d; margin-bottom: 2px; }
+            .an-seat .nm b { color: #bababa; }
+            .an-suitline { display: flex; gap: 0.3rem; font-family: Manrope, sans-serif; font-weight: 700; font-size: 0.8rem; line-height: 1.4; align-items: baseline; }
+            .an-su { width: 0.9rem; flex-shrink: 0; text-align: center; }
+            .an-su.s, .an-su.c { color: #8fd694; }
+            .an-su.h, .an-su.d { color: #f08a8a; }
+            .an-rk { padding: 0 0.5px; border-radius: 3px; }
+            .an-rk.gone { opacity: 0.24; }
+            .an-rk.now { background: #e8e6e3; color: #161512; box-shadow: 0 0 0 1px #e8e6e3; }
+
+            /* auction grid */
+            .an-auc-head, .an-auc-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 0.28rem; }
+            .an-auc-head { margin-bottom: 0.3rem; }
+            .an-auc-head span { text-align: center; font-family: Manrope, sans-serif; font-weight: 800; font-size: 0.74rem; color: #787572; }
+            .an-auc-head span.dlr { color: #e8e6e3; }
+            .an-auc-row { margin-bottom: 0.28rem; }
+            .an-auc-row > * { display: flex; justify-content: center; }
+            .an-call { display: inline-flex; align-items: center; justify-content: center; gap: 1px; min-width: 2.2rem; height: 1.5rem; padding: 0 0.35rem; border-radius: 0.4rem; font-family: Manrope, sans-serif; font-weight: 800; font-size: 0.78rem; }
+            .an-call-c { background: #b5e48c; color: #2b7a4b; }
+            .an-call-d { background: #f8c471; color: #c05621; }
+            .an-call-h { background: #f1948a; color: #b03a2e; }
+            .an-call-s { background: #a5b4f4; color: #2a3f93; }
+            .an-call-n { background: #e8eaed; color: #1b1f27; }
+            .an-call-p { background: #2e5d43; color: #cfe8d4; font-size: 0.62rem; text-transform: uppercase; }
+            .an-call-x { background: #c0392b; color: #fff; }
+            .an-call-xx { background: #2a51b0; color: #fff; }
+
+            /* current trick */
+            .an-trick { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+            .an-tslot { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 3.2rem; }
+            .an-tslot .who { font-family: Inter, sans-serif; font-size: 0.6rem; color: #787572; letter-spacing: 0.06em; }
+            .an-tile {
+                display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+                min-width: 2.4rem; height: 3rem; border-radius: 0.4rem; background: #f2efe9; color: #1b1f27;
+                font-family: Manrope, sans-serif; font-weight: 800; line-height: 1; box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+            }
+            .an-tile .r { font-size: 1rem; }
+            .an-tile .s { font-size: 0.95rem; margin-top: 1px; }
+            .an-tile.red { color: #c0392b; }
+            .an-tile.empty { background: #302e2c; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06); }
+            .an-tile.now { box-shadow: 0 0 0 2px #e8e6e3, 0 2px 6px rgba(0,0,0,0.5); }
+            .an-tile.win { box-shadow: 0 0 0 2px #8fd694, 0 2px 6px rgba(0,0,0,0.5); }
+
+            /* verdict panel */
+            .an-verdict { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+            .an-vpill { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.25rem 0.7rem; border-radius: 999px; font-family: Inter, sans-serif; font-weight: 700; font-size: 0.78rem; }
+            .an-vpill.ok { background: #2e5d43; color: #cfe8d4; }
+            .an-vpill.bad { background: #6b4a1f; color: #f6d9a8; }
+            .an-vpill.crit { background: #7d2b23; color: #ffd7d1; }
+            .an-vpill .material-symbols-outlined { font-size: 1rem; }
+            .an-kv { display: flex; flex-wrap: wrap; gap: 0.35rem 1.2rem; font-size: 0.84rem; color: #bababa; margin-top: 0.35rem; }
+            .an-kv b { color: #e8e6e3; }
+            .an-bestcards { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.5rem; }
+            .an-minicard { display: inline-flex; align-items: center; gap: 2px; padding: 0.15rem 0.4rem; border-radius: 0.35rem; background: #302e2c; font-family: Manrope, sans-serif; font-weight: 800; font-size: 0.8rem; }
+            .an-minicard.red { color: #f1948a; } .an-minicard.blk { color: #cfd6e4; }
+
+            /* stepper */
+            .an-stepper { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+            .an-count { font-family: Manrope, sans-serif; font-weight: 800; color: #e8e6e3; font-size: 0.9rem; min-width: 5.5rem; text-align: center; }
+            .an-bar { flex: 1; height: 0.4rem; background: #302e2c; border-radius: 999px; overflow: hidden; min-width: 4rem; }
+            .an-bar > i { display: block; height: 100%; background: linear-gradient(90deg,#8f8c88,#e8e6e3); }
+
+            /* play log */
+            .an-log { display: flex; flex-direction: column; gap: 0.35rem; }
+            .an-logtrick { display: flex; align-items: center; gap: 0.45rem; }
+            .an-logtrick .tn { font-family: Inter, sans-serif; font-size: 0.66rem; color: #787572; width: 1.1rem; text-align: right; flex-shrink: 0; }
+            .an-logcards { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+            .an-pc {
+                position: relative; display: inline-flex; align-items: center; gap: 2px;
+                padding: 0.2rem 0.4rem; border-radius: 0.4rem; cursor: pointer;
+                font-family: Manrope, sans-serif; font-weight: 800; font-size: 0.78rem;
+                background: #302e2c; color: #bababa; border: 1px solid transparent;
+            }
+            .an-pc .seat { font-size: 0.58rem; color: #787572; font-family: Inter, sans-serif; margin-right: 1px; }
+            .an-pc.ok { border-color: rgba(143,214,148,0.4); }
+            .an-pc.bad { background: #4a3a1c; color: #f6d9a8; border-color: rgba(248,196,113,0.5); }
+            .an-pc.crit { background: #5d2b26; color: #ffd7d1; border-color: rgba(241,148,138,0.6); }
+            .an-pc.now { box-shadow: 0 0 0 2px #e8e6e3; }
+            .an-pc .cost { font-size: 0.6rem; opacity: 0.85; }
+
+            /* tables */
+            .an-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+            .an-table th { text-align: left; font-family: Inter, sans-serif; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; color: #787572; font-weight: 600; padding: 0.35rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.08); }
+            .an-table td { padding: 0.45rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); color: #bababa; }
+            .an-table td.n, .an-table th.n { text-align: right; font-family: Manrope, sans-serif; font-weight: 700; color: #e8e6e3; }
+            .an-table tr:last-child td { border-bottom: none; }
+            .an-table tr.an-browtr:hover td { background: rgba(255,255,255,0.04); }
+            .an-table .seat-badge { display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; border-radius: 0.4rem; background: #3d3a36; font-family: Manrope, sans-serif; font-weight: 800; font-size: 0.72rem; color: #e8e6e3; }
+
+            .an-bignums { display: grid; grid-template-columns: repeat(auto-fit,minmax(7.5rem,1fr)); gap: 0.7rem; }
+            .an-bignum { background: #302e2c; border-radius: 0.7rem; padding: 0.7rem 0.8rem; }
+            .an-bignum .v { font-family: Manrope, sans-serif; font-weight: 800; font-size: 1.5rem; color: #e8e6e3; line-height: 1.1; }
+            .an-bignum .k { font-size: 0.64rem; letter-spacing: 0.06em; text-transform: uppercase; color: #908f8d; font-family: Inter, sans-serif; margin-top: 0.2rem; }
+
+            .an-prog { height: 0.5rem; background: #302e2c; border-radius: 999px; overflow: hidden; }
+            .an-prog > i { display: block; height: 100%; background: linear-gradient(90deg,#6f6c68,#e8e6e3); transition: width 0.2s; }
+            .an-topbar { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.9rem; flex-wrap: wrap; }
+            .an-topbar .spacer { flex: 1; }
+            .an-err { background: #5d2b26; color: #ffd7d1; border-radius: 0.6rem; padding: 0.7rem 0.9rem; font-size: 0.85rem; }
+            .an-note { font-size: 0.78rem; color: #787572; line-height: 1.5; }
+            .an-spinner { display: inline-flex; align-items: center; gap: 0.5rem; color: #908f8d; font-size: 0.85rem; font-family: Inter, sans-serif; }
+            .an-spinner .material-symbols-outlined { animation: an-spin 1s linear infinite; color: #bababa; }
+            @keyframes an-spin { to { transform: rotate(360deg); } }
+            .an-hiddenfile { display: none; }
+            textarea.an-paste {
+                width: 100%; min-height: 7rem; background: #161512; border: 1px solid #55514b; color: #e8e6e3;
+                border-radius: 0.6rem; padding: 0.6rem; font-family: ui-monospace, monospace; font-size: 0.78rem; resize: vertical;
+            }
+            .red { color: #f1948a; } .blk { color: #cfd6e4; }
+        </style>
+    </head>
+
+    <body class="cb-page text-white font-body selection:bg-tertiary-container/30">
+        <div id="app"></div>
+        <script>
+            // ============================================================
+            // Hand analysis -- full double-dummy breakdown of a played hand.
+            //
+            // A hand comes either from the caller's own play history (the
+            // played-out boards in play_stats.json, where the human sat South)
+            // or from an uploaded/pasted PBN (one board or a whole session).
+            // Every card is sent to the bidding-dt sidecar's /analyze, which
+            // solves each position double-dummy (all four hands known) and says
+            // whether the card matched best play, how many tricks it gave up and
+            // whether it flipped the contract. Single-hand mode steps card by
+            // card and can jump to the next mistake; bulk mode aggregates a
+            // whole set of boards into per-player / per-pair statistics.
+            // ============================================================
+
+            document.getElementById("app").innerHTML = renderLayout({
+                mode: "analyze",
+                badge: "Hand analysis",
+                title: "Hand analysis",
+                subtitle:
+                    "Step through a played hand card by card with a full double-dummy analysis of every card -- what the best play was, how many tricks each card gave up, and which errors were contract-critical. Analyze one hand from your history or a PBN file, or run a bulk pass over a whole session for per-player and per-pair statistics.",
+            });
+
+            const SEAT_NAMES = ["North", "East", "South", "West"];
+            const SEAT_LETTER = ["N", "E", "S", "W"];
+            const VULN_NAMES = ["None", "N-S", "E-W", "Both"];
+            const SUIT_SYMBOL = { S: "\u2660", H: "\u2665", D: "\u2666", C: "\u2663", N: "NT" };
+            const SUIT_CLASS = { S: "s", H: "h", D: "d", C: "c", N: "n" };
+            const PLAY_RANK_ORDER = "AKQJT98765432";
+            const DENOM_GAME_LEVEL = { C: 5, D: 5, H: 4, S: 4, N: 3 };
+
+            // ---- app state ----
+            let view = "source";       // source | list | single | bulk
+            let sourceKind = null;     // "history" | "pbn"
+            let boards = [];           // normalized boards available to analyze
+            let boardResults = {};     // idx -> analysis result (or {error})
+            let curIdx = 0;            // board shown in single view
+            let step = 0;              // current card index in single view
+            let busy = false;          // a fetch is in flight
+            let sourceError = null;    // message shown on the source/list view
+            let bulk = null;           // {done,total,results,errors,agg}
+            let showLog = true;        // the full play log stays open across steps
+            let showPaste = false;     // the paste-PBN box is open
+
+            // ---- small helpers ----
+            function $(id) { return document.getElementById(id); }
+            function cardRank(tok) { return tok[0] === "T" ? "10" : tok[0]; }
+            function cardIsRed(tok) { return tok[1] === "H" || tok[1] === "D"; }
+            function cardPretty(tok) {
+                return `<span class="${cardIsRed(tok) ? "red" : "blk"}">${cardRank(tok)}${SUIT_SYMBOL[tok[1]]}</span>`;
+            }
+            function contractText(c) {
+                if (!c) return "passed out";
+                const pen = ["", "X", "XX"][c.penalty] || "";
+                const sym = c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom];
+                return `${c.level}${sym}${pen} by ${SEAT_NAMES[c.declarer]}`;
+            }
+            function resultText(c, tricks) {
+                if (!c || tricks == null) return "";
+                const pen = ["", "X", "XX"][c.penalty] || "";
+                const sym = c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom];
+                const margin = tricks - (c.level + 6);
+                const tail = margin === 0 ? "=" : margin > 0 ? "+" + margin : "\u2212" + Math.abs(margin);
+                return `${c.level}${sym}${pen}${tail}`;
+            }
+            function hcpOf(handStr) {
+                let t = 0;
+                for (const ch of String(handStr || "").replace(/\./g, "")) {
+                    if (ch === "A") t += 4; else if (ch === "K") t += 3;
+                    else if (ch === "Q") t += 2; else if (ch === "J") t += 1;
+                }
+                return t;
+            }
+            function pct(n, d) { return d > 0 ? Math.round((100 * n) / d) + "%" : "\u2013"; }
+            function num(x, dp) {
+                if (x == null || !isFinite(x)) return "\u2013";
+                return dp ? x.toFixed(dp) : String(Math.round(x));
+            }
+            function timeAgo(ts) {
+                const d = new Date(ts); if (isNaN(d)) return "";
+                const s = (Date.now() - d.getTime()) / 1000;
+                if (s < 3600) return Math.max(1, Math.floor(s / 60)) + "m ago";
+                if (s < 86400) return Math.floor(s / 3600) + "h ago";
+                return Math.floor(s / 86400) + "d ago";
+            }
+            function spinner(msg) {
+                return `<span class="an-spinner"><span class="material-symbols-outlined">progress_activity</span>${escapeHtml(msg || "Working\u2026")}</span>`;
+            }
+
+            // ---- bridge rules (mirror play.go / drills.html) ----
+            function handToCards(handStr) {
+                const parts = String(handStr || "").split(".");
+                const out = [];
+                for (let s = 0; s < 4; s++)
+                    for (const r of parts[s] || "") out.push(r + "SHDC"[s]);
+                return out;
+            }
+            function isBid(c) { return /^[1-7][CDHSN]$/.test(c); }
+            function auctionOver(calls) {
+                const n = calls.length;
+                return n >= 3 && calls[n - 1] === "P" && calls[n - 2] === "P" && calls[n - 3] === "P";
+            }
+            function trickWinnerJS(trick, trump) {
+                // trick: [{seat, card}] in play order; trump: denom letter
+                let win = trick[0];
+                for (let i = 1; i < trick.length; i++) {
+                    const c = trick[i];
+                    if (c.card[1] === win.card[1]) {
+                        if (PLAY_RANK_ORDER.indexOf(c.card[0]) < PLAY_RANK_ORDER.indexOf(win.card[0])) win = c;
+                    } else if (c.card[1] === trump) win = c;
+                }
+                return win.seat;
+            }
+            function contractFromCalls(dealer, calls) {
+                let lastBid = -1, doubled = false, redoubled = false;
+                const firstDenom = {};
+                for (let i = 0; i < calls.length; i++) {
+                    const c = calls[i];
+                    if (c === "X") { doubled = true; redoubled = false; }
+                    else if (c === "XX") { redoubled = true; }
+                    else if (isBid(c)) {
+                        lastBid = i; doubled = redoubled = false;
+                        const seat = (dealer + i) % 4;
+                        const key = "CDHSN".indexOf(c[1]) + "_" + (seat % 2);
+                        if (firstDenom[key] === undefined) firstDenom[key] = seat;
+                    }
+                }
+                if (lastBid < 0) return null;
+                const c = calls[lastBid];
+                const denomIdx = "CDHSN".indexOf(c[1]);
+                const bidder = (dealer + lastBid) % 4;
+                const declarer = firstDenom[denomIdx + "_" + (bidder % 2)];
+                return { level: parseInt(c[0]), denom: c[1], declarer, penalty: redoubled ? 2 : doubled ? 1 : 0 };
+            }
+
+            // ---- PBN parsing (ported from drills.html, plus [Result] + multi-board) ----
+            const PBN_RESULT = /^(1-0|0-1|1\/2-1\/2|\*)$/;
+            function pbnTokens(s) {
+                return String(s || "")
+                    .replace(/\{[^}]*\}/g, " ").replace(/;[^\n]*/g, " ")
+                    .replace(/\([^()]*\)/g, " ").replace(/\$\d+/g, " ")
+                    .split(/\s+/)
+                    .filter((t) => t && !/^\d*\.+$/.test(t) && !PBN_RESULT.test(t));
+            }
+            function pbnCall(tok) {
+                const t = tok.toUpperCase();
+                if (t === "PASS" || t === "P") return "P";
+                if (t === "X" || t === "DOUBLE") return "X";
+                if (t === "XX" || t === "REDOUBLE") return "XX";
+                const m = t.match(/^([1-7])(C|D|H|S|NT?)$/);
+                return m ? m[1] + (m[2][0] === "N" ? "N" : m[2]) : null;
+            }
+            function pbnCard(tok) {
+                const t = tok.toUpperCase();
+                let m = t.match(/^([SHDC])(10|[AKQJT2-9])$/);
+                if (m) return (m[2] === "10" ? "T" : m[2]) + m[1];
+                m = t.match(/^(10|[AKQJT2-9])([SHDC])$/);
+                if (m) return (m[1] === "10" ? "T" : m[1]) + m[2];
+                return null;
+            }
+            function pbnVuln(tag) {
+                const v = String(tag || "").trim().toUpperCase().replace(/[-\s]/g, "");
+                if (v === "NS") return 1; if (v === "EW") return 2;
+                if (v === "ALL" || v === "BOTH") return 3; return 0;
+            }
+            function pbnDeal(tag) {
+                const m = String(tag || "").match(/^\s*([NESW])\s*:([\s\S]*)$/i);
+                if (!m) return null;
+                const rot = "NESW".indexOf(m[1].toUpperCase());
+                const parts = m[2].trim().split(/\s+/);
+                if (parts.length !== 4) return null;
+                const hands = ["", "", "", ""], seen = new Set();
+                for (let i = 0; i < 4; i++) {
+                    const suits = (parts[i] === "-" ? "..." : parts[i]).split(".");
+                    if (suits.length !== 4) return null;
+                    const hand = suits.map((s) =>
+                        s.replace(/10/g, "T").replace(/[^AKQJT2-9akqjt]/g, "").toUpperCase()).join(".");
+                    const cards = handToCards(hand);
+                    if (cards.length !== 13) return null;
+                    for (const c of cards) { if (seen.has(c)) return null; seen.add(c); }
+                    hands[(rot + i) % 4] = hand;
+                }
+                return seen.size === 52 ? hands : null;
+            }
+            function pbnAuction(toks) {
+                const calls = []; let i = 0;
+                for (; i < toks.length; i++) {
+                    if (/^AP$/i.test(toks[i])) { i++; while (!auctionOver(calls) && calls.length < 100) calls.push("P"); break; }
+                    const c = pbnCall(toks[i]);
+                    if (c === null) break;
+                    calls.push(c);
+                    if (auctionOver(calls)) { i++; break; }
+                }
+                return { calls, used: i };
+            }
+            function pbnPlays(toks, hands, leader, trump) {
+                const rem = hands.map((h) => new Set(handToCards(h)));
+                const plays = []; let next = leader; let i = 0;
+                while (i < toks.length && plays.length < 52) {
+                    const got = []; let stop = false;
+                    while (i < toks.length && got.length < 4) {
+                        const card = toks[i] === "-" ? null : pbnCard(toks[i]);
+                        if (!card) { stop = true; break; }
+                        const seat = [0, 1, 2, 3].find((s) => rem[s].has(card));
+                        if (seat === undefined || got.some((t) => t.seat === seat)) { stop = true; break; }
+                        got.push({ seat, card }); i++;
+                    }
+                    if (!got.length) break;
+                    const trick = [];
+                    for (let k = 0; k < got.length; k++) {
+                        const t = got.find((x) => x.seat === (next + k) % 4);
+                        if (!t) break; trick.push(t);
+                    }
+                    if (!trick.length) break;
+                    const led = trick[0].card[1];
+                    if (trick.some((t) => t.card[1] !== led && [...rem[t.seat]].some((c) => c[1] === led))) break;
+                    for (const t of trick) { rem[t.seat].delete(t.card); plays.push(t); }
+                    if (trick.length < 4) break;
+                    next = trickWinnerJS(trick, trump);
+                    if (stop) break;
+                }
+                return plays;
+            }
+            function parsePBN(text) {
+                const src = String(text || "").replace(/\r\n?/g, "\n");
+                const tags = {}, marks = [];
+                const tagRe = /\[\s*(\w+)\s*"([^"]*)"\s*\]/g;
+                let m;
+                while ((m = tagRe.exec(src))) {
+                    tags[m[1].toLowerCase()] = m[2];
+                    marks.push({ key: m[1].toLowerCase(), val: m[2], start: m.index, end: tagRe.lastIndex });
+                }
+                if (!marks.length) throw new Error("That file has no PBN tags");
+                const hands = pbnDeal(tags.deal);
+                if (!hands) throw new Error("Missing or invalid [Deal] tag");
+                const dealer = Math.max(0, "NESW".indexOf(String(tags.dealer || "N").trim().toUpperCase()[0]));
+                const vuln = pbnVuln(tags.vulnerable);
+                const aucMark = marks.find((x) => x.key === "auction");
+                const playMark = marks.find((x) => x.key === "play");
+                const afterTags = marks.reduce((e, x) => (x === aucMark || x === playMark) ? e : Math.max(e, x.end), 0);
+                const secStart = aucMark ? Math.max(afterTags, aucMark.end) : afterTags;
+                const secEnd = playMark && playMark.start >= secStart ? playMark.start : src.length;
+                const secToks = pbnTokens(src.slice(secStart, secEnd));
+                const r = pbnAuction(secToks);
+                const calls = r.calls;
+                const playToks = playMark
+                    ? pbnTokens(src.slice(Math.max(afterTags, playMark.end)))
+                    : secToks.slice(r.used).filter((t) => !/^AP$/i.test(t));
+                if (!auctionOver(calls)) throw new Error("Could not read a complete auction");
+                const contract = contractFromCalls(dealer, calls);
+                if (!contract) throw new Error("The auction passes out \u2014 nothing to analyze");
+                const opener = (contract.declarer + 1) % 4;
+                let leader = opener;
+                if (playMark) {
+                    leader = "NESW".indexOf(String(playMark.val || "").trim().toUpperCase()[0]);
+                    if (leader < 0) throw new Error("Invalid [Play] leader");
+                }
+                if (leader !== opener) throw new Error("Only a play from the opening lead can be read");
+                const plays = pbnPlays(playToks, hands, leader, contract.denom);
+                const rt = parseInt(tags.result, 10);
+                return {
+                    title: String(tags.event || "").trim().slice(0, 60),
+                    dealer, vuln, hands, calls, plays, contract,
+                    resultTricks: Number.isFinite(rt) ? rt : null,
+                };
+            }
+            // Split a PBN stream into boards. Boards are delimited by a repeating
+            // roster tag; prefer [Event], then [Board], then [Dealer]/[Deal].
+            function splitPBNBoards(src) {
+                for (const key of ["Event", "Board", "Dealer", "Deal"]) {
+                    const re = new RegExp("\\[\\s*" + key + "\\s", "gi");
+                    const marks = [...src.matchAll(re)].map((x) => x.index);
+                    if (marks.length >= 1) {
+                        const chunks = [];
+                        for (let i = 0; i < marks.length; i++)
+                            chunks.push(src.slice(marks[i], i + 1 < marks.length ? marks[i + 1] : src.length));
+                        return chunks;
+                    }
+                }
+                return [src];
+            }
+
+            // ---- API ----
+            async function analyzeBoard(board) {
+                const res = await fetch("/api/analyze/board", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        hands: board.hands, dealer: board.dealer, vuln: board.vuln,
+                        calls: board.calls, plays: board.plays,
+                    }),
+                });
+                const data = await res.json().catch(() => null);
+                if (!res.ok) return { ok: false, error: (data && data.error) || ("analysis failed (" + res.status + ")") };
+                return { ok: true, data };
+            }
+            function ensureAnalysis(i) {
+                if (!boardResults[i]) boardResults[i] = null; // in-flight marker
+                return analyzeBoard(boards[i]).then((r) => {
+                    boardResults[i] = r.ok ? r.data : { error: r.error };
+                    return boardResults[i];
+                });
+            }
+
+            // ---- source: history ----
+            async function pickHistory() {
+                if (!window.currentUser) { showAuthDialog("login"); return; }
+                sourceError = null; busy = true; view = "list"; boards = []; boardResults = {}; sourceKind = "history"; render();
+                try {
+                    const res = await fetch("/api/play/stats");
+                    const data = await res.json();
+                    // played-out boards with a real contract (pass-outs have no
+                    // play to analyze); newest first, so #1 is the latest hand
+                    const recs = (data.recentPlay || []).filter(
+                        (r) => r.hands && r.calls && contractFromCalls(r.dealer, r.calls));
+                    boards = recs.map((r, k) => ({
+                        title: r.contract || "Board",
+                        hands: r.hands, dealer: r.dealer, vuln: r.vuln, calls: r.calls,
+                        plays: (r.plays || []).map((p) => ({ seat: p.seat, card: p.card })),
+                        resultTricks: (r.played != null ? r.played : null),
+                        ts: r.ts, imps: r.imps, parNs: r.parNs, ddTricks: r.tricks,
+                        contractStr: r.contract, claimed: !!r.claimed, idxLabel: k + 1,
+                    }));
+                    if (!boards.length) sourceError = "No played-out hands in your history yet. Play a few hands in \u201cPlay bridge\u201d first.";
+                } catch (e) {
+                    sourceError = "Could not load your history.";
+                }
+                busy = false; render();
+            }
+
+            // ---- source: PBN ----
+            function pickPbnFile() { const f = $("pbnFile"); if (f) f.click(); }
+            async function onPbnFile(e) {
+                const f = e.target.files && e.target.files[0];
+                if (!f) return;
+                const text = await f.text();
+                loadPBNText(text);
+                e.target.value = "";
+            }
+            function loadPBNText(text) {
+                sourceError = null;
+                const chunks = splitPBNBoards(text);
+                const parsed = []; const errors = [];
+                for (const ch of chunks) {
+                    try { parsed.push(parsePBN(ch)); } catch (err) { errors.push((err && err.message) || "parse error"); }
+                }
+                if (!parsed.length) {
+                    sourceError = "No analyzable boards found." + (errors.length ? " (" + errors[0] + ")" : "");
+                    view = "source"; render(); return;
+                }
+                boards = parsed.map((p, k) => ({
+                    title: p.title || ("Board " + (k + 1)),
+                    hands: p.hands, dealer: p.dealer, vuln: p.vuln, calls: p.calls,
+                    plays: p.plays, resultTricks: p.resultTricks, idxLabel: k + 1,
+                    contractStr: contractText(p.contract),
+                }));
+                boardResults = {}; sourceKind = "pbn";
+                if (boards.length === 1) { openBoard(0); }
+                else { view = "list"; render(); }
+            }
+
+            // ---- navigation ----
+            function goSource() { view = "source"; sourceError = null; showPaste = false; render(); }
+            function goList() { view = "list"; render(); }
+            async function openBoard(i) {
+                curIdx = i; step = 0; view = "single"; busy = true; render();
+                if (!boardResults[i]) { await ensureAnalysis(i); }
+                busy = false; render();
+            }
+            function curAnalysis() { const a = boardResults[curIdx]; return a && !a.error ? a : null; }
+            function stepTo(i) {
+                const a = curAnalysis(); const n = a ? a.plays.length : 0;
+                step = Math.max(0, Math.min(n - 1, i)); render();
+                const el = $("an-verdict-card"); if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+            }
+            function stepDelta(d) { stepTo(step + d); }
+            function nextMistake() {
+                const a = curAnalysis(); if (!a) return;
+                const n = a.plays.length; if (!n) return;
+                for (let k = 1; k <= n; k++) {
+                    const j = (step + k) % n;
+                    if (a.plays[j].mistake) { stepTo(j); return; }
+                }
+                showToast("No DD mistakes in this hand \u2014 every card was double-dummy accurate");
+            }
+            function prevBoard() { if (curIdx > 0) openBoard(curIdx - 1); }
+            function nextBoard() { if (curIdx < boards.length - 1) openBoard(curIdx + 1); }
+
+            // ---- bulk ----
+            async function runBulk() {
+                view = "bulk"; busy = true;
+                bulk = { done: 0, total: boards.length, results: [], errors: [], agg: null };
+                render();
+                for (let i = 0; i < boards.length; i++) {
+                    let a = boardResults[i];
+                    if (!a || a.error) { await ensureAnalysis(i); a = boardResults[i]; }
+                    if (a && !a.error) bulk.results.push({ i, board: boards[i], analysis: a });
+                    else bulk.errors.push({ i, board: boards[i], msg: (a && a.error) || "failed" });
+                    bulk.done = i + 1; render();
+                }
+                bulk.agg = aggregate(bulk.results);
+                busy = false; render();
+            }
+            function gameLevel(denom) { return DENOM_GAME_LEVEL[denom] || 4; }
+            function aggregate(results) {
+                const perSeat = [0, 1, 2, 3].map((s) => ({ seat: s, cards: 0, mistakes: 0, tricksLost: 0, critical: 0 }));
+                const side = { ns: { declared: 0, made: 0, missedGame: 0, missedSlam: 0 }, ew: { declared: 0, made: 0, missedGame: 0, missedSlam: 0 } };
+                let unmakeableMade = 0, levelSum = 0, levelCount = 0, ddDiffSum = 0, ddDiffCount = 0;
+                let totalMistakes = 0, totalTricksLost = 0, totalCritical = 0, madeAny = 0, declAny = 0;
+                const unmakeableList = [];
+                for (const { board, analysis: a } of results) {
+                    const c = a.contract, target = a.target;
+                    const actual = a.actual_tricks != null ? a.actual_tricks : board.resultTricks;
+                    const declSide = (c.declarer % 2 === 0) ? "ns" : "ew";
+                    levelSum += c.level; levelCount++;
+                    if (actual != null) {
+                        const made = actual >= target;
+                        side[declSide].declared++; declAny++;
+                        if (made) { side[declSide].made++; madeAny++; }
+                        if (made && a.dd_tricks < target) { unmakeableMade++; unmakeableList.push({ board, analysis: a }); }
+                        ddDiffSum += (actual - a.dd_tricks); ddDiffCount++;
+                    }
+                    for (const s of ["ns", "ew"]) {
+                        const opt = a.optimal[s]; const isDecl = (declSide === s);
+                        const reachedGame = isDecl && c.level >= gameLevel(c.denom);
+                        const reachedSlam = isDecl && c.level >= 6;
+                        if (opt.game && !reachedGame) side[s].missedGame++;
+                        if ((opt.small_slam || opt.grand_slam) && !reachedSlam) side[s].missedSlam++;
+                    }
+                    for (const p of a.plays) {
+                        const ps = perSeat[p.seat]; ps.cards++;
+                        if (p.mistake) { ps.mistakes++; ps.tricksLost += p.cost; totalMistakes++; totalTricksLost += p.cost; }
+                        if (p.critical) { ps.critical++; totalCritical++; }
+                    }
+                }
+                const n = results.length || 1;
+                return {
+                    boards: results.length, perSeat, side, unmakeableMade, unmakeableList,
+                    levelSum, levelCount, ddDiffSum, ddDiffCount,
+                    totalMistakes, totalTricksLost, totalCritical, madeAny, declAny,
+                    avgMistakes: totalMistakes / n, avgTricksLost: totalTricksLost / n,
+                    avgLevel: levelCount ? levelSum / levelCount : null,
+                    avgDdDiff: ddDiffCount ? ddDiffSum / ddDiffCount : null,
+                };
+            }
+
+            // ---- per-seat summary for one analysis ----
+            function seatSummary(a) {
+                const s = [0, 1, 2, 3].map((seat) => ({ seat, cards: 0, mistakes: 0, tricksLost: 0, critical: 0 }));
+                for (const p of a.plays) {
+                    const o = s[p.seat]; o.cards++;
+                    if (p.mistake) { o.mistakes++; o.tricksLost += p.cost; }
+                    if (p.critical) o.critical++;
+                }
+                return s;
+            }
+
+            // ================= RENDER =================
+            function render() {
+                const mc = $("main-content");
+                if (!mc) return;
+                if (view === "source") mc.innerHTML = sourceView();
+                else if (view === "list") mc.innerHTML = listView();
+                else if (view === "single") mc.innerHTML = singleView();
+                else if (view === "bulk") mc.innerHTML = bulkView();
+                bind();
+            }
+
+            function sourceView() {
+                const loggedIn = !!window.currentUser;
+                return `<div class="an-wrap">
+                    ${sourceError ? `<div class="an-err" style="margin-bottom:.9rem">${escapeHtml(sourceError)}</div>` : ""}
+                    <div class="an-srcgrid">
+                        <button class="an-src" id="srcHistory">
+                            <span class="ic"><span class="material-symbols-outlined">history</span></span>
+                            <h3>From my history</h3>
+                            <p>${loggedIn
+                                ? "Analyze your played-out hands from \u201cPlay bridge\u201d (you sat South). Pick one to step through, or run a bulk pass over all of them."
+                                : "Log in to analyze the hands you have played against the bots. You sit South; every seat is analyzed."}</p>
+                        </button>
+                        <button class="an-src" id="srcPbn">
+                            <span class="ic"><span class="material-symbols-outlined">upload_file</span></span>
+                            <h3>Upload a PBN file</h3>
+                            <p>Analyze one board or a whole session from a <b>.pbn</b> file \u2014 the deal, auction and card play are read and every card is checked against double-dummy best play.</p>
+                        </button>
+                    </div>
+                    <div class="an-card" style="margin-top:.9rem">
+                        <div class="an-h">Or paste PBN text</div>
+                        ${showPaste ? `
+                            <textarea id="pasteBox" class="an-paste" placeholder="[Event &quot;...&quot;]&#10;[Dealer &quot;N&quot;]&#10;[Deal &quot;N:AKQ...&quot;]&#10;[Auction &quot;N&quot;]&#10;Pass 1H ...&#10;[Play &quot;E&quot;]&#10;S3 S5 ..."></textarea>
+                            <div style="display:flex;gap:.5rem;margin-top:.6rem">
+                                <button class="an-btn gold sm" id="pasteGo"><span class="material-symbols-outlined">play_arrow</span>Analyze pasted PBN</button>
+                                <button class="an-btn sm" id="pasteHide">Close</button>
+                            </div>`
+                        : `<button class="an-btn sm" id="pasteShow"><span class="material-symbols-outlined">content_paste</span>Paste PBN text</button>`}
+                    </div>
+                    <input type="file" id="pbnFile" accept=".pbn,text/plain" class="an-hiddenfile" />
+                    <p class="an-note" style="margin-top:1rem">Double-dummy analysis is computed by the bridge engine, so it needs the bot sidecar to be running (the same one Play bridge uses). Everything runs on the submitted deal \u2014 all four hands are known (god-mode), which is what makes the per-card verdicts exact.</p>
+                </div>`;
+            }
+
+            function listView() {
+                const items = boards.map((b, i) => {
+                    const sub = [];
+                    if (b.contractStr) sub.push(b.contractStr);
+                    if (b.resultTricks != null) sub.push(b.resultTricks + " tricks");
+                    else if (b.plays && b.plays.length === 52) sub.push("played out");
+                    else sub.push((b.plays ? b.plays.length : 0) + " cards");
+                    if (b.ts) sub.push(timeAgo(b.ts));
+                    return `<div class="an-brow" data-open="${i}">
+                        <span class="n">${b.idxLabel != null ? b.idxLabel : i + 1}</span>
+                        <span class="m"><span class="t">${colorSuits(b.title || ("Board " + (i + 1)))}</span>
+                        <span class="s">${escapeHtml(sub.join(" \u00b7 "))}</span></span>
+                        <span class="material-symbols-outlined" style="color:#787572">chevron_right</span>
+                    </div>`;
+                }).join("");
+                return `<div class="an-wrap">
+                    <div class="an-topbar">
+                        <button class="an-btn sm" id="backSrc"><span class="material-symbols-outlined">arrow_back</span>Back</button>
+                        <span class="an-title" style="font-size:1rem">${sourceKind === "history" ? "Your played hands" : "PBN boards"} <span class="an-muted">(${boards.length})</span></span>
+                        <span class="spacer"></span>
+                        ${boards.length > 1 ? `<button class="an-btn gold sm" id="bulkGo"><span class="material-symbols-outlined">bar_chart</span>Analyze all (${boards.length})</button>` : ""}
+                    </div>
+                    ${sourceError ? `<div class="an-err" style="margin-bottom:.9rem">${escapeHtml(sourceError)}</div>` : ""}
+                    ${busy ? `<div class="an-card">${spinner("Loading\u2026")}</div>`
+                        : boards.length ? `<div class="an-boardlist">${items}</div>`
+                        : `<div class="an-card an-muted">Nothing to show.</div>`}
+                    <p class="an-note" style="margin-top:1rem">Tap a board to step through it card by card. ${boards.length > 1 ? "Or analyze all of them for aggregate statistics." : ""}</p>
+                </div>`;
+            }
+
+            // ---- single-hand detailed view ----
+            function singleView() {
+                const board = boards[curIdx];
+                const a = boardResults[curIdx];
+                const top = `<div class="an-topbar">
+                    <button class="an-btn sm" id="backList"><span class="material-symbols-outlined">arrow_back</span>${boards.length > 1 ? "Boards" : "Back"}</button>
+                    <span class="spacer"></span>
+                    <button class="an-btn sm" id="prevBoard" ${curIdx === 0 ? "disabled" : ""}><span class="material-symbols-outlined">chevron_left</span></button>
+                    <span class="an-count" style="min-width:auto">${curIdx + 1} / ${boards.length}</span>
+                    <button class="an-btn sm" id="nextBoard" ${curIdx >= boards.length - 1 ? "disabled" : ""}><span class="material-symbols-outlined">chevron_right</span></button>
+                </div>`;
+
+                if (busy && !a) return `<div class="an-wrap">${top}<div class="an-card">${spinner("Analyzing hand\u2026")}</div></div>`;
+                if (a && a.error) return `<div class="an-wrap">${top}
+                    <div class="an-err">Could not analyze this hand: ${escapeHtml(a.error)}</div>
+                    <div style="margin-top:.7rem"><button class="an-btn sm" id="retryBoard"><span class="material-symbols-outlined">refresh</span>Retry</button></div></div>`;
+                if (!a) return `<div class="an-wrap">${top}<div class="an-card">${spinner("Loading\u2026")}</div></div>`;
+
+                const contract = a.contract, target = a.target;
+                const actual = a.actual_tricks != null ? a.actual_tricks : board.resultTricks;
+                const made = actual != null ? actual >= target : null;
+                const stepIdx = Math.max(0, Math.min(step, a.plays.length - 1));
+
+                return `<div class="an-wrap">
+                    ${top}
+                    ${headerCard(board, a, actual, made)}
+                    ${dealCard(board, a, stepIdx)}
+                    ${a.plays.length ? stepperCard(board, a, stepIdx) : `<div class="an-card an-muted">No cards were played in this hand, so there is nothing to step through. The deal-level double-dummy facts above still apply.</div>`}
+                    ${a.plays.length ? seatTable(seatSummary(a), target) : ""}
+                    ${a.plays.length ? logCard(board, a, stepIdx) : ""}
+                </div>`;
+            }
+
+            function headerCard(board, a, actual, made) {
+                const c = a.contract;
+                const flags = [];
+                if (actual != null) {
+                    flags.push(made
+                        ? `<span class="an-flag good"><span class="material-symbols-outlined" style="font-size:.9rem">check_circle</span>Made ${resultText(c, actual)}</span>`
+                        : `<span class="an-flag bad"><span class="material-symbols-outlined" style="font-size:.9rem">remove_circle</span>Down ${resultText(c, actual)}</span>`);
+                }
+                if (made && a.dd_tricks < a.target)
+                    flags.push(`<span class="an-flag warn" title="Double-dummy says this contract should fail; it made because of defensive errors">Unmakeable \u2014 made</span>`);
+                const opt = a.optimal;
+                const optBits = [];
+                if (opt.ns.game) optBits.push("N-S game"); if (opt.ns.small_slam) optBits.push("N-S slam");
+                if (opt.ew.game) optBits.push("E-W game"); if (opt.ew.small_slam) optBits.push("E-W slam");
+                return `<div class="an-card">
+                    <div class="an-sumbar">
+                        <span class="big">${colorSuits(contractText(c))}</span>
+                        <span class="an-muted" style="font-size:.82rem">Dealer ${SEAT_LETTER[board.dealer]} \u00b7 Vuln ${VULN_NAMES[board.vuln]}</span>
+                    </div>
+                    <div class="an-kv" style="margin-top:.6rem">
+                        <span class="an-stat"><span class="k">DD tricks</span><span class="v">${a.dd_tricks}</span></span>
+                        <span class="an-stat"><span class="k">Needed</span><span class="v">${a.target}</span></span>
+                        <span class="an-stat"><span class="k">Played</span><span class="v">${actual != null ? actual : "\u2013"}</span></span>
+                        <span class="an-stat"><span class="k">Par (N-S)</span><span class="v">${a.par_ns > 0 ? "+" : ""}${a.par_ns}</span></span>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.7rem">
+                        ${flags.join("")}
+                        ${optBits.length ? `<span class="an-flag info" title="Double-dummy says these are makeable">DD makes: ${optBits.join(", ")}</span>` : `<span class="an-flag info">No makeable game</span>`}
+                    </div>
+                </div>`;
+            }
+
+            function dealCard(board, a, stepIdx) {
+                // which cards are already down (up to and including stepIdx)
+                const playedBy = [new Set(), new Set(), new Set(), new Set()];
+                for (let i = 0; i <= stepIdx && i < board.plays.length; i++)
+                    playedBy[board.plays[i].seat].add(board.plays[i].card);
+                const curTok = board.plays[stepIdx] ? board.plays[stepIdx].card : null;
+                const curSeat = board.plays[stepIdx] ? board.plays[stepIdx].seat : -1;
+                const seats = [0, 1, 2, 3].map((s) => {
+                    const parts = String(board.hands[s] || "").split(".");
+                    const lines = [["S", 0], ["H", 1], ["D", 2], ["C", 3]].map(([sym, pi]) => {
+                        const ranks = (parts[pi] || "").split("").filter(Boolean).map((r) => {
+                            const tok = r + sym;
+                            const gone = playedBy[s].has(tok);
+                            const now = (s === curSeat && tok === curTok);
+                            return `<span class="an-rk${now ? " now" : gone ? " gone" : ""}">${r === "T" ? "10" : r}</span>`;
+                        }).join("");
+                        return `<div class="an-suitline"><span class="an-su ${SUIT_CLASS[sym]}">${SUIT_SYMBOL[sym]}</span><span>${ranks || "\u2014"}</span></div>`;
+                    }).join("");
+                    return `<div class="an-seat"><div class="nm"><b>${SEAT_NAMES[s]}</b> \u00b7 ${hcpOf(board.hands[s])} hcp${s === a.contract.declarer ? " \u00b7 declarer" : ""}</div>${lines}</div>`;
+                }).join("");
+                return `<div class="an-card">
+                    <div class="an-h">Deal \u2014 cards dim once played</div>
+                    <div class="an-dealgrid">
+                        <div class="an-hands">${seats}</div>
+                        <div>${auctionBox(board)}</div>
+                    </div>
+                </div>`;
+            }
+
+            function auctionBox(board) {
+                const dealer = board.dealer;
+                const rows = [];
+                for (let i = 0; i < board.calls.length; i++) {
+                    const L = i + dealer, r = Math.floor(L / 4);
+                    if (!rows[r]) rows[r] = [];
+                    while (rows[r].length < L % 4) rows[r].push(null);
+                    rows[r].push(board.calls[i]);
+                }
+                const head = [0, 1, 2, 3].map((s) => `<span class="${s === dealer ? "dlr" : ""}">${SEAT_LETTER[s]}</span>`).join("");
+                const body = rows.map((row) => {
+                    let cells = "";
+                    for (let k = 0; k < 4; k++) cells += `<span>${row && row[k] ? callChip(row[k]) : ""}</span>`;
+                    return `<div class="an-auc-row">${cells}</div>`;
+                }).join("");
+                return `<div class="an-h">Auction</div><div class="an-auc-head">${head}</div>${body}`;
+            }
+            function callChip(c) {
+                if (c === "P") return `<span class="an-call an-call-p">pass</span>`;
+                if (c === "X") return `<span class="an-call an-call-x">X</span>`;
+                if (c === "XX") return `<span class="an-call an-call-xx">XX</span>`;
+                const sym = c[1] === "N" ? "NT" : SUIT_SYMBOL[c[1]];
+                return `<span class="an-call an-call-${SUIT_CLASS[c[1]]}">${c[0]}${sym}</span>`;
+            }
+
+            function stepperCard(board, a, stepIdx) {
+                const p = a.plays[stepIdx];
+                const trickIdx = Math.floor(stepIdx / 4);
+                const trickStart = trickIdx * 4;
+                const n = a.plays.length;
+                return `<div class="an-card" id="an-verdict-card">
+                    <div class="an-h">Trick ${trickIdx + 1} \u00b7 card ${stepIdx + 1} of ${n} \u00b7 ${SEAT_NAMES[p.seat]} to play</div>
+                    ${currentTrick(board, a, stepIdx, trickStart)}
+                    ${verdictPanel(a, p, stepIdx)}
+                    <div class="an-stepper" style="margin-top:.9rem">
+                        <button class="an-btn sm" id="s-first" ${stepIdx === 0 ? "disabled" : ""}><span class="material-symbols-outlined">skip_previous</span></button>
+                        <button class="an-btn sm" id="s-prev" ${stepIdx === 0 ? "disabled" : ""}><span class="material-symbols-outlined">chevron_left</span></button>
+                        <span class="an-count">${stepIdx + 1} / ${n}</span>
+                        <button class="an-btn sm" id="s-next" ${stepIdx >= n - 1 ? "disabled" : ""}><span class="material-symbols-outlined">chevron_right</span></button>
+                        <button class="an-btn sm" id="s-last" ${stepIdx >= n - 1 ? "disabled" : ""}><span class="material-symbols-outlined">skip_next</span></button>
+                        <span class="an-bar"><i style="width:${Math.round(((stepIdx + 1) / n) * 100)}%"></i></span>
+                        <button class="an-btn gold sm" id="s-mistake"><span class="material-symbols-outlined">skip_next</span>Next mistake</button>
+                    </div>
+                </div>`;
+            }
+
+            function currentTrick(board, a, stepIdx, trickStart) {
+                // reveal only the cards played so far in the trick in focus
+                const upto = Math.min(stepIdx, trickStart + 3, board.plays.length - 1);
+                const idxs = [];
+                for (let i = trickStart; i <= upto; i++) idxs.push(i);
+                const leader = board.plays[trickStart]
+                    ? board.plays[trickStart].seat : (a.contract.declarer + 1) % 4;
+                const complete = idxs.length === 4;
+                const winner = complete
+                    ? trickWinnerJS(idxs.map((i) => board.plays[i]), a.contract.denom) : null;
+                const cells = [0, 1, 2, 3].map((k) => (leader + k) % 4).map((s) => {
+                    const i = idxs.find((j) => board.plays[j].seat === s);
+                    if (i === undefined)
+                        return `<div class="an-tslot"><span class="who">${SEAT_LETTER[s]}</span><span class="an-tile empty"></span></div>`;
+                    const tp = board.plays[i];
+                    const isNow = i === stepIdx, isWin = complete && winner === s;
+                    return `<div class="an-tslot"><span class="who">${SEAT_LETTER[s]}${isWin ? " \u2713" : ""}</span>
+                        <span class="an-tile ${cardIsRed(tp.card) ? "red" : ""}${isNow ? " now" : ""}${isWin && !isNow ? " win" : ""}">
+                        <span class="r">${cardRank(tp.card)}</span><span class="s">${SUIT_SYMBOL[tp.card[1]]}</span></span></div>`;
+                }).join("");
+                return `<div class="an-trick" style="margin-bottom:.8rem">${cells}</div>`;
+            }
+
+            function verdictPanel(a, p, stepIdx) {
+                const seatName = SEAT_NAMES[p.seat];
+                const sideName = p.decl_side ? "declarer side" : "defence";
+                let pill, body;
+                if (p.best == null) {
+                    pill = `<span class="an-vpill info"><span class="material-symbols-outlined">help</span>Not solved</span>`;
+                    body = `<div class="an-muted" style="font-size:.85rem">The engine could not solve this position, so this card is not graded.</div>`;
+                } else if (!p.mistake) {
+                    pill = `<span class="an-vpill ok"><span class="material-symbols-outlined">check</span>DD accurate</span>`;
+                    body = `<div class="an-kv">
+                        <span>${sideName} best <b>${p.best}</b> tricks \u2014 this card keeps it.</span>
+                        <span>Declarer ends at <b>${p.played_decl}</b> of ${a.target} needed.</span>
+                    </div>`;
+                } else {
+                    pill = p.critical
+                        ? `<span class="an-vpill crit"><span class="material-symbols-outlined">error</span>Contract-critical error</span>`
+                        : `<span class="an-vpill bad"><span class="material-symbols-outlined">trending_down</span>Mistake \u2212${p.cost} trick${p.cost === 1 ? "" : "s"}</span>`;
+                    body = `<div class="an-kv">
+                        <span>${sideName} could take <b>${p.best}</b>; this card takes only <b>${p.played}</b> (<b>\u2212${p.cost}</b>).</span>
+                        <span>Declarer's tricks: best <b>${p.best_decl}</b> \u2192 after this card <b>${p.played_decl}</b> (need ${a.target}).</span>
+                        ${p.critical ? `<span class="an-flag ${p.best_decl >= a.target ? "bad" : "warn"}" style="margin-top:.3rem">${p.best_decl >= a.target ? "This error lost the contract" : "This error let the contract through"}</span>` : ""}
+                    </div>`;
+                }
+                const bestCards = (p.best_cards && p.best_cards.length && p.mistake)
+                    ? `<div class="an-h" style="margin-top:.7rem;margin-bottom:.25rem">Double-dummy best here</div>
+                       <div class="an-bestcards">${p.best_cards.slice(0, 12).map((t) => `<span class="an-minicard ${cardIsRed(t) ? "red" : "blk"}">${cardRank(t)}${SUIT_SYMBOL[t[1]]}</span>`).join("")}${p.best_cards.length > 12 ? `<span class="an-muted" style="font-size:.75rem">+${p.best_cards.length - 12} more</span>` : ""}</div>`
+                    : "";
+                return `<div class="an-verdict">${pill}
+                        <span class="an-title" style="font-size:1rem">${seatName} played ${cardPretty(p.card)}</span></div>
+                    ${body}${bestCards}`;
+            }
+
+            function seatTable(summary, target) {
+                const rows = summary.map((s) => `<tr>
+                    <td><span class="seat-badge">${SEAT_LETTER[s.seat]}</span> <span style="margin-left:.4rem">${SEAT_NAMES[s.seat]}</span></td>
+                    <td class="n">${s.cards}</td>
+                    <td class="n" style="color:${s.mistakes ? "#f6d9a8" : "#8fd694"}">${s.mistakes}</td>
+                    <td class="n">${s.tricksLost}</td>
+                    <td class="n" style="color:${s.critical ? "#ffd7d1" : "#bababa"}">${s.critical}</td>
+                </tr>`).join("");
+                return `<div class="an-card">
+                    <div class="an-h">Per player \u2014 double-dummy accuracy</div>
+                    <table class="an-table">
+                        <thead><tr><th>Seat</th><th class="n">Cards</th><th class="n">DD mistakes</th><th class="n">Tricks lost</th><th class="n">Contract-critical</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                    <p class="an-note" style="margin-top:.5rem">A DD mistake cost at least one trick versus best double-dummy play. \u201cTricks lost\u201d is the over/under versus DD (the total tricks that seat gave away); \u201ccontract-critical\u201d counts the errors that flipped the contract between make and defeat (target ${target}).</p>
+                </div>`;
+            }
+
+            function logCard(board, a, stepIdx) {
+                const tricks = [];
+                for (let t = 0; t * 4 < board.plays.length; t++) {
+                    const cards = [];
+                    for (let k = 0; k < 4 && t * 4 + k < board.plays.length; k++) cards.push(t * 4 + k);
+                    tricks.push(cards);
+                }
+                const rows = tricks.map((cards, t) => {
+                    const chips = cards.map((i) => {
+                        const pl = board.plays[i], an = a.plays[i];
+                        const cls = an && an.critical ? "crit" : an && an.mistake ? "bad" : "ok";
+                        const cost = an && an.mistake ? `<span class="cost">\u2212${an.cost}</span>` : "";
+                        return `<span class="an-pc ${cls}${i === stepIdx ? " now" : ""}" data-step="${i}">
+                            <span class="seat">${SEAT_LETTER[pl.seat]}</span>${cardRank(pl.card)}${SUIT_SYMBOL[pl.card[1]]}${cost}</span>`;
+                    }).join("");
+                    return `<div class="an-logtrick"><span class="tn">${t + 1}</span><span class="an-logcards">${chips}</span></div>`;
+                }).join("");
+                return `<div class="an-card tight">
+                    <button class="an-h" id="logToggle" style="width:100%;text-align:left;background:none;border:0;cursor:pointer;display:flex;align-items:center;gap:.3rem">
+                        <span class="material-symbols-outlined" style="font-size:.95rem">${showLog ? "expand_more" : "chevron_right"}</span>
+                        Play log \u2014 every card, colour-coded (tap to jump)
+                    </button>
+                    ${showLog ? `<div class="an-log" style="margin-top:.5rem">${rows}</div>
+                    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:.6rem" class="an-note">
+                        <span><span class="an-pc ok" style="cursor:default;padding:.05rem .35rem">AK</span> DD accurate</span>
+                        <span><span class="an-pc bad" style="cursor:default;padding:.05rem .35rem">AK</span> mistake</span>
+                        <span><span class="an-pc crit" style="cursor:default;padding:.05rem .35rem">AK</span> contract-critical</span>
+                    </div>` : ""}
+                </div>`;
+            }
+
+            // ---- bulk view ----
+            function bulkView() {
+                const top = `<div class="an-topbar">
+                    <button class="an-btn sm" id="backList"><span class="material-symbols-outlined">arrow_back</span>Boards</button>
+                    <span class="an-title" style="font-size:1rem">Bulk analysis</span>
+                </div>`;
+                if (!bulk) return `<div class="an-wrap">${top}</div>`;
+                const prog = `<div class="an-card">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.4rem">
+                        <span class="an-muted" style="font-size:.82rem">${busy ? "Analyzing boards\u2026" : "Done"}</span>
+                        <span class="an-title" style="font-size:.9rem">${bulk.done} / ${bulk.total}</span>
+                    </div>
+                    <div class="an-prog"><i style="width:${Math.round((bulk.done / (bulk.total || 1)) * 100)}%"></i></div>
+                </div>`;
+                if (busy || !bulk.agg) return `<div class="an-wrap">${top}${prog}</div>`;
+
+                const ag = bulk.agg;
+                const seatRows = ag.perSeat.map((s) => `<tr>
+                    <td><span class="seat-badge">${SEAT_LETTER[s.seat]}</span> <span style="margin-left:.4rem">${SEAT_NAMES[s.seat]}</span></td>
+                    <td class="n">${s.cards}</td>
+                    <td class="n" style="color:${s.mistakes ? "#f6d9a8" : "#8fd694"}">${s.mistakes}</td>
+                    <td class="n">${(s.mistakes / (ag.boards || 1)).toFixed(2)}</td>
+                    <td class="n">${s.tricksLost}</td>
+                    <td class="n" style="color:${s.critical ? "#ffd7d1" : "#bababa"}">${s.critical}</td>
+                </tr>`).join("");
+
+                const sideRow = (name, s) => `<tr>
+                    <td>${name}</td>
+                    <td class="n">${s.declared}</td>
+                    <td class="n">${pct(s.made, s.declared)}</td>
+                    <td class="n" style="color:${s.missedGame ? "#f6d9a8" : "#bababa"}">${s.missedGame}</td>
+                    <td class="n" style="color:${s.missedSlam ? "#f6d9a8" : "#bababa"}">${s.missedSlam}</td>
+                </tr>`;
+
+                const boardRows = bulk.results.map(({ i, board, analysis: a }) => {
+                    const c = a.contract, actual = a.actual_tricks != null ? a.actual_tricks : board.resultTricks;
+                    const made = actual != null ? actual >= a.target : null;
+                    const mist = a.plays.filter((p) => p.mistake).length;
+                    const crit = a.plays.filter((p) => p.critical).length;
+                    const lost = a.plays.reduce((e, p) => e + (p.cost || 0), 0);
+                    return `<tr class="an-browtr" data-open="${i}" style="cursor:pointer">
+                        <td>${colorSuits(contractText(c))}</td>
+                        <td class="n">${actual != null ? resultText(c, actual) : "\u2013"}</td>
+                        <td class="n">${made == null ? "\u2013" : made ? "<span style='color:#8fd694'>made</span>" : "<span style='color:#f1948a'>down</span>"}</td>
+                        <td class="n">${a.dd_tricks}</td>
+                        <td class="n" style="color:${mist ? "#f6d9a8" : "#8fd694"}">${mist}</td>
+                        <td class="n">${lost}</td>
+                        <td class="n" style="color:${crit ? "#ffd7d1" : "#bababa"}">${crit}</td>
+                    </tr>`;
+                }).join("");
+
+                const errNote = bulk.errors.length
+                    ? `<div class="an-card an-muted" style="font-size:.82rem">${bulk.errors.length} board(s) could not be analyzed and were skipped.</div>` : "";
+
+                return `<div class="an-wrap">
+                    ${top}${prog}${errNote}
+                    <div class="an-card">
+                        <div class="an-h">Session overview \u2014 ${ag.boards} board(s)</div>
+                        <div class="an-bignums">
+                            <div class="an-bignum"><div class="v">${ag.totalMistakes}</div><div class="k">DD mistakes</div></div>
+                            <div class="an-bignum"><div class="v">${ag.avgMistakes.toFixed(2)}</div><div class="k">Mistakes / board</div></div>
+                            <div class="an-bignum"><div class="v">${ag.totalTricksLost}</div><div class="k">Tricks lost (over/under DD)</div></div>
+                            <div class="an-bignum"><div class="v" style="color:${ag.totalCritical ? "#ffd7d1" : "#e8e6e3"}">${ag.totalCritical}</div><div class="k">Contract-critical</div></div>
+                            <div class="an-bignum"><div class="v">${ag.avgLevel != null ? ag.avgLevel.toFixed(1) : "\u2013"}</div><div class="k">Avg contract level</div></div>
+                            <div class="an-bignum"><div class="v">${ag.avgDdDiff != null ? (ag.avgDdDiff >= 0 ? "+" : "") + ag.avgDdDiff.toFixed(2) : "\u2013"}</div><div class="k">Avg tricks vs DD</div></div>
+                            <div class="an-bignum"><div class="v" style="color:${ag.unmakeableMade ? "#f6d9a8" : "#e8e6e3"}">${ag.unmakeableMade}</div><div class="k">Unmakeable made</div></div>
+                            <div class="an-bignum"><div class="v">${pct(ag.madeAny, ag.declAny)}</div><div class="k">Contracts made</div></div>
+                        </div>
+                    </div>
+                    <div class="an-card">
+                        <div class="an-h">DD mistakes by player</div>
+                        <table class="an-table">
+                            <thead><tr><th>Seat</th><th class="n">Cards</th><th class="n">Mistakes</th><th class="n">/ board</th><th class="n">Tricks lost</th><th class="n">Critical</th></tr></thead>
+                            <tbody>${seatRows}</tbody>
+                        </table>
+                    </div>
+                    <div class="an-card">
+                        <div class="an-h">By pair \u2014 contracts, missed games & slams</div>
+                        <table class="an-table">
+                            <thead><tr><th>Pair</th><th class="n">Declared</th><th class="n">Made %</th><th class="n">Missed games</th><th class="n">Missed slams</th></tr></thead>
+                            <tbody>${sideRow("N-S", ag.side.ns)}${sideRow("E-W", ag.side.ew)}</tbody>
+                        </table>
+                        <p class="an-note" style="margin-top:.5rem">\u201cMissed\u201d counts boards where double-dummy says the pair could make a game / slam but the final contract was not one of theirs at that level. \u201cUnmakeable made\u201d counts contracts double-dummy says should fail but were made anyway (defensive errors).</p>
+                    </div>
+                    <div class="an-card">
+                        <div class="an-h">Per board</div>
+                        <table class="an-table">
+                            <thead><tr><th>Contract</th><th class="n">Result</th><th class="n">Made</th><th class="n">DD</th><th class="n">Mistakes</th><th class="n">Tricks lost</th><th class="n">Critical</th></tr></thead>
+                            <tbody>${boardRows}</tbody>
+                        </table>
+                        <p class="an-note" style="margin-top:.5rem">Tap a row to step through that board card by card.</p>
+                    </div>
+                </div>`;
+            }
+
+            // ---- event wiring ----
+            function bind() {
+                const on = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
+                on("srcHistory", "click", pickHistory);
+                on("srcPbn", "click", pickPbnFile);
+                on("pbnFile", "change", onPbnFile);
+                on("pasteShow", "click", () => { showPaste = true; render(); const t = $("pasteBox"); if (t) t.focus(); });
+                on("pasteHide", "click", () => { showPaste = false; render(); });
+                on("pasteGo", "click", () => { const t = $("pasteBox"); if (t && t.value.trim()) loadPBNText(t.value); else showToast("Paste some PBN text first", true); });
+                on("backSrc", "click", goSource);
+                on("backList", "click", () => { if (boards.length > 1) goList(); else goSource(); });
+                on("bulkGo", "click", runBulk);
+                on("prevBoard", "click", prevBoard);
+                on("nextBoard", "click", nextBoard);
+                on("retryBoard", "click", () => { boardResults[curIdx] = null; openBoard(curIdx); });
+                on("s-first", "click", () => stepTo(0));
+                on("s-prev", "click", () => stepDelta(-1));
+                on("s-next", "click", () => stepDelta(1));
+                on("s-last", "click", () => { const a = curAnalysis(); if (a) stepTo(a.plays.length - 1); });
+                on("s-mistake", "click", nextMistake);
+                on("logToggle", "click", () => { showLog = !showLog; render(); });
+
+                document.querySelectorAll("[data-open]").forEach((el) =>
+                    el.addEventListener("click", () => openBoard(parseInt(el.dataset.open, 10))));
+                document.querySelectorAll("[data-step]").forEach((el) =>
+                    el.addEventListener("click", () => stepTo(parseInt(el.dataset.step, 10))));
+            }
+
+            document.addEventListener("keydown", (e) => {
+                if (view !== "single") return;
+                const a = curAnalysis(); if (!a || !a.plays.length) return;
+                if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+                if (e.key === "ArrowRight") { stepDelta(1); e.preventDefault(); }
+                else if (e.key === "ArrowLeft") { stepDelta(-1); e.preventDefault(); }
+                else if (e.key === "m" || e.key === "M") { nextMistake(); e.preventDefault(); }
+            });
+
+            // ---- bootstrap ----
+            document.addEventListener("authchange", () => {
+                if (!window.currentUser && sourceKind === "history") { view = "source"; boards = []; }
+                render();
+            });
+            refreshAuthState();
+            render();
+        </script>
+    </body>
+</html>
