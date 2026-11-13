@@ -3,29 +3,24 @@ package main
 // ---- The bot's system file (models/system.txt) ----
 //
 // system.txt is the conventions text file the bidding bot is trained from:
-// bidding-dt interprets it at the start of training (rule weights + numeric
-// thresholds for the convention checker, see bidding_dt/conventions/
-// system_file.py) and this server generates the website's bid alerts from it
-// instead of any self-play statistics: the auction reader (auction.go)
-// classifies each bot call, sectionFor resolves the call to the one system
-// section whose agreement it is, and that section's alert template is
-// rendered with the call's suits. The section resolution mirrors the Python
-// SystemSpec.section_for exactly -- keep the two in lockstep.
+// bidding-dt interprets it at the start of training (see
+// bidding_dt/conventions/system_file.py + patterns.py) and this server
+// generates the website's bid alerts from it instead of any self-play
+// statistics: the auction reader (auction.go) plus the pattern matcher
+// (patterns.go) resolve each bot call to the first matching pattern entry of
+// the file and serve its rendered description.
 //
-// Format (INI-like, # and ; comments):
+// The file is a sequence of pattern entries, one per line:
 //
-//	[section]           call kind; names match the Python rule codes plus the
-//	                    alert-only kinds (rkcb_ask, resp_2c_waiting,
-//	                    balancing_takeout, penalty_double)
-//	alert = text        what the website shows; placeholders {call} {suit}
-//	                    {other} {trump} {partner_suit} {shows} {level}
-//	artificial = yes    show the call with the alert (!) marker
-//	steps = a | b | c | d   RKCB step-response texts ({shows})
+//	PATTERN[; CLAUSES] = DESCRIPTION [@weight] [@!]
 //
-// Any other keys (weights, thresholds) belong to the training side and are
-// ignored here. The file is small and re-read whenever its mtime changes, so
-// editing it refreshes the alerts without a restart. SYSTEM_FILE overrides
-// the path.
+// plus top-level `key = value` config lines (bare identifiers) that tune the
+// trainer -- the Go side accepts and ignores them. Lines starting with # or ;
+// are comments. INI-style [sections] are gone; a header line is an error.
+// The grammar is documented in the file's own header and mirrored 1:1 by the
+// Python parser. The file is small and re-read whenever its mtime changes,
+// so editing it refreshes the alerts without a restart. SYSTEM_FILE
+// overrides the path.
 
 import (
 	"errors"
@@ -39,18 +34,10 @@ import (
 
 const defaultSystemFile = "models/system.txt" // SYSTEM_FILE overrides
 
-// systemSection is one parsed [section] of the system file.
-type systemSection struct {
-	alert      string
-	artificial bool
-	steps      []string
-}
-
 // systemSpec is the parsed system file.
 type systemSpec struct {
-	sections map[string]*systemSection
-	entries  []*patEntry // sequence-pattern entries, in file order
-	nAlerts  int         // sections carrying alert text
+	entries []*patEntry // pattern entries, in file order
+	nAlerts int         // entries carrying alert text
 }
 
 // systemFilePath resolves the system file: SYSTEM_FILE, else the default.
@@ -61,14 +48,11 @@ func systemFilePath() string {
 	return defaultSystemFile
 }
 
-// parseSystem turns system-file text into a spec. Malformed structural lines
-// fail loudly; unknown keys are the training side's business and skipped.
-// A line whose left-hand side is not a bare identifier is a sequence-pattern
-// entry (patterns.go) -- same routing as the Python parser.
+// parseSystem turns system-file text into a spec. Malformed lines fail
+// loudly; config lines (bare identifier = value) belong to the training side
+// and are accepted and ignored here.
 func parseSystem(text string) (*systemSpec, error) {
-	spec := &systemSpec{sections: map[string]*systemSection{}}
-	var cur *systemSection
-	var curName string
+	spec := &systemSpec{}
 	for i, raw := range strings.Split(text, "\n") {
 		line := strings.TrimSpace(strings.TrimSuffix(raw, "\r"))
 		if line == "" || line[0] == '#' || line[0] == ';' {
@@ -76,55 +60,30 @@ func parseSystem(text string) (*systemSpec, error) {
 		}
 		where := fmt.Sprintf("line %d", i+1)
 		if strings.HasPrefix(line, "[") {
-			if !strings.HasSuffix(line, "]") {
-				return nil, fmt.Errorf("%s: unterminated section header", where)
-			}
-			curName = strings.TrimSpace(line[1 : len(line)-1])
-			if curName == "" {
-				return nil, fmt.Errorf("%s: empty section name", where)
-			}
-			if _, dup := spec.sections[curName]; dup {
-				return nil, fmt.Errorf("%s: duplicate section [%s]", where, curName)
-			}
-			cur = &systemSection{}
-			spec.sections[curName] = cur
-			continue
+			return nil, fmt.Errorf("%s: INI sections are gone -- write "+
+				"pattern entries and top-level key = value config", where)
 		}
 		lhs := line
 		if idx := descSepIndex(line); idx >= 0 {
 			lhs = strings.TrimSpace(line[:idx])
 		}
-		if !isKVLine(lhs) {
-			e, err := parseEntryLine(line)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %v", where, err)
+		if isKVLine(lhs) {
+			if descSepIndex(line) < 0 {
+				return nil, fmt.Errorf("%s: expected key = value", where)
 			}
-			spec.entries = append(spec.entries, e)
-			continue
+			continue // trainer config: accepted, nothing to render from it
 		}
-		idx := descSepIndex(line)
-		if idx < 0 {
-			return nil, fmt.Errorf("%s: expected key = value", where)
+		e, err := parseEntryLine(line)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %v", where, err)
 		}
-		key, val := lhs, strings.TrimSpace(line[idx+1:])
-		if cur == nil {
-			return nil, fmt.Errorf("%s: key outside any section", where)
-		}
-		switch key {
-		case "alert":
-			cur.alert = val
+		if e.desc != "" {
 			spec.nAlerts++
-		case "artificial":
-			v := strings.ToLower(val)
-			cur.artificial = v == "yes" || v == "true"
-		case "steps":
-			for _, s := range strings.Split(val, "|") {
-				cur.steps = append(cur.steps, strings.TrimSpace(s))
-			}
 		}
+		spec.entries = append(spec.entries, e)
 	}
-	if len(spec.sections) == 0 && len(spec.entries) == 0 {
-		return nil, errors.New("no sections found")
+	if len(spec.entries) == 0 {
+		return nil, errors.New("no pattern entries found")
 	}
 	return spec, nil
 }
@@ -136,152 +95,6 @@ func loadSystemFile(path string) (*systemSpec, error) {
 		return nil, err
 	}
 	return parseSystem(string(data))
-}
-
-// ---- Call -> section resolution ----
-//
-// Mirrors bidding_dt.conventions.system_file.section_for, which mirrors the
-// check order of rules._check_bid: the same call resolves to the same section
-// on both sides of the wire.
-
-// dblSections maps the double contexts onto their system sections.
-var dblSections = map[string]string{
-	"takeout":           "takeout_double",
-	"balancing_takeout": "balancing_takeout",
-	"negative":          "negative_double",
-	"penalty":           "penalty_double",
-	"nt_penalty":        "penalty_double",
-}
-
-func sectionFor(info callInfo) string {
-	switch info.kind {
-	case kindPass:
-		if info.xyzAfterRelay {
-			return "xyz_pass"
-		}
-		return ""
-	case kindDouble:
-		return dblSections[info.dblCtx]
-	case kindRedouble:
-		return ""
-	}
-
-	if info.opening {
-		if info.denom == denomN {
-			switch info.level {
-			case 1:
-				return "open_1nt_range"
-			case 2:
-				return "open_2nt_range"
-			}
-			return ""
-		}
-		if info.level == 2 {
-			if info.denom == 0 {
-				return "open_2c_strong"
-			}
-			return "open_weak2"
-		}
-		if info.level == 1 {
-			if isMajor(info.denom) {
-				return "open_major_5card"
-			}
-			return "open_minor_length"
-		}
-		return "" // 3+ preempts: undefined
-	}
-	if info.sideStrong2c {
-		if info.strong2c && info.firstCall {
-			if info.denom == 1 && info.level == 2 {
-				return "resp_2c_waiting"
-			}
-			if info.denom < denomN || info.level == 2 {
-				return "resp_2c_positive"
-			}
-		}
-		return ""
-	}
-	switch {
-	case info.xyz2c:
-		return "xyz_2c"
-	case info.xyz2d:
-		return "xyz_2d"
-	case info.xyzRelay:
-		return "xyz_relay"
-	case info.smolen:
-		return "smolen"
-	case info.rkcbAsk:
-		return "rkcb_ask"
-	case info.rkcbResponse:
-		return "rkcb_response"
-	case info.is2over1:
-		return "two_one_gf"
-	case info.fourthSuit:
-		return "fourth_suit"
-	case info.isJumpShift:
-		return "inv_jump_shift"
-	case info.isStrongJS:
-		return "strong_jump_rebid"
-	case info.splinter:
-		return "splinter"
-	}
-
-	if info.denom == denomN {
-		if info.level == 4 {
-			return "" // quantitative 4NT: undefined
-		}
-		if info.overcall && info.level == 1 {
-			if info.balancing {
-				return "overcall_1nt_bal"
-			}
-			return "overcall_1nt"
-		}
-		if info.responder || info.advancer {
-			switch {
-			case info.level == 1:
-				return "resp_1nt"
-			case info.level == 2 && info.jump == 1:
-				return "resp_2nt"
-			case info.level == 3 && info.jump == 2 && info.responder && info.firstCall:
-				return "resp_3nt"
-			}
-			return ""
-		}
-		if info.openerRebid {
-			if info.level == 1 {
-				return "rebid_1nt"
-			}
-			if info.level == 2 && info.jump == 1 {
-				return "rebid_2nt"
-			}
-		}
-		return ""
-	}
-
-	if info.cuebid {
-		if info.partnerLastSuit >= 0 {
-			return "cuebid_support"
-		}
-		return ""
-	}
-	if info.ownRebid {
-		return ""
-	}
-	if info.raiseBid {
-		if info.firstCall && !isGameOrAbove(info.level, info.denom) {
-			switch info.jump {
-			case 0:
-				return "resp_raise"
-			case 1:
-				return "resp_jump_raise"
-			}
-		}
-		return ""
-	}
-	if info.overcall && info.newSuit && info.jump == 0 {
-		return "overcall"
-	}
-	return ""
 }
 
 // isGameOrAbove: 3NT+, 4M+, 5m+ (and any 6/7-level bid) fulfill a game force.
@@ -298,86 +111,22 @@ func isGameOrAbove(level, denom int) bool {
 	return level >= 5
 }
 
-// ---- Alert rendering ----
-
 var suitSymbols = [4]string{"♣", "♦", "♥", "♠"} // project denom order C,D,H,S
 
-func denomSymbol(denom int) string {
-	if denom >= 0 && denom < denomN {
-		return suitSymbols[denom]
-	}
-	return "NT"
-}
-
-// prettyCall renders the call the way the alert texts refer to it.
-func prettyCall(info callInfo) string {
-	switch info.kind {
-	case kindPass:
-		return "Pass"
-	case kindDouble:
-		return "Double"
-	case kindRedouble:
-		return "Redouble"
-	}
-	return fmt.Sprintf("%d%s", info.level, denomSymbol(info.denom))
-}
-
-// renderAlert fills the placeholders of one section's alert template.
-func renderAlert(sec *systemSection, info callInfo) string {
-	out := sec.alert
-	if strings.Contains(out, "{") {
-		out = strings.ReplaceAll(out, "{call}", prettyCall(info))
-		out = strings.ReplaceAll(out, "{level}", fmt.Sprint(info.level))
-		out = strings.ReplaceAll(out, "{suit}", denomSymbol(info.denom))
-		if strings.Contains(out, "{other}") {
-			other := 2 // H
-			if info.denom == 2 {
-				other = 3 // S
-			}
-			out = strings.ReplaceAll(out, "{other}", denomSymbol(other))
-		}
-		out = strings.ReplaceAll(out, "{trump}", denomSymbol(info.rkcbTrump))
-		out = strings.ReplaceAll(out, "{partner_suit}", denomSymbol(info.partnerLastSuit))
-		if strings.Contains(out, "{shows}") {
-			shows := "an unspecified keycard count"
-			if info.rkcbStep >= 1 && info.rkcbStep <= len(sec.steps) {
-				shows = sec.steps[info.rkcbStep-1]
-			}
-			out = strings.ReplaceAll(out, "{shows}", shows)
-		}
-	}
-	return out
-}
-
-// alertFor renders the client-visible alert for a classified call, or nil
-// when the system file has no meaning for it (rule-code sections only).
-func (s *systemSpec) alertFor(info callInfo) *bidAlert {
-	name := sectionFor(info)
-	if name == "" {
+// alertForCall renders the client-visible alert for one candidate call in
+// the auction the match state was built from: the first matching pattern
+// entry's rendered description, or nil when no entry matches. An entry whose
+// rendered description is empty suppresses the alert.
+func (s *systemSpec) alertForCall(st *matchState, call int) *bidAlert {
+	e, binds := matchFirst(s.entries, st.reader.dealer, st.reader.calls,
+		call, st)
+	if e == nil {
 		return nil
 	}
-	sec := s.sections[name]
-	if sec == nil || sec.alert == "" {
-		return nil
+	if text := renderDesc(e, binds); text != "" {
+		return &bidAlert{Text: text, Artificial: e.artificial}
 	}
-	return &bidAlert{Text: renderAlert(sec, info), Artificial: sec.artificial}
-}
-
-// alertForCall renders the alert for one candidate call in the auction the
-// match state was built from: the sequence-pattern entries first (first
-// match wins; an entry whose rendered description is empty suppresses the
-// alert), then the rule-code sections as the fallback.
-func (s *systemSpec) alertForCall(st *matchState, call int, info callInfo) *bidAlert {
-	if len(s.entries) > 0 {
-		if e, binds := matchFirst(s.entries, st.reader.dealer, st.reader.calls,
-			call, st); e != nil {
-			if text := renderDesc(e, binds); text != "" {
-				return &bidAlert{Text: text, Artificial: e.artificial}
-			}
-			return nil // matched an entry with an empty description
-		}
-	}
-	return s.alertFor(info)
+	return nil
 }
 
 // ---- Loading (with mtime-based refresh) ----
@@ -413,8 +162,8 @@ func systemReady() *systemSpec {
 		return nil
 	}
 	sysState.spec, sysState.mod, sysState.size = spec, fi.ModTime(), fi.Size()
-	log.Printf("Bid alerts ready: %d pattern entries + %d sections (%d with alert text) from %s",
-		len(spec.entries), len(spec.sections), spec.nAlerts, sysPath)
+	log.Printf("Bid alerts ready: %d pattern entries (%d with alert text) from %s",
+		len(spec.entries), spec.nAlerts, sysPath)
 	return spec
 }
 

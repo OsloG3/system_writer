@@ -46,8 +46,7 @@ func (s *systemSpec) callAlerts(dealer int, calls []string, humanMask uint8) []a
 			break
 		}
 		if seat := (dealer + i) % 4; humanMask&(1<<uint(seat)) == 0 {
-			info := st.reader.classify(int(id), seat)
-			if a := s.alertForCall(st, int(id), info); a != nil {
+			if a := s.alertForCall(st, int(id)); a != nil {
 				out[i] = a
 				found = true
 			}
@@ -79,8 +78,7 @@ func (s *systemSpec) optionAlerts(dealer int, calls, legal []string) []any {
 		if !ok {
 			continue
 		}
-		info := st.reader.classify(int(id), st.reader.nextSeat())
-		if a := s.alertForCall(st, int(id), info); a != nil {
+		if a := s.alertForCall(st, int(id)); a != nil {
 			out[i] = a
 			found = true
 		}

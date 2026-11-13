@@ -32,21 +32,25 @@ System conventions (rl.conv_weight > 0 / --conv-weight, see
 configs/rl_conv.yaml): every learner call is additionally checked against
 the enforced bidding system -- written in the conventions TEXT FILE
 (models/system.txt, --system / rl.system_file / BIDDING_SYSTEM_FILE) that is
-interpreted at the start of training: each section's `weight` is a rule
-weight and each numeric key a ConventionConfig threshold (5-card majors,
-15-17 1NT, strong 2C, 20-21 2NT, GF 2/1, invitational jump shifts also in
-competition, standard overcalls with a 12-15 balancing 1NT, splinter double
-jumps below 4H, smolen after 1/2NT stayman, RKCB step responses showing the
-right keycard count, support cuebids of the opponents' suit, XYZ, takeout
-doubles with shape-free power doubles, fourth-suit GF, standard natural
-structure -- hands evaluated in Kaplan-Rubens points). The weighted sum of
-the violated rules is subtracted from that decision's row reward. Correctly
-using an artificial convention (XYZ, RKCB, splinter, smolen, fourth suit,
-cuebid raise) earns the small flat conv_bonus reward instead. The same file's
-`alert` texts are what the website serves as bid alerts, so what the bots are
+interpreted at the start of training. The file is a sequence-pattern script:
+one entry per call kind (`1X-1Y-2Z; X<Z = reverse: 5+X 4+Z p>16 F @2.0`),
+with generic suits X/Y/Z/W, opponent calls in parentheses, clause conditions
+(gf, balancing, jump=1, their_bid>=4S, ...) and descriptions that double as
+the enforcement spec: suit lengths (5+X), K&R point ranges (p>16, p15-17),
+balanced, OR branches for multiway bids, F/GF forcing flags and TO/PENALTY
+double discipline (the partner is penalized for a wrong pass/pull, not the
+doubler's hand described). A matched entry with weight>0 replaces the
+built-in checks for that call; unmatched calls fall back to the built-in
+rule checks (conventions/rules.py with its default weights: 5-card majors,
+15-17 1NT, strong 2C, GF 2/1, splinters, smolen, RKCB steps, XYZ, ...
+-- hands evaluated in Kaplan-Rubens points). The weighted sum of the
+violations is subtracted from that decision's row reward. Correctly using an
+artificial convention (XYZ, RKCB, splinter, smolen, fourth suit, cuebid
+raise) earns the small flat conv_bonus reward instead. The same file's entry
+descriptions are what the website serves as bid alerts, so what the bots are
 trained to play and what the site explains always agree.
 Per-iteration logs carry conv_pen_mean / conv_viol_rate / conv_top /
-conv_bonus_mean.
+conv_bonus_mean (pattern violations show up as `pat:<pattern>` codes).
 
 CPU smoke:
   python -m bidding_dt.rl.train_ppo --preset tiny --bc-ckpt runs/smoke/best.pt \
@@ -174,9 +178,11 @@ def main():
     # system-convention enforcement (conventions/): weighted per-call penalty
     # for bids inconsistent with the system, subtracted from row rewards. The
     # system itself is written in a text file (models/system.txt) that is
-    # interpreted here, at the start of training: every section's weight and
-    # numeric thresholds build the ConventionConfig, and the same file is what
-    # the website generates its bid alerts from (system_writer/system_file.go).
+    # interpreted here, at the start of training: its config lines tune the
+    # ConventionConfig thresholds and its sequence-pattern entries are
+    # enforced per call (SystemEnforcer, with the built-in rules as the
+    # fallback); the same file is what the website generates its bid alerts
+    # from (system_writer/system_file.go + patterns.go).
     conv_cfg = None
     conv_spec = None
     system_path = None

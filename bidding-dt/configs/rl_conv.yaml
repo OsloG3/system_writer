@@ -2,22 +2,30 @@
 # reward as rl_small.yaml, plus a per-call penalty for every bid that breaks
 # the enforced system. The system itself is written in the conventions text
 # file (models/system.txt -- rl.system_file / --system / BIDDING_SYSTEM_FILE),
-# interpreted at the start of training: each section's `weight` is a rule
-# weight and each numeric key a ConventionConfig threshold (5-card majors,
-# 15-17 1NT, strong 2C, 20-21 2NT, GF 2/1, invitational jump shifts -- 6
-# cards, 10-11, also in competition -- standard overcalls with a 12-15
-# balancing 1NT, splinter double jumps below 4H, smolen after 1/2NT stayman,
-# RKCB step responses showing the right keycard count (the 4NT ask itself is
-# free), support cuebids of the opponents' suit, XYZ, takeout doubles --
-# power doubles with 18+ need no shape -- fourth-suit GF, standard natural
-# structure). The same file's `alert` texts are what the website serves as
-# bid alerts. Hands are evaluated in Kaplan-Rubens points
-# (rpbridge.net/8j19.htm); every range carries +-kr_tolerance slack (the
-# file's [general] section). The penalty is conv_weight * sum(violated rule
+# interpreted at the start of training. The file is a sequence-pattern
+# script: one entry per call kind, e.g.
+#
+#   1X-1Y-2Z; X<Z = reverse: 5+X 4+Z p>16 F @2.0
+#   1X-(1Y)-2Z; Z<Y, first = 2/1 over their bid: 4+Z p>11.5 GF
+#   ...-4N-(P)-5C; we_bid = RKCB response for {T}: kc=0/3 @!
+#   ...-X; we_xx OR dbls_by_us>=2 OR gf OR their_bid>=4S = PENALTY
+#
+# -- generic suits X/Y/Z/W, opponent calls in parentheses, clause conditions
+# (gf, balancing, jump=1, their_bid>=4S, ...) and descriptions that double as
+# the enforcement spec (lengths, K&R point ranges, balanced, OR branches,
+# F/GF forcing, TO/PENALTY double discipline). Top-level config lines tune
+# the thresholds (kr_tolerance, conv_bonus, to_pass_min_len, ...). A matched
+# entry with weight>0 replaces the built-in checks for that call; unmatched
+# calls fall back to conventions/rules.py defaults (5-card majors, 15-17
+# 1NT, strong 2C, GF 2/1, splinters, smolen, RKCB steps, XYZ, ...). The same
+# file's entry descriptions are what the website serves as bid alerts. Hands
+# are evaluated in Kaplan-Rubens points (rpbridge.net/8j19.htm); every range
+# carries +-kr_tolerance slack. The penalty is conv_weight * sum(violated
 # weights), subtracted from each offending call's row reward; correctly
 # using an artificial convention (XYZ, RKCB, splinter, smolen, fourth suit,
 # cuebid raise) instead adds the small flat conv_bonus reward. The
-# conv_rules / conv_params below layer on top of the file for experiments.
+# conv_rules / conv_params below layer on top of the file for experiments
+# (conv_rules tunes the built-in fallback weights).
 #   uv run python -m bidding_dt.rl.train_ppo --config configs/rl_conv.yaml \
 #       --preset small --bc-ckpt runs/small/best.pt --out runs/rl_conv
 #

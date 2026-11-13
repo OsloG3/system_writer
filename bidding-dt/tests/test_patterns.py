@@ -17,8 +17,7 @@ from bidding_dt.conventions import (AuctionReader, ConventionConfig,
                                     HandInfo, SystemEnforcer, match_first,
                                     parse_entry, parse_system_file,
                                     replay_state)
-from bidding_dt.conventions.patterns import (call_id_of, hand_violations,
-                                             render_desc)
+from bidding_dt.conventions.patterns import call_id_of, render_desc
 from bidding_dt.data.vocab import call_to_id
 
 B = call_to_id
@@ -58,7 +57,7 @@ def codes(vs):
 
 def test_parse_entry_shapes():
     e = parse_entry("1X-1Y-2Z; X<Z = 5+X 4+Z p>16 F @2.0")
-    assert e.pat == "1X-1Y-2Z" and not e.wildcard
+    assert e.pat == "1X-1Y-2Z" and e.anchored
     assert [(s.them, s.kind, s.level, s.denom) for s in e.steps] == [
         (False, "bid", 1, "X"), (False, "bid", 1, "Y"), (False, "bid", 2, "Z")]
     assert e.weight == 2.0 and not e.artificial
@@ -77,13 +76,18 @@ def test_parse_entry_shapes():
     assert [t.kind for t in e.branches[1]] == ["len", "text", "text"]
     assert e.artificial and not e.flags
 
-    # a ">=" inside a clause must not be mistaken for the description "="
+    # clause atoms with tight "=" / ">=" must not split the description
     e = parse_entry("...-X; we_xx OR dbls_by_us>=2 OR gf OR their_bid>=4S"
                     " = PENALTY")
-    assert e.wildcard and e.flags == frozenset({"PENALTY"})
-    assert [g[0].kind for g in e.atoms] == ["we_xx", "cnt", "gf", "bidcmp"]
+    assert not e.anchored and e.flags == frozenset({"PENALTY"})
+    assert [g[0].kind for g in e.atoms] == ["cond", "cnt", "cond", "bidcmp"]
     assert e.atoms[3][0].call == B("4S")
     assert e.atoms[1][0].n == 2
+
+    # tight "=" inside an atom next to a spaced description separator
+    e = parse_entry("1X-...-2Y; first, bids_by_them=0 = 2/1: 4+Y GF")
+    assert e.atoms[0][1].kind == "cnt" and e.atoms[0][1].n == 0
+    assert e.desc == "2/1: 4+Y GF"
 
     # no description at all (suppresses the alert for matching calls)
     e = parse_entry("1H-2NT-3S")
@@ -92,12 +96,19 @@ def test_parse_entry_shapes():
     # DBL/RDBL spellings, colon clause separator, exact/range lengths
     e = parse_entry("...-DBL: balancing = TO takeout")
     assert e.steps[-1].kind == "dbl"
-    assert e.atoms[0][0].kind == "balancing"
+    assert e.atoms[0][0].kind == "cond" and e.atoms[0][0].a == "balancing"
     e = parse_entry("2X = 6-7X p4-12 weak two @! @0.1")
     tok_len, tok_pts = e.branches[0][0], e.branches[0][1]
     assert (tok_len.lo, tok_len.hi) == (6, 7)
     assert tok_pts.kind == "pts" and tok_pts.op == "range"
     assert e.weight == 0.1 and e.artificial
+
+    # new step shapes: any level, negation, mid-pattern wildcard
+    e = parse_entry("1X-...-?Y-!2Z = shapes")
+    kinds = [(s.kind, s.level, s.denom, s.negated) for s in e.steps]
+    assert kinds == [("bid", 1, "X", False), ("any", 0, "", False),
+                     ("bid", 0, "Y", False), ("bid", 2, "Z", True)]
+    assert e.anchored
 
     with pytest.raises(ValueError):
         parse_entry("1Q-2X = nope")            # bad denom
@@ -107,6 +118,8 @@ def test_parse_entry_shapes():
         parse_entry("1X; nonsense_atom = text")
     with pytest.raises(ValueError):
         parse_entry("...-X = TO and PENALTY")  # both meanings
+    with pytest.raises(ValueError):
+        parse_entry("... = only wildcard")
 
 
 def test_call_id_of():
@@ -128,7 +141,7 @@ REV = parse_entry("1X-1Y-2Z; X<Z = 5+X 4+Z p>16 F @2.0")
 
 def test_match_reverse_and_bindings():
     e, b = match_first([REV], 0, ids(["1C", P, "1H", P]), B("2D"))
-    assert e is REV and b == {"X": 0, "Y": 2, "Z": 1}      # C < D
+    assert e is REV and (b["X"], b["Y"], b["Z"]) == (0, 2, 1)   # C < D
     # not a reverse: the new suit ranks below the opening
     assert match_first([REV], 0, ids(["1H", P, "1S", P]), B("2D"))[0] is None
     # opener's own-suit rebid is not it either
@@ -140,22 +153,66 @@ def test_match_reverse_and_bindings():
     assert match_first([REV], 0, ids(["1H", "1S"]), B("2C"))[0] is None
     # dealer E: 1D(E)-P-1S(W)-P-2H(E) is a reverse for E-W (D < H)
     e, b = match_first([REV], 1, ids(["1D", P, "1S", P]), B("2H"))
-    assert e is REV and b == {"X": 1, "Y": 3, "Z": 2}
+    assert e is REV and (b["X"], b["Y"], b["Z"]) == (1, 3, 2)
 
 
 def test_match_distinctness_and_literals():
-    # the variable may not bind to a literal suit of the pattern
-    e = parse_entry("1H-2X = artificial")
-    assert match_first([e], 0, ids(["1H", P]), B("2D"))[0] is e
-    assert match_first([e], 0, ids(["1H", P]), B("2H"))[0] is None
-    # same letter = same suit
+    # different variables bind pairwise-different suits
+    e = parse_entry("1X-1Y = two suits")
+    assert match_first([e], 0, ids(["1C", P]), B("1D"))[0] is e
+    assert match_first([e], 0, ids(["1C", P]), B("1C"))[0] is None
+    # a repeated letter binds the same suit
     e = parse_entry("1X-2X = raise")
     assert match_first([e], 0, ids(["1S", P]), B("2S"))[0] is e
     assert match_first([e], 0, ids(["1S", P]), B("2D"))[0] is None
+    # a variable MAY bind a literal suit of the pattern -- XYZ over a 1C
+    # opening needs exactly that; an explicit != clause excludes instead
+    e = parse_entry("1X-1Y-1Z-2C = xyz relay")
+    assert match_first([e], 0,
+                       ids(["1C", P, "1D", P, "1H", P]), B("2C"))[0] is e
+    e = parse_entry("1H-2X; X!=H = artificial")
+    assert match_first([e], 0, ids(["1H", P]), B("2D"))[0] is e
+    assert match_first([e], 0, ids(["1H", P]), B("2H"))[0] is None
     # fully literal sequences
     e = parse_entry("1H-2N-3S")
     assert match_first([e], 0, ids(["1H", P, "2N", P]), B("3S"))[0] is e
     assert match_first([e], 0, ids(["1H", P, "2N", P]), B("3D"))[0] is None
+
+
+def test_wildcard_level_negation_and_mid_any():
+    # ?Y = a suit at any level
+    e = parse_entry("...-?Y = any level")
+    assert match_first([e], 0, ids(["1C", P]), B("3D"))[0] is e
+    assert match_first([e], 0, ids(["1C", P]), B("3N"))[0] is None
+    # !2D = any of our bids except 2D
+    e = parse_entry("1X-1Y-1Z-2C-!2D = relay break")
+    pre = ["1C", P, "1D", P, "1H", P, "2C", P]
+    assert match_first([e], 0, ids(pre), B("2H"))[0] is e
+    assert match_first([e], 0, ids(pre), B("2D"))[0] is None
+    assert match_first([e], 0, ids(pre), B("P"))[0] is None
+    # a mid-pattern "..." absorbs any run of calls; without it an
+    # intervening bid breaks the pattern
+    e = parse_entry("1X-...-2X = raise later")
+    assert match_first([e], 0, ids(["1C", "1D"]), B("2C"))[0] is e
+    e = parse_entry("1X-2X = raise directly")
+    assert match_first([e], 0, ids(["1C", "1D"]), B("2C"))[0] is None
+
+
+def test_candidate_atoms():
+    # jump: 1C-P-2D is a single "jump" (1D was available)
+    e = parse_entry("...-2Z; jump=1 = jump shift")
+    assert match_first([e], 0, ids(["1C", P]), B("2D"))[0] is e
+    assert match_first([e], 0, ids(["1C", P, "1D", P]), B("2D"))[0] is None
+    e = parse_entry("...-2Z; jump=0 = cheapest")
+    assert match_first([e], 0, ids(["1C", P, "1D", P]), B("2D"))[0] is e
+    # below=4H
+    e = parse_entry("...-?Y; below=4H = below four hearts")
+    assert match_first([e], 0, ids(["1S", P]), B("4D"))[0] is e
+    assert match_first([e], 0, ids(["1S", P]), B("4S"))[0] is None
+    # level>=3
+    e = parse_entry("...-?Z; level>=3 = high")
+    assert match_first([e], 0, ids(["1H"]), B("3C"))[0] is e
+    assert match_first([e], 0, ids(["1H"]), B("2C"))[0] is None
 
 
 def test_match_own_pass_not_skipped():
@@ -323,7 +380,7 @@ def test_file_gf_pass_and_no_duplicate():
     vs = enf.check(r, 0, HandInfo("982.543.652.9872"), B("P"))
     assert codes(vs).count("gf_pass") == 1
     # structural GF (2/1) -> exactly one gf_pass (layer 1; not doubled up)
-    enf2, _ = make_enforcer(["[general]"])
+    enf2, _ = make_enforcer(["kr_tolerance = 1.0"])
     r = feed_all(["1C", P, "2D", P])
     vs = enf2.check(r, 0, HandInfo("982.543.652.9872"), B("P"))
     assert codes(vs).count("gf_pass") == 1
@@ -363,7 +420,7 @@ def test_doubler_hand_not_checked_under_to():
     vs = enf.check(r, 1, junk, B("X"))
     assert "takeout_double" not in codes(vs)
     # without the file entry the rule fires
-    enf2, _ = make_enforcer(["[general]"])
+    enf2, _ = make_enforcer(["kr_tolerance = 1.0"])
     vs = enf2.check(r, 1, junk, B("X"))
     assert "takeout_double" in codes(vs)
 
@@ -387,27 +444,20 @@ def test_render_desc():
 
 def test_alert_for_call_priority_and_suppression():
     spec = spec_of(
-        "[open_1nt_range]",
-        "alert = {call}: 15-17 balanced",
-        "",
-        "1NT = p10-12 balanced @1.0",
+        "1N = 15-17 balanced",
+        "1N = p10-12 balanced @1.0",
     )
     r = feed_all([])
-    # the pattern entry wins over the section
-    assert spec.alert_for_call(r, B("1N")) == "10-12 pts balanced"
-    spec2 = spec_of(
-        "[open_1nt_range]",
-        "alert = {call}: 15-17 balanced",
-        "",
-        "1NT = @0",                       # matched but empty: no alert at all
-    )
+    # first match wins in file order
+    assert spec.alert_for_call(r, B("1N")) == "15-17 balanced"
+    spec2 = spec_of("1N = @0")               # matched but empty: no alert
     assert spec2.alert_for_call(r, B("1N")) is None
-    spec3 = spec_of("[open_1nt_range]", "alert = {call}: 15-17 balanced")
-    assert spec3.alert_for_call(r, B("1N")) == "1NT: 15-17 balanced"
+    spec3 = spec_of("2X = 6-7X weak two")
+    assert spec3.alert_for_call(r, B("1N")) is None   # nothing matches
 
 
-def test_spec_params_and_general():
-    spec = spec_of("[general]", "kr_tolerance = 0.75",
+def test_spec_params_and_settings():
+    spec = spec_of("kr_tolerance = 0.75",
                    "to_pass_min_len = 5", "f_pass_weight = 1.0",
                    "", "1X = opening")
     cfg = spec.config()
@@ -421,11 +471,100 @@ def test_spec_params_and_general():
     assert len(spec.entries) == 1
 
 
-def test_hand_violations_direct():
-    e = parse_entry("1X = 5+X p>10")
-    binds = {"X": 3}                                   # spades
-    hi = HandInfo("AK982.5.42.AK982")                  # 5 spades, K&R ~17
-    assert hand_violations(e, binds, hi, 1.0) == []
-    hi = HandInfo("AK9.5.AKJ42.AK92")                 # 3 spades
-    vs = hand_violations(e, binds, hi, 1.0)
-    assert len(vs) == 1 and vs[0].code == "pat:1X"
+def test_enforcement_direct():
+    enf, _ = make_enforcer(["1X = 5+X p>10 @1.0"])
+    r = feed_all([])
+    # opening 1S with 5 spades and plenty of values: clean
+    assert enf.check(r, 0, HandInfo("AK982.54.AK42.K9"), B("1S")) == []
+    # only 3 spades: violates 5+X (the entry replaces the built-in checks)
+    vs = enf.check(r, 0, HandInfo("AK9.54.AKJ42.K98"), B("1S"))
+    assert codes(vs) == ["pat:1X"]
+
+
+def test_special_tokens():
+    # no4M: a 1NT response withholding a biddable 4-card major
+    enf, _ = make_enforcer(["1X-1N = p5-12 no4M @1.0"])
+    r = feed_all(["1C", P])
+    vs = enf.check(r, 2, HandInfo("982.AK42.543.982"), B("1N"))
+    assert codes(vs) == ["pat:1X-1N"]          # 4 hearts, 1H was biddable
+    r = feed_all(["1H", P])
+    vs = enf.check(r, 2, HandInfo("982.AK42.543.982"), B("1N"))
+    assert codes(vs) == []                     # hearts no longer biddable
+
+    # noLong5M: opening 1D with a longer 5-card major
+    enf, _ = make_enforcer(["1D = 3+D noLong5M openp @1.0"])
+    r = feed_all([])
+    vs = enf.check(r, 0, HandInfo("AK982.54.AK42.K9"), B("1D"))
+    assert codes(vs) == ["pat:1D"]
+    vs = enf.check(r, 0, HandInfo("KQ98.543.AK42.KQ"), B("1D"))
+    assert codes(vs) == []                     # 4 spades: no 5-card major
+
+    # 8+any / 6+any 2top / p-tokens as OR branches (strong 2C)
+    enf, _ = make_enforcer(
+        ["2C = p>20.5 OR 8+any OR 6+any 2top p>16.5 @1.0"])
+    r = feed_all([])
+    # K&R 18.2, 6 spades with KQ: the third branch saves it
+    assert enf.check(r, 0, HandInfo("KQ9872.54.A4.AK4"), B("2C")) == []
+    # 6 spades without 2 top honours, weak: no branch fits
+    vs = enf.check(r, 0, HandInfo("Q98752.54.A4.KJ4"), B("2C"))
+    assert codes(vs) == ["pat:2C"]
+
+    # stop: 1NT overcall without a stopper in their suit
+    enf, _ = make_enforcer(
+        ["...-1N; !we_bid, notopening = p14.5-18.5 stop @1.0"])
+    r = feed_all(["1H"])
+    vs = enf.check(r, 1, HandInfo("KQJ4.654.QJ.AKQ4"), B("1N"))
+    assert codes(vs) == ["pat:...-1N"]         # 16.6 K&R but no heart stop
+    vs = enf.check(r, 1, HandInfo("KQJ4.K54.Q8.AKQ4"), B("1N"))
+    assert codes(vs) == []                     # heart king = stopper
+
+    # kc: RKCB step responses count aces + the trump king
+    enf, _ = make_enforcer(["...-4N-(P)-5C; we_bid = kc=0/3 @1.0"])
+    r = feed_all(["1S", P, "2S", P, "4N", P])
+    assert enf.check(r, 2, HandInfo("AKQ92.54.A4.KQ98"), B("5C")) == []
+    vs = enf.check(r, 2, HandInfo("98752.54.A4.KQ98"), B("5C"))
+    assert codes(vs) == ["pat:...-4N-(P)-5C"]  # 1 keycard, not 0/3
+
+
+def test_context_refs():
+    # T = our side's last suit
+    e = parse_entry("...-4N; we_bid = RKCB for {T}")
+    ent, b = match_first([e], 0, ids(["1S", P, "2S", P]), B("4N"))
+    assert ent is e and b["T"] == 3
+    assert render_desc(e, b) == "RKCB for ♠"
+    # L = the opponents' last suit
+    e = parse_entry("...-?Y; Y=L = cuebid of {L}")
+    ent, b = match_first([e], 0, ids(["1H"]), B("2H"))
+    assert ent is e and b["L"] == 2 and b["Y"] == 2
+    assert render_desc(e, b) == "cuebid of ♥"
+    # P = partner's last suit
+    e = parse_entry("...-?Y; partnerbid, Y!=P = short {Y} fit {P}")
+    ent, b = match_first([e], 0, ids(["1S", P]), B("4D"))
+    assert ent is e and b["P"] == 3
+    assert render_desc(e, b) == "short ♦ fit ♠"
+    # O = the other major of the candidate's major
+    e = parse_entry("1N-2C-2D-3X; X>=H = 4+X and 5+O")
+    ent, b = match_first([e], 0, ids(["1N", P, "2C", P, "2D", P]), B("3H"))
+    assert ent is e and b["O"] == 3
+    assert render_desc(e, b) == "4+ ♥ and 5+ ♠"
+
+
+def test_new_conditions():
+    e = parse_entry("...-1N; opener = rebid")
+    assert match_first([e], 0, ids(["1C", P, "1D", P]), B("1N"))[0] is e
+    assert match_first([e], 0, ids(["1C", P]), B("1N"))[0] is None
+    e = parse_entry("...-2S; fourth = fourth suit")
+    assert match_first([e], 0,
+                       ids(["1C", P, "1H", P, "2D", P]), B("2S"))[0] is e
+    assert match_first([e], 0, ids(["1C", P, "1H", P]), B("2S"))[0] is None
+    e = parse_entry("...-2C; noxyz = not xyz")
+    assert match_first([e], 0,
+                       ids(["1C", P, "1D", P, "1H", P]), B("2C"))[0] is None
+    assert match_first([e], 0, ids(["1C", "1S", "1H", P]), B("2C"))[0] is e
+    e = parse_entry("...-2S; newsuit = new suit for hero")
+    assert match_first([e], 0, ids(["1C", P]), B("2S"))[0] is e
+    assert match_first([e], 0, ids(["1S", P, "1D", P]), B("2S"))[0] is None
+    e = parse_entry("1X-...-2Y; first, bids_by_them=0 = 2/1")
+    assert match_first([e], 0, ids(["1C", P]), B("2D"))[0] is e
+    assert match_first([e], 0, ids(["1C", X]), B("2D"))[0] is e   # X is no bid
+    assert match_first([e], 0, ids(["1C", "1H"]), B("2D"))[0] is None

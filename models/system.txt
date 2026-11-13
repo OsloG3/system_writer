@@ -1,116 +1,121 @@
 # ============================================================================
-# The bidding bot's system -- conventions in one text file.
+# The bidding bot's system -- conventions in one text file, pattern style.
 #
 # This file is the single source of truth for the system the bots are trained
 # to follow and for the bid alerts the website shows:
 #
 #   * bidding-dt interprets it at the START OF TRAINING (rl/train_ppo.py
-#     --system / rl.system_file, default search: models/system.txt then
-#     ../models/system.txt): every `weight` becomes a convention-penalty rule
-#     weight, every numeric key a ConventionConfig threshold, and every
-#     sequence-pattern entry (below) a per-call check -- so editing this file
-#     re-tunes what the RL loop enforces (rl.conv_weight).
+#     --system / rl.system_file / BIDDING_SYSTEM_FILE, default search:
+#     models/system.txt then ../models/system.txt): the config lines tune the
+#     checker thresholds and every pattern entry becomes a per-call check
+#     (conventions/patterns.SystemEnforcer, wired through rl/rollout.py).
 #   * the website (system_writer) reads the same file and GENERATES THE BID
 #     ALERTS from it: the Go server matches the live auction against the
-#     system and serves the matching entry's / section's alert text for
-#     every bot call (and for each of the human's legal options). No
-#     self-play statistics are involved.
+#     entries (patterns.go + auction.go, ports of the Python engine) and
+#     serves the matching entry's description for every bot call and every
+#     legal option of the human. No self-play statistics are involved.
 #
-# TWO KINDS OF DEFINITIONS live in this file:
+# FORMAT
 #
-# 1. SEQUENCE-PATTERN ENTRIES (the flexible layer, checked FIRST, in file
-#    order -- first match wins). One line each:
+# Config lines (bare identifier = value; Kaplan-Rubens points, ranges
+# "lo-hi", booleans yes/no):
 #
-#      PATTERN[; CLAUSES] = DESCRIPTION [@weight] [@!]
+#     kr_tolerance = 1.0        slack applied to every p-token range
+#     to_pass_min_len = 4       trumps in their suit to pass a TO double
+#     ...                       (any ConventionConfig field or SPEC_PARAMS
+#                                key of conventions/patterns.py)
 #
-#    PATTERN   calls joined by "-", matched from the start of the auction
-#              (leading passes skipped; opponent passes between our calls
-#              skipped implicitly; own passes must be written out) or
-#              ANYWHERE when prefixed with "...-". Steps: 1H / 2NT literal,
-#              1X / 2Z generic suits (X Y Z W bind to pairwise-different
-#              suits, a repeated letter to the same suit), P pass, X or DBL
-#              double, XX or RDBL redouble; opponent calls in parentheses:
-#              (1Y), (P). The LAST step is the call being described.
-#    CLAUSES   after ";" (or ":"), OR-combined groups of AND atoms:
-#                suit order:  X<Z, Z>Y          (order C<D<H<S<N)
-#                state:       gf | uncontested | contested | balancing |
-#                             passed | we_xx | they_xx | dbls_by_us>=N |
-#                             dbls_by_them>=N | their_bid>=4S | our_bid>=1C
-#    DESCRIPTION
-#              the alert text AND the training spec. " OR " splits multiway
-#              alternatives (the hand must satisfy ALL checkable tokens of
-#              ANY branch; a text-only branch is a wildcard). Tokens the
-#              trainer enforces: 5+X / 4-6H / 8+any (lengths), p>16 /
-#              p15-17 (K&R points +- kr_tolerance), balanced, F (one-round
-#              force: partner passing it is penalized), GF (game force:
-#              passing below game is penalized), and for doubles TO /
-#              PENALTY (the PARTNER is penalized for passing a TO double
-#              without to_pass_min_len trumps, or for pulling a PENALTY
-#              double with more than penalty_pull_max_len -- the doubler's
-#              own hand is deliberately NOT described). Everything else is
-#              free alert text.
-#    @weight   penalty weight (default 1.0; @0 = alert-only: nothing is
-#              enforced or latched and the rule-code sections below keep
-#              their checks). A matched entry with weight>0 REPLACES the
-#              rule-code checks for that call.
-#    @!        artificial: the website shows the alert marker.
-#    A matched entry with an empty description suppresses the alert.
+# Pattern entries -- one line each, checked in FILE ORDER, first match wins
+# (put specific entries before general ones):
 #
-# 2. RULE-CODE SECTIONS (the fallback for calls no pattern entry matches):
-#    INI-style, one [section] per call kind, named after the convention rule
-#    codes (bidding_dt.conventions.rules.DEFAULT_WEIGHTS) plus a few
-#    alert-only kinds (rkcb_ask, resp_2c_waiting, balancing_takeout,
-#    penalty_double):
-#   alert = text              what the website shows for a call of this kind;
-#                             placeholders: {call} {suit} {other} {trump}
-#                             {partner_suit} {shows} {level}
-#   artificial = yes          mark the call with the alert marker on the
-#                             website (default: no)
-#   weight = N                convention-penalty weight used by training
-#                             (0 disables the rule; only valid on rule codes)
-#   steps = a | b | c | d     RKCB step-response texts ({shows})
-#   <param> = value           numeric threshold interpreted by training
-#                             (ConventionConfig field names; ranges "lo-hi",
-#                             booleans yes/no)
-#   # comment                 lines starting with # or ; are ignored
+#     PATTERN[; CLAUSES] = DESCRIPTION [@weight] [@!]
 #
-# Strength numbers are Kaplan-Rubens points (conventions/kr.py), applied with
-# +-kr_tolerance slack. Ship this file to the server next to the checkpoint it
-# describes (models/system.txt); SYSTEM_FILE overrides the path. The Go
-# server re-reads it whenever it changes on disk.
+# PATTERN    calls joined by "-", matched against the auction from the
+#            dealer. Steps:
+#              1H, 2NT      literal call (NT or N)
+#              1X, ?Z       generic suit: X Y Z W bind to pairwise-different
+#                           suits (and different from the pattern's literal
+#                           suits); the same letter binds the same suit;
+#                           "?" is any level
+#              P, X/DBL, XX/RDBL   pass, double, redouble
+#              (1Y), (P)    parenthesized = an OPPONENT call; bare steps are
+#                           calls by the partnership of the described call
+#              !2D          any of our BIDS except 2D
+#              ...          absorbs any run of calls (anywhere in the
+#                           pattern; leading "..." = match any position)
+#            Without a leading "...", the pattern is ANCHORED at the start
+#            of the auction: leading passes are skipped (unless the first
+#            step is a pass) and opponent passes between steps are skipped
+#            implicitly -- own passes must be written out (or absorbed by
+#            "..."). The LAST step is the call being described.
+#
+# CLAUSES    after ";" (or ":"), OR-combined groups of AND atoms:
+#              suit refs:   pattern vars (X Y Z W), literals (C D H S N) and
+#                           context suits -- T our last suit, P partner's
+#                           last suit, L their last suit, O the other major
+#                           of the candidate's major
+#              comparison:  X<Z  Z>Y  Y!=C  T=P   (order C<D<H<S<N; <,> need
+#                           both refs bound; =/!= treat unbound as never
+#                           equal)
+#              candidate:   jump=0  jump>=1  level>=3  below=4H
+#              state:       gf  uncontested  contested  balancing  passed
+#                           first  opener  partnerbid  newsuit  webid
+#                           notopening  noxyz  nostrong2c  fourth  we_xx
+#                           they_xx  dbls_by_us>=N  dbls_by_them>=N
+#                           bids_by_them=0  their_bid>=4S  our_bid>=1C
+#              any condition may be negated: !passed, !we_bid, ...
+#
+# DESCRIPTION  the alert text AND the training spec. " OR " (uppercase, own
+#            word) splits multiway alternatives: the call is consistent when
+#            the hand satisfies ALL checkable tokens of ANY branch; a branch
+#            with no checkable token is a wildcard (lenient by design).
+#            Enforced tokens (K&R points +- kr_tolerance):
+#              5+X  4-6H  6X  8+any     suit length ("any" = the longest
+#                                       suit; it also feeds 2top)
+#              2top               2 of the top 3 honours in the longest suit
+#              p>16  p<10  p>=12  p15-17
+#              balanced
+#              openp              opening values (open_min_kr, lighter after
+#                                 2+ passes, or the rule of 20)
+#              no4M               no 4-card major biddable at the 1 level
+#              noLong5M           no 5+ major longer than the bid suit
+#              stop               stopper in their last suit
+#              kc=0/3 | kc=1/4 | kc=2- | kc=2+    RKCB keycards (aces + the
+#                                 {T} king; 2- / 2+ without / with the queen)
+#            Entry-level keywords: F (one-round force: PARTNER passing it is
+#            penalized; an intervening opponent bid releases it), GF (game
+#            force: passing below game is penalized), and for doubles TO /
+#            PENALTY -- these do NOT describe the doubler's hand; instead
+#            the PARTNER is penalized for passing a TO double without
+#            to_pass_min_len trumps or pulling a PENALTY double with more
+#            than penalty_pull_max_len. {X} {T} {P} {L} {O} render as suit
+#            symbols; everything else is free alert text.
+#
+# @weight    penalty weight (default 1.0). @0 = alert-only (nothing enforced,
+#            and the built-in default rules keep their check for that call).
+#            A matched entry with weight>0 REPLACES the built-in rule checks.
+# @!         artificial: the website shows the alert marker.
+#            A matched entry with an empty description suppresses the alert.
+#
+# Calls no entry matches fall back to the built-in rule checks (default
+# weights) during training and show no alert on the site.
+#
+# Ship this file to the server next to the checkpoint it describes
+# (models/system.txt); SYSTEM_FILE overrides the path. The Go server
+# re-reads it whenever it changes on disk. The full grammar lives in
+# bidding-dt/src/bidding_dt/conventions/patterns.py (Python, training) and
+# system_writer/patterns.go (Go, alerts) -- tests pin them to each other.
 # ============================================================================
 
-# ---- sequence-pattern entries (checked first; first match wins) ------------
+# ---- configuration ---------------------------------------------------------
 
-# opener's reverse: a new suit at the 2 level ranking above the opening suit
-# (1C-1H-2D, 1D-1S-2H, ...): 5+ first suit, 4+ second, 16+, forcing one round
-1X-1Y-2Z; X<Z = reverse: 5+X 4+Z p>16 F @2.0
-
-# stayman over 1NT/2NT: asks for a 4-card major (multiway OR)
-1NT-2C = 4+H OR 4+S stayman ask @!
-2NT-3C = 4+H OR 4+S stayman ask @!
-
-# XYZ after an uncontested 1x-1y-1z (alert text only -- the [xyz_2c]/[xyz_2d]
-# sections below keep enforcing, hence @0)
-1X-1Y-1Z-2C = p<9.5 5+D weak diamond signoff OR p9.5-12.5 any invite @! @0
-1X-1Y-1Z-2D = p>11.5 artificial GF @! @0
-
-# 2/1 in competition: a non-jump 2-level new suit over an overcall, when
-# bidding it at the 1 level was impossible (the new suit ranks below theirs),
-# stays game forcing (alert-only; [two_one_gf] keeps enforcing)
-1X-(1Y)-2C; C<Y = 2/1: 3+C p>11.5 GF @0
-1X-(1Y)-2Z; Z<Y = 2/1: 4+Z p>11.5 GF @0
-
-# doubles: penalty once a redouble by us, two prior doubles by us, a game
-# force, or their 4S+ bid says the auction belongs to us -- otherwise takeout.
-# TO/PENALTY describe the PARTNER's discipline, not the doubler's hand.
-...-X; we_xx OR dbls_by_us>=2 OR gf OR their_bid>=4S = PENALTY -- partner pulls only with shortness in their suit
-...-X = TO -- partner passes only with a trump stack in their suit
-
-[general]
 kr_tolerance = 1.0
 conv_bonus = 0.05
-# pattern-layer discipline params:
+open_min_kr = 11.0
+open_min_kr_late = 9.5
+open_rule20 = yes
+rkcb_min_kr = 11.0
+rkcb_min_fit = 3
 f_pass_weight = 2.0
 to_pass_weight = 1.0
 penalty_pull_weight = 1.0
@@ -119,240 +124,117 @@ penalty_pull_max_len = 2
 
 # ---- openings ---------------------------------------------------------------
 
-[open_1nt_range]
-alert = {call}: 15-17 balanced
-weight = 1.0
-nt_range = 15-17
+1N = p15-17 balanced
+2N = p20-21 balanced
+2C = p>20.5 OR 8+any OR 6+any 2top p>16.5 -- strong artificial, game force until opener rebids 2NT @!
+1X; X>=H = 5+X openp
+1D = 3+D noLong5M openp
+1C = 2+C noLong5M openp
+2X = 5-7X p4-12 weak two @! @0.1
+?X = weak preempt @0
 
-[open_2nt_range]
-alert = {call}: 20-21 balanced
-weight = 1.0
-nt2_range = 20-21
+# ---- strong 2C responses -----------------------------------------------------
 
-[open_2c_strong]
-alert = {call}: strong artificial -- 20.5+ or a long strong suit; game force until opener rebids 2NT
-artificial = yes
-weight = 1.0
-two_c_min_kr = 20.5
-two_c_suit_len = 6
-two_c_suit_min_kr = 16.5
-two_c_longsuit_len = 8
+2C-2D; first = waiting response to the strong 2♣ -- any hand @!
+2C-?Y; first = positive response to the strong 2♣: 5+Y p>7.5 @0.5
+2C-2N; first = positive response to the strong 2♣: p>7.5 @0.5
 
-[open_major_5card]
-alert = {call}: 5+ {suit}, opening values (rule of 20; lighter in 3rd/4th seat)
-weight = 1.0
+# ---- XYZ (uncontested 1x-1y-1z) ------------------------------------------------
 
-[open_minor_length]
-alert = {call}: opening values, 3+ diamonds / 2+ clubs, no biddable 5-card major
-weight = 0.5
+1X-1Y-1Z-2C = XYZ relay: p9.5-12.5 any invite OR p<9.5 5+D weak diamond signoff @!
+1X-1Y-1Z-2D = XYZ: p>11.5 artificial GF @!
+1X-1Y-1Z-2C-2D = completes the XYZ relay -- minimum @! @0
+1X-1Y-1Z-2C-!2D = broke the XYZ relay: p>15.5 @! @2.5
+1X-1Y-1Z-2C-2D-P = diamond signoff -- p<9.5 @! @2.5
 
-[open_weak2]
-alert = {call}: weak two -- 6-card {suit} (5-7 allowed), about 5-10 HCP
-artificial = yes
-weight = 0.1
-weak2_range = 4-12
-weak2_len = 5-7
+# ---- stayman and smolen --------------------------------------------------------
 
-[open_values]
-# training-only: opening strength (no alert text; the shape rules above speak)
-weight = 0.5
-open_min_kr = 11.0
-open_min_kr_late = 9.5
-open_rule20 = yes
+1N-2C = 4+H OR 4+S stayman ask @!
+2N-3C = 4+H OR 4+S stayman ask @!
+1N-2C-2D-3X; X>=H = smolen: 4+X and 5+O, game force GF @!
+2N-3C-3D-3X; X>=H = smolen: 4+X and 5+O, game force GF @!
 
-# ---- responses --------------------------------------------------------------
+# ---- RKCB ----------------------------------------------------------------------
 
-[resp_2c_waiting]
-alert = {call}: waiting response to strong 2♣ -- any hand
-artificial = yes
+...-4N; we_bid = RKCB ask for {T}: keycard ask (steps 0/3, 1/4, 2, 2+Q) @!
+...-4N-(P)-5C; we_bid = RKCB response for {T}: kc=0/3 @!
+...-4N-(P)-5D; we_bid = RKCB response for {T}: kc=1/4 @!
+...-4N-(P)-5H; we_bid = RKCB response for {T}: kc=2- @!
+...-4N-(P)-5S; we_bid = RKCB response for {T}: kc=2+ @!
 
-[resp_2c_positive]
-alert = {call}: positive response to strong 2♣ -- 7.5+, 5+ cards in the bid suit
-weight = 0.5
-resp_2c_pos_min_kr = 7.5
-resp_2c_pos_min_len = 5
+# ---- 2/1 game force --------------------------------------------------------------
 
-[resp_1nt]
-alert = {call}: 5-12, denies a biddable 4-card major
-weight = 0.5
-resp_1nt_range = 5-12
+1X-...-2C; first, bids_by_them=0 = 2/1: 3+C p>11.5 GF
+1X-...-2Y; first, bids_by_them=0, Y!=C = 2/1: 4+Y p>11.5 GF
+1X-(1Y)-2C; C<Y, X!=C, first = 2/1 over their bid: 3+C p>11.5 GF
+1X-(1Y)-2Z; Z<Y, first = 2/1 over their bid: 4+Z p>11.5 GF
 
-[resp_raise]
-alert = {call}: raise -- 3+ {suit} (4+ for a minor), 5-12.5
-weight = 0.5
-raise_range = 5-12.5
-raise_support_major = 3
-raise_support_minor = 4
+# ---- fourth suit -------------------------------------------------------------------
 
-[resp_jump_raise]
-alert = {call}: limit raise -- 3+ {suit} (4+ for a minor), 10-13
-weight = 0.5
-jump_raise_range = 10-13
-jump_raise_support_major = 3
-jump_raise_support_minor = 4
+...-?Z; fourth = fourth suit {Z}: p>10, artificial game force @!
 
-[resp_2nt]
-alert = {call}: 10.5-12.5 balanced
-weight = 0.5
-resp_2nt_range = 10.5-12.5
+# ---- reverse (opener's higher-ranking second suit at the 2 level) --------------------
 
-[resp_3nt]
-alert = {call}: 12.5-15.5 balanced
-weight = 0.5
-resp_3nt_range = 12.5-15.5
+1X-1Y-2Z; X<Z = reverse: 5+X 4+Z p>16 F @2.0
 
-[two_one_gf]
-alert = {call}: 2/1 game force -- 11.5+, 4+ {suit} (3+ clubs)
-weight = 1.0
-two_one_min_kr = 11.5
-two_one_min_len = 4
-two_one_min_len_clubs = 3
+# ---- jump shifts ----------------------------------------------------------------------
 
-[inv_jump_shift]
-alert = {call}: invitational jump shift -- exactly 6+ {suit}, 10-11 (in competition too)
-weight = 2.0
-js_range = 10.5-12.5
-js_min_len = 6
+...-2Z; opener, jump=1, newsuit, nostrong2c = opener's jump shift -- strong: p>17 OR 6+Z p>14 @0.5
+...-3Z; opener, jump=1, newsuit, nostrong2c = opener's jump shift -- strong: p>17 OR 6+Z p>14 @0.5
+...-2Z; jump=1, notopening, newsuit, !passed, Z!=P, Z!=L, noxyz, nostrong2c = invitational jump shift: 6+Z p10.5-12.5 @2.0
+...-3Z; jump=1, notopening, newsuit, !passed, Z!=P, Z!=L, nostrong2c = invitational jump shift: 6+Z p10.5-12.5 @2.0
 
-# ---- opener rebids ----------------------------------------------------------
+# ---- splinters -------------------------------------------------------------------------
 
-[rebid_1nt]
-alert = {call}: opener's rebid -- 11.5-14.5
-weight = 0.5
-rebid_1nt_range = 11.5-14.5
+...-3Y; jump=2, partnerbid, !passed, newsuit, nostrong2c, Y!=P, Y!=L, P>=H = splinter in {Y}: 0-1Y, 4+P fit, p>12, slam interest @! @2.0
+...-3Y; jump=2, partnerbid, !passed, newsuit, nostrong2c, Y!=P, Y!=L, P<H = splinter in {Y}: 0-1Y, 5+P fit, p>12, slam interest @! @2.0
+...-4Y; jump=2, below=4H, partnerbid, !passed, newsuit, nostrong2c, Y!=P, Y!=L, P>=H = splinter in {Y}: 0-1Y, 4+P fit, p>12, slam interest @! @2.0
+...-4Y; jump=2, below=4H, partnerbid, !passed, newsuit, nostrong2c, Y!=P, Y!=L, P<H = splinter in {Y}: 0-1Y, 5+P fit, p>12, slam interest @! @2.0
 
-[rebid_2nt]
-alert = {call}: opener's jump rebid -- 17.5-19.5 balanced
-weight = 0.5
-rebid_2nt_range = 17.5-19.5
+# ---- notrump responses and rebids ---------------------------------------------------------
 
-[strong_jump_rebid]
-alert = {call}: opener's jump shift -- strong, 17+ (or 6+ {suit} and 14+)
-weight = 0.5
-strong_js_min_kr = 17.0
-strong_js_alt_kr = 14.0
-strong_js_alt_len = 6
+1X-...-1N; first = p5-12 no4M @0.5
+(1Y)-...-1N; first, partnerbid = p5-12 @0.5
+...-1N; opener = opener's 1NT rebid: p11.5-14.5 @0.5
+1X-...-2N; first, jump=1 = p10.5-12.5 balanced @0.5
+(1Y)-...-2N; first, partnerbid, jump=1 = p10.5-12.5 balanced @0.5
+...-2N; opener, jump=1 = opener's jump 2NT rebid: p17.5-19.5 balanced @0.5
+1X-...-3N; first, jump=2 = p12.5-15.5 balanced @0.5
 
-# ---- game-forcing conventions -----------------------------------------------
+# ---- cuebid of their suit -------------------------------------------------------------------
 
-[fourth_suit]
-alert = {call}: fourth suit -- artificial, game force
-artificial = yes
-weight = 1.0
-fourth_suit_min_kr = 10.0
+...-?Y; Y=L, partnerbid, P!=L, newsuit, P>=H = cuebid of {Y}: invitational or better, 3+P support, p>10 @!
+...-?Y; Y=L, partnerbid, P!=L, newsuit, P<H = cuebid of {Y}: invitational or better, 4+P support, p>10 @!
 
-[xyz_2c]
-alert = {call}: XYZ relay -- any invite, or a diamond signoff
-artificial = yes
-weight = 1.0
-xyz_2c_max_kr = 12.5
-xyz_inv_min_kr = 9.5
-xyz_signoff_min_d = 5
+# ---- raises -----------------------------------------------------------------------------------
 
-[xyz_2d]
-alert = {call}: XYZ -- artificial game force
-artificial = yes
-weight = 1.0
-xyz_2d_min_kr = 11.5
+1X-...-2X; first, X>=H = raise: 3+X p5-12.5 @0.5
+1X-...-2X; first, X<H = raise: 4+X p5-12.5 @0.5
+1X-...-3X; first, jump=0, X>=H = raise: 3+X p5-12.5 @0.5
+1X-...-3X; first, jump=0, X<H = raise: 4+X p5-12.5 @0.5
+1X-...-3X; first, jump=1, X>=H = limit raise: 3+X p10-13 @0.5
+1X-...-3X; first, jump=1, X<H = limit raise: 4+X p10-13 @0.5
+1X-...-4X; first, jump=0, X<H = raise: 4+X p5-12.5 @0.5
+1X-...-4X; first, jump=1, X<H = limit raise: 4+X p10-13 @0.5
+1X-...-4X; first, X>=H = game raise -- natural @0
+1X-...-5X; first, X<H = game raise -- natural @0
 
-[xyz_relay]
-alert = {call}: XYZ -- opener completes with 2♦ without extras (15.5+ may bypass)
-artificial = yes
-weight = 2.5
-xyz_relay_break_kr = 15.5
+# ---- overcalls -------------------------------------------------------------------------------------
 
-[xyz_pass]
-alert = diamond signoff -- passing the forced XYZ relay, below invitational values
-artificial = yes
-weight = 2.5
+...-1Z; !we_bid, !balancing, notopening, jump=0 = overcall: 5+Z p>7 OR 4+Z p>13
+...-2Z; !we_bid, !balancing, notopening, jump=0 = overcall: 5+Z p>10
+...-?Z; !we_bid, !balancing, notopening, jump=0, level>=3 = overcall: 6+Z p>12.5
+...-1Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 4+Z p>6.5
+...-2Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 5+Z p>8
+...-?Z; !we_bid, balancing, notopening, jump=0, level>=3 = balancing overcall: 5+Z p>8
+...-1N; !we_bid, !balancing, notopening = 1NT overcall: p14.5-18.5 stop @0.5
+...-1N; !we_bid, balancing, notopening = balancing 1NT: p11.5-15.5 @0.5
 
-[gf_pass]
-# training-only: never pass below game once a game force is on
-weight = 2.0
+# ---- doubles: penalty once a redouble by us, two prior doubles by us, a game force,
+# ---- or their 4S+ bid says the auction belongs to us -- otherwise takeout. TO/PENALTY
+# ---- describe the PARTNER's discipline, not the doubler's hand.
 
-# ---- slam conventions -------------------------------------------------------
-
-[rkcb_ask]
-alert = {call}: RKCB for {trump} -- keycard ask (5♣ 0/3, 5♦ 1/4, 5♥ 2 without, 5♠ 2 with the trump queen)
-artificial = yes
-rkcb_min_kr = 11.0
-rkcb_min_fit = 3
-
-[rkcb_response]
-alert = {call}: RKCB response for {trump} -- {shows}
-artificial = yes
-weight = 1.0
-steps = 0 or 3 keycards | 1 or 4 keycards | 2 keycards without the trump queen | 2 keycards with the trump queen
-
-[splinter]
-alert = {call}: splinter -- singleton/void {suit}, fit for partner's {partner_suit}, slam interest
-artificial = yes
-weight = 2.0
-splinter_min_kr = 12.0
-splinter_max_len = 1
-splinter_fit_major = 4
-splinter_fit_minor = 5
-
-[smolen]
-alert = {call}: Smolen -- 4 {suit} and 5+ {other}, game force
-artificial = yes
-weight = 1.0
-smolen_bid_len = 4
-smolen_other_len = 5
-
-[cuebid_support]
-alert = {call}: cuebid of their {suit} -- invitational or better support for partner's {partner_suit}
-artificial = yes
-weight = 1.0
-cuebid_min_kr = 10.0
-cuebid_fit_major = 3
-cuebid_fit_minor = 4
-
-# ---- competition ------------------------------------------------------------
-
-[overcall]
-alert = {call}: overcall -- 5+ {suit} (4 only with 13+ at the 1 level), values by level, lighter in balancing seat
-weight = 1.0
-overcall1_min_kr = 7.0
-overcall2_min_kr = 10.0
-overcall3_min_kr = 12.5
-overcall1_bal_min_kr = 6.5
-overcall2_bal_min_kr = 8.0
-overcall_min_len = 5
-overcall3_min_len = 6
-overcall_bal1_min_len = 4
-overcall_short_ok_kr = 13.0
-
-[overcall_1nt]
-alert = {call}: 1NT overcall -- 15-18 with a stopper in their suit
-weight = 0.5
-overcall_nt_range = 14.5-18.5
-
-[overcall_1nt_bal]
-alert = {call}: balancing 1NT -- 12-15
-weight = 0.5
-overcall_nt_bal_range = 11.5-15.5
-
-[takeout_double]
-# superseded by the "...-X = TO" pattern entry above (kept as the fallback
-# for when that entry is removed, and for its training thresholds)
-alert = {call}: takeout -- opening-ish values, 3+ in every unbid major; an 18+ power double needs no shape
-weight = 1.0
-takeout_min_kr = 10.0
-takeout_bal_min_kr = 8.0
-takeout_major_len = 3
-takeout_power_kr = 18.0
-
-[balancing_takeout]
-alert = {call}: balancing takeout -- 8+, shape requirements relaxed
-
-[negative_double]
-# superseded by the "...-X" pattern entries above (kept as the fallback)
-alert = {call}: negative double -- values or an unbid 4-card major
-weight = 1.5
-negative_min_kr = 5.5
-negative_values_kr = 8.5
-
-[penalty_double]
-# superseded by the "...-X; ... = PENALTY" pattern entry above (fallback)
-alert = {call}: penalty-oriented -- our side has bid
+...-X; we_xx OR dbls_by_us>=2 OR gf OR their_bid>=4S = PENALTY -- partner pulls only with shortness in their suit
+...-X; partnerbid = TO -- negative double: values or an unbid 4-card major; partner passes only with a trump stack
+...-X; balancing = TO -- balancing takeout; partner passes only with a trump stack
+...-X = TO -- partner passes only with a trump stack

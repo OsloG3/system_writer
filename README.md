@@ -55,21 +55,23 @@ board keeps that mode for its whole life.
 ### Bid alerts (the bots' system file)
 
 The bots' conventions are written in **`models/system.txt`** — one text file,
-two consumers. bidding-dt interprets it at the start of training (rule
-weights + thresholds for the convention enforcement, plus the sequence-
-pattern entries it checks every call against; see `bidding-dt/README.md`
-"System file"), and the site **generates its bid alerts from it**: the Go
-server replays the live auction (`auction.go` + `patterns.go`, ports of the
-Python auction reader and pattern matcher), resolves every bot call — and
-every legal option on your turn — to the first matching **pattern entry**
-(e.g. `1X-1Y-2Z; X<Z = reverse: 5+X 4+Z p>16 F`, with generic suits X/Y/Z/W,
-opponent calls in parentheses, `...`-prefixed tail matching and state
-clauses like `gf` / `balancing` / `their_bid>=4S`), or failing that to the
-matching **rule-code section**, and shows the resolved text. Conventional
-calls (XYZ, RKCB, splinter, smolen, fourth suit, support cuebid, weak two,
-strong 2♣, …) carry the ⚠ marker; natural calls the file covers (openings,
-responses, raises, rebids, 2/1, overcalls, doubles) show their meaning as
-plain text; calls the file does not cover show no alert. No self-play
+two consumers, written entirely in a **sequence-pattern language**: one entry
+per call kind, e.g. `1X-1Y-2Z; X<Z = reverse: 5+X 4+Z p>16 F @2.0` or
+`...-X; we_xx OR gf OR their_bid>=4S = PENALTY`, with generic suits X/Y/Z/W,
+opponent calls in parentheses, `...`/`?`/`!` wildcards and state clauses
+(`gf`, `balancing`, `jump=1`, `their_bid>=4S`, …). bidding-dt interprets it
+at the start of training (the descriptions' tokens — `5+X`, `p>16`,
+`balanced`, `OR` branches, `F`/`GF`, `TO`/`PENALTY` — are the per-call
+convention checks; see `bidding-dt/README.md` "System file"), and the site
+**generates its bid alerts from it**: the Go server replays the live auction
+(`auction.go` + `patterns.go`, ports of the Python auction reader and pattern
+matcher), resolves every bot call — and every legal option on your turn — to
+the first matching entry (file order wins) and shows its rendered
+description with the suit variables resolved. Entries marked `@!`
+(conventional calls: XYZ, RKCB, splinter, smolen, fourth suit, cuebid, weak
+two, strong 2♣, …) carry the ⚠ marker; natural calls the file covers
+(openings, responses, raises, rebids, 2/1, overcalls, doubles) show their
+meaning as plain text; calls no entry covers show no alert. No self-play
 statistics are involved, so alerts never depend on tree coverage. Editing
 the file refreshes the alerts without a restart (re-read on mtime change);
 `SYSTEM_FILE` overrides the path. Ship the file next to the checkpoint it
