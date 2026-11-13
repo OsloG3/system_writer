@@ -4039,6 +4039,9 @@
                         </button>
                         <div class="font-headline font-bold text-white min-w-0 truncate">${contractHtml(item.contract)}</div>
                         ${item.no ? `<span class="text-xs text-[#908f8d] font-label">· board ${item.no}${item.match ? ` · match ${item.match}` : ""}</span>` : ""}
+                        ${(item.mode === "play" && item.ts && item.contract && item.contract !== "passed out")
+                            ? `<a href="/analyze?ts=${encodeURIComponent(item.ts)}" class="cb-btn-ghost" style="margin-left:auto;text-decoration:none;white-space:nowrap" title="Open this hand in the double-dummy analyzer"><span class="material-symbols-outlined text-sm">query_stats</span>Analyze</a>`
+                            : ""}
                     </div>
                     <div class="text-xs text-[#908f8d] font-label">
                         ${SEAT_NAMES[item.dealer]} dealt · ${VULN_NAMES[item.vuln]} vuln

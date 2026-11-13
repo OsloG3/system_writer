@@ -24,12 +24,15 @@ import (
 
 // analyzeBoardBody is what the browser posts: a deal, its auction and the play.
 // Plays carry the same shape as a stored PlayRecord.Plays (seat + "AS" card).
+// ResultTricks optionally carries the declarer's actual trick count for a hand
+// that was claimed / stopped short, so the score and play-vs-DD IMPs still work.
 type analyzeBoardBody struct {
-	Hands  [4]string  `json:"hands"`
-	Dealer int        `json:"dealer"`
-	Vuln   int        `json:"vuln"`
-	Calls  []string   `json:"calls"`
-	Plays  []PlayCard `json:"plays"`
+	Hands        [4]string  `json:"hands"`
+	Dealer       int        `json:"dealer"`
+	Vuln         int        `json:"vuln"`
+	Calls        []string   `json:"calls"`
+	Plays        []PlayCard `json:"plays"`
+	ResultTricks *int       `json:"resultTricks"`
 }
 
 // POST /api/analyze/board - double-dummy analysis of one submitted hand.
@@ -69,6 +72,11 @@ func handleAnalyzeBoard(w http.ResponseWriter, r *http.Request) {
 		"vuln":   body.Vuln,
 		"calls":  callsOrEmpty(body.Calls),
 		"plays":  plays,
+	}
+	if body.ResultTricks != nil {
+		if t := *body.ResultTricks; t >= 0 && t <= 13 {
+			req["result_tricks"] = t
+		}
 	}
 	var out map[string]any
 	if err := botPost("/analyze", req, &out, botScoreTimeout); err != nil {

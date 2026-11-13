@@ -113,6 +113,44 @@
             .an-rk.gone { opacity: 0.24; }
             .an-rk.now { background: #e8e6e3; color: #161512; box-shadow: 0 0 0 1px #e8e6e3; }
 
+            /* cardinal table: N top, W left, trick centre, E right, S bottom */
+            .an-table-layout {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+                grid-template-areas: ". n ." "w c e" ". s .";
+                gap: 0.5rem 0.8rem; align-items: center; justify-items: center;
+            }
+            .an-tl-n { grid-area: n; } .an-tl-e { grid-area: e; }
+            .an-tl-s { grid-area: s; } .an-tl-w { grid-area: w; }
+            .an-tl-c { grid-area: c; }
+            .an-table-layout .an-seat { max-width: 15rem; }
+            .an-table-layout .an-suitline { flex-wrap: wrap; }
+            .an-tc {
+                display: grid; grid-template-columns: repeat(3, auto); grid-template-rows: repeat(3, auto);
+                gap: 4px; align-items: center; justify-items: center;
+                padding: 0.4rem; border-radius: 0.7rem; background: #1d1b19;
+                box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+            }
+            .an-tc-n { grid-area: 1 / 2; } .an-tc-w { grid-area: 2 / 1; }
+            .an-tc-e { grid-area: 2 / 3; } .an-tc-s { grid-area: 3 / 2; }
+            .an-tc-mid { grid-area: 2 / 2; font-family: Inter, sans-serif; font-size: 0.56rem; color: #787572; text-align: center; line-height: 1.25; }
+            .an-tile.sm { min-width: 2rem; height: 2.6rem; }
+            .an-tile.sm .r { font-size: 0.9rem; } .an-tile.sm .s { font-size: 0.85rem; }
+            .an-headgrid { display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: start; }
+            .an-head-auc { min-width: 12rem; }
+            @media (max-width: 640px) { .an-headgrid { grid-template-columns: 1fr; } }
+            @media (max-width: 560px) {
+                .an-table-layout { gap: 0.35rem 0.4rem; }
+                .an-table-layout .an-seat { max-width: 8.5rem; }
+                .an-suitline { font-size: 0.7rem; }
+            }
+
+            /* hover explanations for every statistic */
+            .an-hastip { border-bottom: 1px dotted rgba(143,140,136,0.65); cursor: help; }
+            .an-tag { display: inline-block; margin-left: 0.3rem; padding: 0 0.3rem; border-radius: 0.3rem; background: #3d3a36; color: #908f8d; font-size: 0.6rem; font-family: Inter, sans-serif; vertical-align: middle; }
+            .an-tablewrap { overflow-x: auto; }
+            .an-tablewrap .an-table { min-width: 34rem; }
+
             /* auction grid */
             .an-auc-head, .an-auc-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 0.28rem; }
             .an-auc-head { margin-bottom: 0.3rem; }
@@ -287,32 +325,39 @@
                 const sym = c.denom === "N" ? "NT" : SUIT_SYMBOL[c.denom];
                 return `${c.level}${sym}${pen} by ${nameFor(names, c.declarer)}`;
             }
-            // A pair label for the pair stats: cardinal pair plus both players'
-            // names when the board set supplies them (already HTML-escaped).
-            function pairName(names, pair) {
-                const [x, y] = pair === "ns" ? [0, 2] : [1, 3];
-                const nx = names && names[x] ? String(names[x]).trim() : "";
-                const ny = names && names[y] ? String(names[y]).trim() : "";
-                const card = pair === "ns" ? "N-S" : "E-W";
-                return (nx && ny)
-                    ? `${card} \u00b7 ${escapeHtml(nx)} &amp; ${escapeHtml(ny)}`
-                    : card;
+            // Player/pair identity for aggregation. A NAMED player is keyed by
+            // their name so their statistics follow them across boards even when
+            // the set rotates seats; an unnamed seat falls back to a per-seat
+            // cardinal key. Pairs are keyed by their two player ids (sorted), so
+            // a partnership is tracked by who the two players are, not by N-S/E-W.
+            function seatName(board, seat) {
+                return board && board.names && board.names[seat] ? String(board.names[seat]).trim() : "";
             }
-            // Bulk runs cover many boards; take each seat's most common name.
-            function bulkSeatNames(results) {
-                const counts = [{}, {}, {}, {}];
-                for (const { board } of results) {
-                    if (!board || !board.names) continue;
-                    for (let s = 0; s < 4; s++) {
-                        const nm = String(board.names[s] || "").trim();
-                        if (nm) counts[s][nm] = (counts[s][nm] || 0) + 1;
-                    }
-                }
-                return [0, 1, 2, 3].map((s) => {
-                    let best = "", bestN = 0;
-                    for (const nm in counts[s]) if (counts[s][nm] > bestN) { best = nm; bestN = counts[s][nm]; }
-                    return best;
-                });
+            function pidOf(board, seat) {
+                const nm = seatName(board, seat);
+                return nm ? "n:" + nm.toLowerCase() : "s:" + seat;
+            }
+            function pnameOf(board, seat) { return seatName(board, seat) || SEAT_NAMES[seat]; }
+            function pairKeyOf(board, s1, s2) { return [pidOf(board, s1), pidOf(board, s2)].sort().join("|"); }
+            function pairNameOf(board, s1, s2) {
+                if (!seatName(board, s1) && !seatName(board, s2)) return (s1 % 2 === 0) ? "N-S" : "E-W";
+                return escapeHtml(pnameOf(board, s1)) + " &amp; " + escapeHtml(pnameOf(board, s2));
+            }
+            // Which of the three mistake buckets a play belongs to: the declaring
+            // side's card play, a defender's lead, or a defender's follow/discard.
+            function roleOfPlay(i, seat, declarer) {
+                if (seat === declarer || seat === (declarer + 2) % 4) return "decl";
+                return (i % 4 === 0) ? "lead" : "def";
+            }
+            function signed(x, dp) {
+                if (x == null || !isFinite(x)) return "\u2013";
+                const v = dp ? x.toFixed(dp) : String(Math.round(x));
+                return (x > 0 ? "+" : "") + v;
+            }
+            // A statistic label with a 1-2 line hover explanation (native title,
+            // so it is never clipped by a scrollable table).
+            function tip(label, text) {
+                return `<span class="an-hastip" title="${escapeHtml(text)}">${label}</span>`;
             }
             function resultText(c, tricks) {
                 if (!c || tricks == null) return "";
@@ -550,6 +595,7 @@
                     body: JSON.stringify({
                         hands: board.hands, dealer: board.dealer, vuln: board.vuln,
                         calls: board.calls, plays: board.plays,
+                        resultTricks: (board.resultTricks != null ? board.resultTricks : null),
                     }),
                 });
                 const data = await res.json().catch(() => null);
@@ -565,31 +611,52 @@
             }
 
             // ---- source: history ----
+            async function loadHistoryBoards() {
+                const res = await fetch("/api/play/stats");
+                const data = await res.json();
+                // played-out boards with a real contract (pass-outs have no play
+                // to analyze); newest first, so #1 is the latest hand
+                const recs = (data.recentPlay || []).filter(
+                    (r) => r.hands && r.calls && contractFromCalls(r.dealer, r.calls));
+                return recs.map((r, k) => ({
+                    title: r.contract || "Board",
+                    hands: r.hands, dealer: r.dealer, vuln: r.vuln, calls: r.calls,
+                    plays: (r.plays || []).map((p) => ({ seat: p.seat, card: p.card })),
+                    resultTricks: (r.played != null ? r.played : null),
+                    ts: r.ts, imps: r.imps, parNs: r.parNs, ddTricks: r.tricks,
+                    contractStr: r.contract, claimed: !!r.claimed, idxLabel: k + 1,
+                    // the human always sat South; the other seats are bots
+                    names: ["", "", window.currentUser || "", ""],
+                }));
+            }
             async function pickHistory() {
                 if (!window.currentUser) { showAuthDialog("login"); return; }
                 sourceError = null; busy = true; view = "list"; boards = []; boardResults = {}; sourceKind = "history"; render();
                 try {
-                    const res = await fetch("/api/play/stats");
-                    const data = await res.json();
-                    // played-out boards with a real contract (pass-outs have no
-                    // play to analyze); newest first, so #1 is the latest hand
-                    const recs = (data.recentPlay || []).filter(
-                        (r) => r.hands && r.calls && contractFromCalls(r.dealer, r.calls));
-                    boards = recs.map((r, k) => ({
-                        title: r.contract || "Board",
-                        hands: r.hands, dealer: r.dealer, vuln: r.vuln, calls: r.calls,
-                        plays: (r.plays || []).map((p) => ({ seat: p.seat, card: p.card })),
-                        resultTricks: (r.played != null ? r.played : null),
-                        ts: r.ts, imps: r.imps, parNs: r.parNs, ddTricks: r.tricks,
-                        contractStr: r.contract, claimed: !!r.claimed, idxLabel: k + 1,
-                        // the human always sat South; the other seats are bots
-                        names: ["", "", window.currentUser || "", ""],
-                    }));
+                    boards = await loadHistoryBoards();
                     if (!boards.length) sourceError = "No played-out hands in your history yet. Play a few hands in \u201cPlay bridge\u201d first.";
                 } catch (e) {
                     sourceError = "Could not load your history.";
                 }
                 busy = false; render();
+            }
+            // Deep link from the Play-bridge history "Analyze" button: open the
+            // board with this timestamp straight into the single-hand view.
+            async function openHistoryByTs(ts) {
+                if (!window.currentUser) {
+                    view = "source"; sourceError = "Log in to open that hand from your history.";
+                    render(); showAuthDialog("login"); return;
+                }
+                sourceError = null; busy = true; view = "list"; boards = []; boardResults = {}; sourceKind = "history"; render();
+                try {
+                    boards = await loadHistoryBoards();
+                    const idx = boards.findIndex((b) => b.ts === ts);
+                    busy = false;
+                    if (idx >= 0) openBoard(idx);
+                    else { sourceError = "That hand is no longer in your recent history."; view = "list"; render(); }
+                } catch (e) {
+                    busy = false; sourceError = "Could not load your history."; view = "source"; render();
+                }
             }
 
             // ---- source: PBN ----
@@ -666,41 +733,69 @@
                 busy = false; render();
             }
             function gameLevel(denom) { return DENOM_GAME_LEVEL[denom] || 4; }
+            // Aggregate a set of boards. Players are keyed by NAME (so a set that
+            // rotates seats still totals each person correctly); pairs by their two
+            // names. Falls back to cardinal seats/pairs when a board has no names.
             function aggregate(results) {
-                const perSeat = [0, 1, 2, 3].map((s) => ({ seat: s, cards: 0, mistakes: 0, tricksLost: 0, critical: 0 }));
-                const side = { ns: { declared: 0, made: 0, missedGame: 0, missedSlam: 0 }, ew: { declared: 0, made: 0, missedGame: 0, missedSlam: 0 } };
+                const players = new Map(), pairs = new Map();
+                const player = (board, seat) => {
+                    const key = pidOf(board, seat);
+                    let p = players.get(key);
+                    if (!p) { p = { key, name: pnameOf(board, seat), named: !!seatName(board, seat),
+                        cards: 0, mistakes: 0, decl: 0, lead: 0, def: 0, tricksLost: 0,
+                        critical: 0, declImps: 0, declBoards: 0 }; players.set(key, p); }
+                    return p;
+                };
+                const pair = (board, s1, s2) => {
+                    const key = pairKeyOf(board, s1, s2);
+                    let pr = pairs.get(key);
+                    if (!pr) { pr = { key, name: pairNameOf(board, s1, s2), declared: 0, made: 0,
+                        missedGame: 0, missedSlam: 0, defImps: 0, defBoards: 0 }; pairs.set(key, pr); }
+                    return pr;
+                };
                 let unmakeableMade = 0, levelSum = 0, levelCount = 0, ddDiffSum = 0, ddDiffCount = 0;
                 let totalMistakes = 0, totalTricksLost = 0, totalCritical = 0, madeAny = 0, declAny = 0;
-                const unmakeableList = [];
                 for (const { board, analysis: a } of results) {
-                    const c = a.contract, target = a.target;
+                    const c = a.contract, target = a.target, decl = c.declarer, dummy = (decl + 2) % 4;
+                    const d1 = (decl + 1) % 4, d2 = (decl + 3) % 4;
                     const actual = a.actual_tricks != null ? a.actual_tricks : board.resultTricks;
-                    const declSide = (c.declarer % 2 === 0) ? "ns" : "ew";
+                    const declPos = (decl % 2 === 0) ? "ns" : "ew";
+                    const defPos = declPos === "ns" ? "ew" : "ns";
+                    const declPair = pair(board, decl, dummy), defPair = pair(board, d1, d2);
                     levelSum += c.level; levelCount++;
                     if (actual != null) {
                         const made = actual >= target;
-                        side[declSide].declared++; declAny++;
-                        if (made) { side[declSide].made++; madeAny++; }
-                        if (made && a.dd_tricks < target) { unmakeableMade++; unmakeableList.push({ board, analysis: a }); }
+                        declPair.declared++; declAny++;
+                        if (made) { declPair.made++; madeAny++; }
+                        if (made && a.dd_tricks < target) unmakeableMade++;
                         ddDiffSum += (actual - a.dd_tricks); ddDiffCount++;
                     }
-                    for (const s of ["ns", "ew"]) {
-                        const opt = a.optimal[s]; const isDecl = (declSide === s);
-                        const reachedGame = isDecl && c.level >= gameLevel(c.denom);
-                        const reachedSlam = isDecl && c.level >= 6;
-                        if (opt.game && !reachedGame) side[s].missedGame++;
-                        if ((opt.small_slam || opt.grand_slam) && !reachedSlam) side[s].missedSlam++;
+                    const reachedGame = c.level >= gameLevel(c.denom), reachedSlam = c.level >= 6;
+                    const dOpt = a.optimal[declPos], fOpt = a.optimal[defPos];
+                    if (dOpt.game && !reachedGame) declPair.missedGame++;
+                    if ((dOpt.small_slam || dOpt.grand_slam) && !reachedSlam) declPair.missedSlam++;
+                    if (fOpt.game) defPair.missedGame++;                 // defending: never reached their own game
+                    if (fOpt.small_slam || fOpt.grand_slam) defPair.missedSlam++;
+                    if (a.play_imps_decl != null) {
+                        const dp = player(board, decl);
+                        dp.declImps += a.play_imps_decl; dp.declBoards++;
+                        defPair.defImps += -a.play_imps_decl; defPair.defBoards++;
                     }
-                    for (const p of a.plays) {
-                        const ps = perSeat[p.seat]; ps.cards++;
-                        if (p.mistake) { ps.mistakes++; ps.tricksLost += p.cost; totalMistakes++; totalTricksLost += p.cost; }
-                        if (p.critical) { ps.critical++; totalCritical++; }
-                    }
+                    a.plays.forEach((p, i) => {
+                        const pl = player(board, p.seat); pl.cards++;
+                        if (p.mistake) {
+                            pl.mistakes++; pl.tricksLost += p.cost; pl[roleOfPlay(i, p.seat, decl)]++;
+                            totalMistakes++; totalTricksLost += p.cost;
+                        }
+                        if (p.critical) { pl.critical++; totalCritical++; }
+                    });
                 }
                 const n = results.length || 1;
+                const playersArr = [...players.values()].sort((x, y) => x.name.localeCompare(y.name));
+                const pairsArr = [...pairs.values()].sort((x, y) => (y.declared + y.defBoards) - (x.declared + x.defBoards));
                 return {
-                    boards: results.length, perSeat, side, unmakeableMade, unmakeableList,
-                    levelSum, levelCount, ddDiffSum, ddDiffCount,
+                    boards: results.length, players: playersArr, pairs: pairsArr,
+                    unmakeableMade, levelSum, levelCount, ddDiffSum, ddDiffCount,
                     totalMistakes, totalTricksLost, totalCritical, madeAny, declAny,
                     avgMistakes: totalMistakes / n, avgTricksLost: totalTricksLost / n,
                     avgLevel: levelCount ? levelSum / levelCount : null,
@@ -708,14 +803,15 @@
                 };
             }
 
-            // ---- per-seat summary for one analysis ----
+            // ---- per-seat summary for one analysis (with the role split) ----
             function seatSummary(a) {
-                const s = [0, 1, 2, 3].map((seat) => ({ seat, cards: 0, mistakes: 0, tricksLost: 0, critical: 0 }));
-                for (const p of a.plays) {
+                const decl = a.contract.declarer;
+                const s = [0, 1, 2, 3].map((seat) => ({ seat, cards: 0, mistakes: 0, decl: 0, lead: 0, def: 0, tricksLost: 0, critical: 0 }));
+                a.plays.forEach((p, i) => {
                     const o = s[p.seat]; o.cards++;
-                    if (p.mistake) { o.mistakes++; o.tricksLost += p.cost; }
+                    if (p.mistake) { o.mistakes++; o.tricksLost += p.cost; o[roleOfPlay(i, p.seat, decl)]++; }
                     if (p.critical) o.critical++;
-                }
+                });
                 return s;
             }
 
@@ -819,9 +915,9 @@
                 return `<div class="an-wrap">
                     ${top}
                     ${headerCard(board, a, actual, made)}
-                    ${dealCard(board, a, stepIdx)}
+                    ${tableCard(board, a, stepIdx)}
                     ${a.plays.length ? stepperCard(board, a, stepIdx) : `<div class="an-card an-muted">No cards were played in this hand, so there is nothing to step through. The deal-level double-dummy facts above still apply.</div>`}
-                    ${a.plays.length ? seatTable(seatSummary(a), target, board.names) : ""}
+                    ${a.plays.length ? seatTable(seatSummary(a), target, board.names, a.contract.declarer) : ""}
                     ${a.plays.length ? logCard(board, a, stepIdx) : ""}
                 </div>`;
             }
@@ -835,37 +931,45 @@
                         : `<span class="an-flag bad"><span class="material-symbols-outlined" style="font-size:.9rem">remove_circle</span>Down ${resultText(c, actual)}</span>`);
                 }
                 if (made && a.dd_tricks < a.target)
-                    flags.push(`<span class="an-flag warn" title="Double-dummy says this contract should fail; it made because of defensive errors">Unmakeable \u2014 made</span>`);
-                const opt = a.optimal;
-                const optBits = [];
+                    flags.push(`<span class="an-flag warn ${""}" title="Double-dummy says this contract should fail; it made only because the defence gave tricks away.">Unmakeable \u2014 made</span>`);
+                const opt = a.optimal, optBits = [];
                 if (opt.ns.game) optBits.push("N-S game"); if (opt.ns.small_slam) optBits.push("N-S slam");
                 if (opt.ew.game) optBits.push("E-W game"); if (opt.ew.small_slam) optBits.push("E-W slam");
+                const pi = a.play_imps_decl;
                 return `<div class="an-card">
-                    <div class="an-sumbar">
-                        <span class="big">${colorSuits(contractTextNamed(c, board.names))}</span>
-                        <span class="an-muted" style="font-size:.82rem">Dealer ${SEAT_LETTER[board.dealer]} \u00b7 Vuln ${VULN_NAMES[board.vuln]}</span>
-                    </div>
-                    <div class="an-kv" style="margin-top:.6rem">
-                        <span class="an-stat"><span class="k">DD tricks</span><span class="v">${a.dd_tricks}</span></span>
-                        <span class="an-stat"><span class="k">Needed</span><span class="v">${a.target}</span></span>
-                        <span class="an-stat"><span class="k">Played</span><span class="v">${actual != null ? actual : "\u2013"}</span></span>
-                        <span class="an-stat"><span class="k">Par (N-S)</span><span class="v">${a.par_ns > 0 ? "+" : ""}${a.par_ns}</span></span>
-                    </div>
-                    <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.7rem">
-                        ${flags.join("")}
-                        ${optBits.length ? `<span class="an-flag info" title="Double-dummy says these are makeable">DD makes: ${optBits.join(", ")}</span>` : `<span class="an-flag info">No makeable game</span>`}
+                    <div class="an-headgrid">
+                        <div>
+                            <div class="an-sumbar">
+                                <span class="big">${colorSuits(contractTextNamed(c, board.names))}</span>
+                                <span class="an-muted" style="font-size:.82rem">Dealer ${SEAT_LETTER[board.dealer]} \u00b7 Vuln ${VULN_NAMES[board.vuln]}</span>
+                            </div>
+                            <div class="an-kv" style="margin-top:.6rem">
+                                <span class="an-stat"><span class="k">${tip("DD tricks", "Tricks declarer takes with best play by all four hands.")}</span><span class="v">${a.dd_tricks}</span></span>
+                                <span class="an-stat"><span class="k">${tip("Needed", "Tricks required to make the contract: level + 6.")}</span><span class="v">${a.target}</span></span>
+                                <span class="an-stat"><span class="k">${tip("Played", "Tricks declarer actually took in this hand.")}</span><span class="v">${actual != null ? actual : "\u2013"}</span></span>
+                                <span class="an-stat"><span class="k">${tip("Par (N-S)", "The double-dummy par score for N-S: the best result either side can force with perfect bidding and play.")}</span><span class="v">${a.par_ns > 0 ? "+" : ""}${a.par_ns}</span></span>
+                                ${pi != null ? `<span class="an-stat"><span class="k">${tip("Play IMPs", "Declarer side's IMPs versus a double-dummy play of the same contract. Positive: the play beat DD (the defence erred). Negative: declarer fell short of DD.")}</span><span class="v" style="color:${pi > 0 ? "#8fd694" : pi < 0 ? "#f1948a" : "#e8e6e3"}">${signed(pi)}</span></span>` : ""}
+                            </div>
+                            <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.7rem">
+                                ${flags.join("")}
+                                ${optBits.length
+                                    ? `<span class="an-flag info" title="Double-dummy says these games/slabs are makeable on this deal.">DD makes: ${optBits.join(", ")}</span>`
+                                    : `<span class="an-flag info" title="Neither side can make a game with best play on this deal.">No makeable game</span>`}
+                            </div>
+                        </div>
+                        <div class="an-head-auc">${auctionBox(board)}</div>
                     </div>
                 </div>`;
             }
 
-            function dealCard(board, a, stepIdx) {
+            function tableCard(board, a, stepIdx) {
                 // which cards are already down (up to and including stepIdx)
                 const playedBy = [new Set(), new Set(), new Set(), new Set()];
                 for (let i = 0; i <= stepIdx && i < board.plays.length; i++)
                     playedBy[board.plays[i].seat].add(board.plays[i].card);
                 const curTok = board.plays[stepIdx] ? board.plays[stepIdx].card : null;
                 const curSeat = board.plays[stepIdx] ? board.plays[stepIdx].seat : -1;
-                const seats = [0, 1, 2, 3].map((s) => {
+                const seatHtml = (s) => {
                     const parts = String(board.hands[s] || "").split(".");
                     const lines = [["S", 0], ["H", 1], ["D", 2], ["C", 3]].map(([sym, pi]) => {
                         const ranks = (parts[pi] || "").split("").filter(Boolean).map((r) => {
@@ -876,15 +980,42 @@
                         }).join("");
                         return `<div class="an-suitline"><span class="an-su ${SUIT_CLASS[sym]}">${SUIT_SYMBOL[sym]}</span><span>${ranks || "\u2014"}</span></div>`;
                     }).join("");
-                    return `<div class="an-seat"><div class="nm"><b>${escapeHtml(nameFor(board.names, s))}</b> \u00b7 ${hcpOf(board.hands[s])} hcp${s === a.contract.declarer ? " \u00b7 declarer" : ""}</div>${lines}</div>`;
-                }).join("");
+                    const role = s === a.contract.declarer ? " \u00b7 declarer"
+                        : s === (a.contract.declarer + 2) % 4 ? " \u00b7 dummy" : "";
+                    return `<div class="an-seat"><div class="nm"><b>${escapeHtml(nameFor(board.names, s))}</b> \u00b7 ${hcpOf(board.hands[s])} hcp${role}</div>${lines}</div>`;
+                };
                 return `<div class="an-card">
-                    <div class="an-h">Deal \u2014 cards dim once played</div>
-                    <div class="an-dealgrid">
-                        <div class="an-hands">${seats}</div>
-                        <div>${auctionBox(board)}</div>
+                    <div class="an-h">Deal \u2014 cards dim once played; the trick in focus is in the centre</div>
+                    <div class="an-table-layout">
+                        <div class="an-tl-n">${seatHtml(0)}</div>
+                        <div class="an-tl-w">${seatHtml(3)}</div>
+                        <div class="an-tl-c">${centerTrick(board, a, stepIdx)}</div>
+                        <div class="an-tl-e">${seatHtml(1)}</div>
+                        <div class="an-tl-s">${seatHtml(2)}</div>
                     </div>
                 </div>`;
+            }
+
+            // The trick in focus, laid out by cardinality (N top, E right,
+            // S bottom, W left) around a centre marker, revealing only the cards
+            // played up to the current step.
+            function centerTrick(board, a, stepIdx) {
+                const trickStart = Math.floor(stepIdx / 4) * 4;
+                const upto = Math.min(stepIdx, trickStart + 3, board.plays.length - 1);
+                const idxs = [];
+                for (let i = trickStart; i <= upto; i++) idxs.push(i);
+                const complete = idxs.length === 4;
+                const winner = complete ? trickWinnerJS(idxs.map((i) => board.plays[i]), a.contract.denom) : null;
+                const area = { 0: "an-tc-n", 1: "an-tc-e", 2: "an-tc-s", 3: "an-tc-w" };
+                const slot = (s) => {
+                    const i = idxs.find((j) => board.plays[j].seat === s);
+                    if (i === undefined) return `<div class="${area[s]}"><span class="an-tile empty sm"></span></div>`;
+                    const tp = board.plays[i], isNow = i === stepIdx, isWin = complete && winner === s;
+                    return `<div class="${area[s]}"><span class="an-tile sm ${cardIsRed(tp.card) ? "red" : ""}${isNow ? " now" : ""}${isWin && !isNow ? " win" : ""}"><span class="r">${cardRank(tp.card)}</span><span class="s">${SUIT_SYMBOL[tp.card[1]]}</span></span></div>`;
+                };
+                const trickNo = trickStart / 4 + 1;
+                const mid = `trick ${trickNo}` + (complete && winner != null ? `<br>${SEAT_LETTER[winner]} wins` : "");
+                return `<div class="an-tc">${slot(0)}${slot(3)}<div class="an-tc-mid">${mid}</div>${slot(1)}${slot(2)}</div>`;
             }
 
             function auctionBox(board) {
@@ -915,11 +1046,9 @@
             function stepperCard(board, a, stepIdx) {
                 const p = a.plays[stepIdx];
                 const trickIdx = Math.floor(stepIdx / 4);
-                const trickStart = trickIdx * 4;
                 const n = a.plays.length;
                 return `<div class="an-card" id="an-verdict-card">
-                    <div class="an-h">Trick ${trickIdx + 1} \u00b7 card ${stepIdx + 1} of ${n} \u00b7 ${SEAT_NAMES[p.seat]} to play</div>
-                    ${currentTrick(board, a, stepIdx, trickStart)}
+                    <div class="an-h">Trick ${trickIdx + 1} \u00b7 card ${stepIdx + 1} of ${n} \u00b7 ${escapeHtml(nameFor(board.names, p.seat))} to play</div>
                     ${verdictPanel(a, p, stepIdx, board.names)}
                     <div class="an-stepper" style="margin-top:.9rem">
                         <button class="an-btn sm" id="s-first" ${stepIdx === 0 ? "disabled" : ""}><span class="material-symbols-outlined">skip_previous</span></button>
@@ -931,29 +1060,6 @@
                         <button class="an-btn gold sm" id="s-mistake"><span class="material-symbols-outlined">skip_next</span>Next mistake</button>
                     </div>
                 </div>`;
-            }
-
-            function currentTrick(board, a, stepIdx, trickStart) {
-                // reveal only the cards played so far in the trick in focus
-                const upto = Math.min(stepIdx, trickStart + 3, board.plays.length - 1);
-                const idxs = [];
-                for (let i = trickStart; i <= upto; i++) idxs.push(i);
-                const leader = board.plays[trickStart]
-                    ? board.plays[trickStart].seat : (a.contract.declarer + 1) % 4;
-                const complete = idxs.length === 4;
-                const winner = complete
-                    ? trickWinnerJS(idxs.map((i) => board.plays[i]), a.contract.denom) : null;
-                const cells = [0, 1, 2, 3].map((k) => (leader + k) % 4).map((s) => {
-                    const i = idxs.find((j) => board.plays[j].seat === s);
-                    if (i === undefined)
-                        return `<div class="an-tslot"><span class="who">${SEAT_LETTER[s]}</span><span class="an-tile empty"></span></div>`;
-                    const tp = board.plays[i];
-                    const isNow = i === stepIdx, isWin = complete && winner === s;
-                    return `<div class="an-tslot"><span class="who">${SEAT_LETTER[s]}${isWin ? " \u2713" : ""}</span>
-                        <span class="an-tile ${cardIsRed(tp.card) ? "red" : ""}${isNow ? " now" : ""}${isWin && !isNow ? " win" : ""}">
-                        <span class="r">${cardRank(tp.card)}</span><span class="s">${SUIT_SYMBOL[tp.card[1]]}</span></span></div>`;
-                }).join("");
-                return `<div class="an-trick" style="margin-bottom:.8rem">${cells}</div>`;
             }
 
             function verdictPanel(a, p, stepIdx, names) {
@@ -988,21 +1094,35 @@
                     ${body}${bestCards}`;
             }
 
-            function seatTable(summary, target, names) {
+            function seatTable(summary, target, names, declarer) {
+                const tag = (s) => s.seat === declarer ? ' <span class="an-tag">D</span>'
+                    : s.seat === (declarer + 2) % 4 ? ' <span class="an-tag">Dm</span>' : '';
                 const rows = summary.map((s) => `<tr>
-                    <td><span class="seat-badge">${SEAT_LETTER[s.seat]}</span> <span style="margin-left:.4rem">${escapeHtml(nameFor(names, s.seat))}</span></td>
+                    <td><span class="seat-badge">${SEAT_LETTER[s.seat]}</span> <span style="margin-left:.4rem">${escapeHtml(nameFor(names, s.seat))}</span>${tag(s)}</td>
                     <td class="n">${s.cards}</td>
                     <td class="n" style="color:${s.mistakes ? "#f6d9a8" : "#8fd694"}">${s.mistakes}</td>
+                    <td class="n">${s.decl || "\u00b7"}</td>
+                    <td class="n">${s.lead || "\u00b7"}</td>
+                    <td class="n">${s.def || "\u00b7"}</td>
                     <td class="n">${s.tricksLost}</td>
                     <td class="n" style="color:${s.critical ? "#ffd7d1" : "#bababa"}">${s.critical}</td>
                 </tr>`).join("");
                 return `<div class="an-card">
                     <div class="an-h">Per player \u2014 double-dummy accuracy</div>
-                    <table class="an-table">
-                        <thead><tr><th>Seat</th><th class="n">Cards</th><th class="n">DD mistakes</th><th class="n">Tricks lost</th><th class="n">Contract-critical</th></tr></thead>
+                    <div class="an-tablewrap"><table class="an-table">
+                        <thead><tr>
+                            <th>Player</th>
+                            <th class="n">${tip("Cards", "Cards this seat played.")}</th>
+                            <th class="n">${tip("Mistakes", "Cards that gave up at least one trick versus double-dummy best play.")}</th>
+                            <th class="n">${tip("Decl", "Mistakes while on the declaring side (playing declarer's or dummy's cards).")}</th>
+                            <th class="n">${tip("Lead", "Mistakes on a defensive lead \u2014 the first card of a trick.")}</th>
+                            <th class="n">${tip("Def", "Defensive mistakes when following suit or discarding (not leading).")}</th>
+                            <th class="n">${tip("Tricks lost", "Total tricks given up versus DD \u2014 the over/under against perfect play.")}</th>
+                            <th class="n">${tip("Critical", "Mistakes that flipped the contract between make and defeat.")}</th>
+                        </tr></thead>
                         <tbody>${rows}</tbody>
-                    </table>
-                    <p class="an-note" style="margin-top:.5rem">A DD mistake cost at least one trick versus best double-dummy play. \u201cTricks lost\u201d is the over/under versus DD (the total tricks that seat gave away); \u201ccontract-critical\u201d counts the errors that flipped the contract between make and defeat (target ${target}).</p>
+                    </table></div>
+                    <p class="an-note" style="margin-top:.5rem">D = declarer, Dm = dummy. Decl + Lead + Def = Mistakes. Contract-critical means the error flipped make \u2194 defeat (target ${target} tricks).</p>
                 </div>`;
             }
 
@@ -1054,23 +1174,28 @@
                 if (busy || !bulk.agg) return `<div class="an-wrap">${top}${prog}</div>`;
 
                 const ag = bulk.agg;
-                const bnames = bulkSeatNames(bulk.results);
-                const seatRows = ag.perSeat.map((s) => `<tr>
-                    <td><span class="seat-badge">${SEAT_LETTER[s.seat]}</span> <span style="margin-left:.4rem">${escapeHtml(nameFor(bnames, s.seat))}</span></td>
-                    <td class="n">${s.cards}</td>
-                    <td class="n" style="color:${s.mistakes ? "#f6d9a8" : "#8fd694"}">${s.mistakes}</td>
-                    <td class="n">${(s.mistakes / (ag.boards || 1)).toFixed(2)}</td>
-                    <td class="n">${s.tricksLost}</td>
-                    <td class="n" style="color:${s.critical ? "#ffd7d1" : "#bababa"}">${s.critical}</td>
+                const impColor = (v) => v > 0 ? "#8fd694" : v < 0 ? "#f1948a" : "#bababa";
+                const playerRows = ag.players.map((p) => `<tr>
+                    <td><span style="font-weight:700;color:#e8e6e3">${escapeHtml(p.name)}</span></td>
+                    <td class="n">${p.cards}</td>
+                    <td class="n" style="color:${p.mistakes ? "#f6d9a8" : "#8fd694"}">${p.mistakes}</td>
+                    <td class="n">${(p.mistakes / (ag.boards || 1)).toFixed(2)}</td>
+                    <td class="n">${p.decl || "\u00b7"}</td>
+                    <td class="n">${p.lead || "\u00b7"}</td>
+                    <td class="n">${p.def || "\u00b7"}</td>
+                    <td class="n">${p.tricksLost}</td>
+                    <td class="n" style="color:${p.critical ? "#ffd7d1" : "#bababa"}">${p.critical}</td>
+                    <td class="n" style="color:${impColor(p.declImps)}">${p.declBoards ? signed(p.declImps) : "\u2013"}</td>
                 </tr>`).join("");
 
-                const sideRow = (name, s) => `<tr>
-                    <td>${name}</td>
-                    <td class="n">${s.declared}</td>
-                    <td class="n">${pct(s.made, s.declared)}</td>
-                    <td class="n" style="color:${s.missedGame ? "#f6d9a8" : "#bababa"}">${s.missedGame}</td>
-                    <td class="n" style="color:${s.missedSlam ? "#f6d9a8" : "#bababa"}">${s.missedSlam}</td>
-                </tr>`;
+                const pairRows = ag.pairs.map((pr) => `<tr>
+                    <td><span style="font-weight:700;color:#e8e6e3">${pr.name}</span></td>
+                    <td class="n">${pr.declared}</td>
+                    <td class="n">${pct(pr.made, pr.declared)}</td>
+                    <td class="n" style="color:${pr.missedGame ? "#f6d9a8" : "#bababa"}">${pr.missedGame}</td>
+                    <td class="n" style="color:${pr.missedSlam ? "#f6d9a8" : "#bababa"}">${pr.missedSlam}</td>
+                    <td class="n" style="color:${impColor(pr.defImps)}">${pr.defBoards ? signed(pr.defImps) : "\u2013"}</td>
+                </tr>`).join("");
 
                 const boardRows = bulk.results.map(({ i, board, analysis: a }) => {
                     const c = a.contract, actual = a.actual_tricks != null ? a.actual_tricks : board.resultTricks;
@@ -1078,6 +1203,7 @@
                     const mist = a.plays.filter((p) => p.mistake).length;
                     const crit = a.plays.filter((p) => p.critical).length;
                     const lost = a.plays.reduce((e, p) => e + (p.cost || 0), 0);
+                    const pi = a.play_imps_decl;
                     return `<tr class="an-browtr" data-open="${i}" style="cursor:pointer">
                         <td>${colorSuits(contractTextNamed(c, board.names))}</td>
                         <td class="n">${actual != null ? resultText(c, actual) : "\u2013"}</td>
@@ -1086,48 +1212,76 @@
                         <td class="n" style="color:${mist ? "#f6d9a8" : "#8fd694"}">${mist}</td>
                         <td class="n">${lost}</td>
                         <td class="n" style="color:${crit ? "#ffd7d1" : "#bababa"}">${crit}</td>
+                        <td class="n" style="color:${pi == null ? "#bababa" : impColor(pi)}">${pi == null ? "\u2013" : signed(pi)}</td>
                     </tr>`;
                 }).join("");
 
                 const errNote = bulk.errors.length
                     ? `<div class="an-card an-muted" style="font-size:.82rem">${bulk.errors.length} board(s) could not be analyzed and were skipped.</div>` : "";
 
+                const bn = (v, k, t, color) => `<div class="an-bignum"><div class="v"${color ? ` style="color:${color}"` : ""}>${v}</div><div class="k">${tip(k, t)}</div></div>`;
                 return `<div class="an-wrap">
                     ${top}${prog}${errNote}
                     <div class="an-card">
                         <div class="an-h">Session overview \u2014 ${ag.boards} board(s)</div>
                         <div class="an-bignums">
-                            <div class="an-bignum"><div class="v">${ag.totalMistakes}</div><div class="k">DD mistakes</div></div>
-                            <div class="an-bignum"><div class="v">${ag.avgMistakes.toFixed(2)}</div><div class="k">Mistakes / board</div></div>
-                            <div class="an-bignum"><div class="v">${ag.totalTricksLost}</div><div class="k">Tricks lost (over/under DD)</div></div>
-                            <div class="an-bignum"><div class="v" style="color:${ag.totalCritical ? "#ffd7d1" : "#e8e6e3"}">${ag.totalCritical}</div><div class="k">Contract-critical</div></div>
-                            <div class="an-bignum"><div class="v">${ag.avgLevel != null ? ag.avgLevel.toFixed(1) : "\u2013"}</div><div class="k">Avg contract level</div></div>
-                            <div class="an-bignum"><div class="v">${ag.avgDdDiff != null ? (ag.avgDdDiff >= 0 ? "+" : "") + ag.avgDdDiff.toFixed(2) : "\u2013"}</div><div class="k">Avg tricks vs DD</div></div>
-                            <div class="an-bignum"><div class="v" style="color:${ag.unmakeableMade ? "#f6d9a8" : "#e8e6e3"}">${ag.unmakeableMade}</div><div class="k">Unmakeable made</div></div>
-                            <div class="an-bignum"><div class="v">${pct(ag.madeAny, ag.declAny)}</div><div class="k">Contracts made</div></div>
+                            ${bn(ag.totalMistakes, "DD mistakes", "Total cards across all boards that gave up at least one trick versus double-dummy best play.")}
+                            ${bn(ag.avgMistakes.toFixed(2), "Mistakes / board", "Average double-dummy mistakes per board, all four hands combined.")}
+                            ${bn(ag.totalTricksLost, "Tricks lost", "Total tricks given up versus double-dummy \u2014 the sum of every mistake's cost.")}
+                            ${bn(ag.totalCritical, "Contract-critical", "Mistakes that flipped a contract between made and defeated.", ag.totalCritical ? "#ffd7d1" : null)}
+                            ${bn(ag.avgLevel != null ? ag.avgLevel.toFixed(1) : "\u2013", "Avg contract level", "Mean level of the final contract (1\u20137) across all boards.")}
+                            ${bn(ag.avgDdDiff != null ? signed(ag.avgDdDiff, 2) : "\u2013", "Tricks vs DD (decl)", "Average of (tricks declarer took \u2212 double-dummy tricks). Positive: declarer took MORE than DD allows \u2014 the defence gave tricks away. Negative: declarer fell short of DD.", ag.avgDdDiff != null ? impColor(-ag.avgDdDiff) : null)}
+                            ${bn(ag.unmakeableMade, "Unmakeable made", "Contracts double-dummy says should fail, but were made anyway because the defence erred.", ag.unmakeableMade ? "#f6d9a8" : null)}
+                            ${bn(pct(ag.madeAny, ag.declAny), "Contracts made", "Share of all declared contracts that were made.")}
                         </div>
                     </div>
                     <div class="an-card">
-                        <div class="an-h">DD mistakes by player</div>
-                        <table class="an-table">
-                            <thead><tr><th>Seat</th><th class="n">Cards</th><th class="n">Mistakes</th><th class="n">/ board</th><th class="n">Tricks lost</th><th class="n">Critical</th></tr></thead>
-                            <tbody>${seatRows}</tbody>
-                        </table>
+                        <div class="an-h">By player \u2014 DD mistakes &amp; declaring IMPs</div>
+                        <div class="an-tablewrap"><table class="an-table">
+                            <thead><tr>
+                                <th>${tip("Player", "Grouped by name, so a player's stats follow them even when the set rotates seats. Unnamed seats fall back to N/E/S/W.")}</th>
+                                <th class="n">${tip("Cards", "Cards this player played across all boards.")}</th>
+                                <th class="n">${tip("Mistakes", "Cards that gave up at least one trick versus DD.")}</th>
+                                <th class="n">${tip("/ board", "Mistakes per board.")}</th>
+                                <th class="n">${tip("Decl", "Mistakes while on the declaring side.")}</th>
+                                <th class="n">${tip("Lead", "Mistakes on a defensive lead.")}</th>
+                                <th class="n">${tip("Def", "Defensive mistakes when following or discarding.")}</th>
+                                <th class="n">${tip("Tricks lost", "Total tricks given up versus DD.")}</th>
+                                <th class="n">${tip("Critical", "Mistakes that flipped make \u2194 defeat.")}</th>
+                                <th class="n">${tip("Decl IMPs", "IMPs this player's declaring gained (+) or lost (\u2212) versus a double-dummy play of the same contracts, summed over the boards they declared.")}</th>
+                            </tr></thead>
+                            <tbody>${playerRows}</tbody>
+                        </table></div>
                     </div>
                     <div class="an-card">
-                        <div class="an-h">By pair \u2014 contracts, missed games & slams</div>
-                        <table class="an-table">
-                            <thead><tr><th>Pair</th><th class="n">Declared</th><th class="n">Made %</th><th class="n">Missed games</th><th class="n">Missed slams</th></tr></thead>
-                            <tbody>${sideRow(pairName(bnames, "ns"), ag.side.ns)}${sideRow(pairName(bnames, "ew"), ag.side.ew)}</tbody>
-                        </table>
-                        <p class="an-note" style="margin-top:.5rem">\u201cMissed\u201d counts boards where double-dummy says the pair could make a game / slam but the final contract was not one of theirs at that level. \u201cUnmakeable made\u201d counts contracts double-dummy says should fail but were made anyway (defensive errors).</p>
+                        <div class="an-h">By pair \u2014 contracts, missed games/slabs &amp; defence IMPs</div>
+                        <div class="an-tablewrap"><table class="an-table">
+                            <thead><tr>
+                                <th>${tip("Pair", "The two partners, by name (or N-S / E-W when unnamed).")}</th>
+                                <th class="n">${tip("Declared", "Boards where this pair were the declaring side.")}</th>
+                                <th class="n">${tip("Made %", "Share of their declared contracts that were made.")}</th>
+                                <th class="n">${tip("Missed games", "Boards where DD says this pair could make a game but the final contract was not theirs at game level.")}</th>
+                                <th class="n">${tip("Missed slams", "Boards where DD says this pair could make a slam but they did not bid to the six level.")}</th>
+                                <th class="n">${tip("Defence IMPs", "IMPs this pair's defence gained (+) or lost (\u2212) versus double-dummy, summed over the boards they defended.")}</th>
+                            </tr></thead>
+                            <tbody>${pairRows}</tbody>
+                        </table></div>
                     </div>
                     <div class="an-card">
                         <div class="an-h">Per board</div>
-                        <table class="an-table">
-                            <thead><tr><th>Contract</th><th class="n">Result</th><th class="n">Made</th><th class="n">DD</th><th class="n">Mistakes</th><th class="n">Tricks lost</th><th class="n">Critical</th></tr></thead>
+                        <div class="an-tablewrap"><table class="an-table">
+                            <thead><tr>
+                                <th>Contract</th>
+                                <th class="n">Result</th>
+                                <th class="n">Made</th>
+                                <th class="n">${tip("DD", "Double-dummy tricks for the contract.")}</th>
+                                <th class="n">${tip("Mistakes", "DD mistakes by all four hands on this board.")}</th>
+                                <th class="n">${tip("Tricks lost", "Tricks given up versus DD on this board.")}</th>
+                                <th class="n">${tip("Critical", "Contract-critical mistakes on this board.")}</th>
+                                <th class="n">${tip("Play IMPs", "Declarer side's IMPs versus a double-dummy play of this contract (+ beat DD, \u2212 fell short).")}</th>
+                            </tr></thead>
                             <tbody>${boardRows}</tbody>
-                        </table>
+                        </table></div>
                         <p class="an-note" style="margin-top:.5rem">Tap a row to step through that board card by card.</p>
                     </div>
                 </div>`;
@@ -1175,8 +1329,14 @@
                 if (!window.currentUser && sourceKind === "history") { view = "source"; boards = []; }
                 render();
             });
-            refreshAuthState();
             render();
+            // A "?ts=<timestamp>" deep link (the Play-bridge history "Analyze"
+            // button) opens that hand from your history once auth is known.
+            refreshAuthState().then(() => {
+                let ts = null;
+                try { ts = new URLSearchParams(window.location.search).get("ts"); } catch (e) {}
+                if (ts) openHistoryByTs(ts);
+            });
         </script>
     </body>
 </html>

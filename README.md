@@ -238,28 +238,44 @@ memoised batch). A card below the best is a **DD mistake** that **cost** that
 many tricks; one that flips the contract between make and defeat (DD-best vs.
 the card actually played, target = level + 6) is **contract-critical**. Each
 response also carries the deal's DD table, par, the played contract's DD trick
-count, and each side's makeable **game/slam** (for the bulk stats).
+count, each side's makeable **game/slam**, and the declarer side's **IMP swing
+versus a double-dummy play** of the same contract (`play_imps_decl`, from
+`result_tricks` or a full 52-card play).
 
-- **Single hand** — step card by card (arrow keys, or the transport buttons)
-  with the current trick, the acting hand, and the verdict for the card in
-  focus (best alternative cards, tricks given up, whether it was
-  contract-critical). **Next mistake** jumps to the next card that was not
-  double-dummy accurate. The four-hand diagram dims each card once played, and
-  the colour-coded play log (tap any card to jump) shows the whole hand at a
-  glance. A per-player table gives each seat's DD mistakes, tricks lost
-  (over/under DD) and contract-critical count.
-- **Bulk** — analyze a whole set of boards (all of your history, or a
-  multi-board PBN) one request per board with a progress bar, then read the
-  aggregate: DD mistakes **by each player** (count, per-board, tricks lost,
-  contract-critical), **missed games and slams** and **% of contracts made per
-  pair**, **unmakeable contracts made** (DD says it should fail, poor defence
-  let it through), average contract level, and average tricks over/under DD.
+Mistakes are split by role — **declarer play** (declaring side), a defender's
+**lead**, and a defender's **follow/discard** — and, in bulk, are totalled **by
+player name** (from the PBN `[North]`/`[East]`/`[South]`/`[West]` tags, or your
+own name for South on a history board), so a set that rotates seats still credits
+each person correctly; unnamed seats fall back to N/E/S/W. Pairs are keyed the
+same way (by the two names), so declaring and defensive records follow the
+partnership rather than the N-S/E-W direction.
+
+- **Single hand** — step card by card (arrow keys or the transport buttons). The
+  deal is drawn in **cardinal layout** (North top, East right, South bottom, West
+  left) with the trick in focus in the **centre**, each card revealed as you step
+  and dimmed in the hand once played; the score header carries the contract,
+  result, DD tricks, par, the play-vs-DD IMPs and the **auction**. The verdict
+  panel gives the best alternative cards, tricks given up and whether the card was
+  contract-critical. **Next mistake** jumps to the next card that was not
+  double-dummy accurate, and the colour-coded play log (tap any card to jump)
+  shows the whole hand at a glance. A per-player table breaks each seat's DD
+  mistakes into declarer / lead / defence, with tricks lost and critical counts.
+- **Bulk** — analyze a whole set of boards (all of your history, or a multi-board
+  PBN) one request per board with a progress bar, then read the aggregate: DD
+  mistakes **by each player** (count, per-board, split declarer/lead/defence,
+  tricks lost, contract-critical) plus **declaring IMPs per player**; **by pair**
+  the contracts declared, **% made**, **missed games and slams** and **defence
+  IMPs**; and session totals for **unmakeable contracts made** (DD says it should
+  fail, poor defence let it through), average contract level and average tricks
+  over/under DD. Every statistic has a hover explanation.
 
 `/api/analyze/board` needs no login (anyone may analyze a submitted PBN); the
 play **history** it can pull from is itself login-gated (`GET /api/play/stats`).
-Like the rest of the bot-backed features, analysis requires the bidding-dt
-sidecar to be running (see below). A hand that passes out is rejected — there
-is no play to analyze.
+The Play-bridge history review has an **Analyze** button on each played-out hand
+that deep-links to `/analyze?ts=<timestamp>` and opens that board directly. Like
+the rest of the bot-backed features, analysis requires the bidding-dt sidecar to
+be running (see below). A hand that passes out is rejected — there is no play to
+analyze.
 
 ## Rankings
 

@@ -38,11 +38,15 @@ Endpoints (all JSON):
                           "score_ns", "imps"}  score the *actually played*
                      tricks vs double-dummy par. Body: /score body + "tricks".
     POST /analyze -> {"contract", "target", "dd_tricks", "par_ns", "table",
-                      "optimal", "actual_tricks", "plays": [per-card verdict]}
-                     god-mode double-dummy breakdown of a played hand: for
-                     every card, whether it matched double-dummy best play, the
-                     tricks it cost and whether it was contract-critical. Body:
-                     /score body + "plays": [[seat, "AS"], ...] in play order.
+                      "optimal", "actual_tricks", "play_imps_decl", "plays":
+                      [per-card verdict]}  god-mode double-dummy breakdown of a
+                     played hand: for every card, whether it matched
+                     double-dummy best play, the tricks it cost and whether it
+                     was contract-critical, plus the declarer side's IMP swing
+                     versus a double-dummy play of the same contract. Body:
+                     /score body + "plays": [[seat, "AS"], ...] in play order,
+                     and optional "result_tricks" (declarer's tricks for a
+                     claim/short hand, so the score/IMPs still resolve).
 
 Run (torch + endplay come from the cpu/cuda and rl extras, so repeat them):
 
@@ -433,6 +437,11 @@ class Service:
         denom = int(contract.denom)
         trump_int = _PROJ_DENOM_TO_ENDPLAY[denom]
         target = 6 + int(contract.level)
+        # optional caller-supplied result (a claim/short hand): the declarer's
+        # actual trick count, used for the score when the play is not 52 cards
+        rt = body.get("result_tricks")
+        result_tricks = int(rt) if isinstance(rt, int) and not isinstance(rt, bool) \
+            and 0 <= rt <= 13 else None
         all_cards = [set(str_to_cards(h).tolist()) for h in hands]
         seen: set[int] = set()
         for cs in all_cards:
@@ -534,7 +543,8 @@ class Service:
                             "critical": False, "best_cards": []})
             analyzed.append(rec)
 
-        # actual declarer tricks when the whole hand was played out
+        # actual declarer tricks: counted when the whole hand was played out,
+        # otherwise the caller-supplied result (a claim / short PBN)
         actual = None
         if len(plays) == 52:
             actual = 0
@@ -544,6 +554,23 @@ class Service:
                     [int(c) for _, c in trick], trump_int)) % 4
                 if w in (declarer, dummy):
                     actual += 1
+        elif result_tricks is not None:
+            actual = result_tricks
+
+        # Play value in IMPs, from the declarer's perspective: what the hand
+        # actually scored versus what it would have scored had everyone played
+        # double-dummy (declarer takes dd_tricks). Positive => the declaring
+        # side gained versus perfect play (the defence erred); negative => it
+        # fell short (declarer erred). The defence's value is the negation.
+        play_imps_decl = None
+        score_dd = score_actual = None
+        if actual is not None:
+            dv = declarer_is_vul(declarer, vuln)
+            score_dd = contract_score(contract.level, denom,
+                                      int(contract.penalty), dd_tricks, dv)
+            score_actual = contract_score(contract.level, denom,
+                                          int(contract.penalty), actual, dv)
+            play_imps_decl = float(points_to_imps(score_actual - score_dd))
 
         def side_opt(seats):
             best_tricks, game, small, grand = 0, False, False, False
@@ -566,7 +593,9 @@ class Service:
             "target": target, "dd_tricks": dd_tricks, "par_ns": par_ns,
             "table": [[int(table[s, d]) for d in range(5)] for s in range(4)],
             "optimal": {"ns": side_opt([0, 2]), "ew": side_opt([1, 3])},
-            "actual_tricks": actual, "n": len(plays), "plays": analyzed,
+            "actual_tricks": actual, "play_imps_decl": play_imps_decl,
+            "score_dd": score_dd, "score_actual": score_actual,
+            "n": len(plays), "plays": analyzed,
         }
 
     def play_drop(self, body: dict) -> dict:
