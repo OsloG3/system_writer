@@ -147,6 +147,12 @@ penalty_pull_max_len = 1
 1X-1Y-1Z-2C-!2D = broke the XYZ relay: p>15.5 @! @2.5
 1X-1Y-1Z-2C-2D-P = diamond signoff -- p<9.5 @! @2.5
 
+1X-1Y-1NT<-2C = XYZ relay: p10.0-12.5 any invite OR p<10.0 4+D weak diamond signoff @!
+1X-1Y-1NT-2D = XYZ: p>11.5 artificial GF @!
+1X-1Y-1NT-2C-2D = completes the XYZ relay: p<16.0 @! @2.5
+1X-1Y-1NT-2C-!2D = broke the XYZ relay: p>15.5 @! @2.5
+1X-1Y-1NT-2C-2D-P = diamond signoff -- p<9.5 @! @2.5
+
 # ---- stayman and smolen --------------------------------------------------------
 
 1N-2C = 4+H OR 4+S stayman ask @!
@@ -175,8 +181,21 @@ penalty_pull_max_len = 1
 1X-(?Y)-2Z; Z>Y, first = IJS: 6+Z p>10-12.5
 1X-(?Y)-3Z; Z>Y, first = IJS: 6+Z p10-12.5
 
-1X-2Y; Z>Y, first = IJS: 6+Z p>10-12.5
-1X-3Y; Z>Y, first = IJS: 6+Z p10-12.5
+1X-2Y; Y>X, first = IJS: 6+Z p>10-12.5
+1X-3Y; Y>X, first = IJS: 6+Z p10-12.5
+
+1X-P = no hope of game p<6 @2.0
+
+# ---- Two suiters ------------------------------------------------------------------
+
+(1X)-2NT; X>=H = unusual 2NT: 5+C 5+D @! @2.0
+(1D)-2NT = unusual 2NT: 5+C 5+H @! @2.0
+(1C)-2NT = unusual 2NT: 5+D 5+H @! @2.0
+
+(1X)-2X; X<H = Micheal's cuebid: 5+H 5+S @! @2.0
+(1H)-2NT = Micheal's cuebid: 5+S 5+C OR 5+S 5+D @! @2.0
+(1S)-2NT = Micheal's cuebid: 5+H 5+C OR 5+H 5+D @! @2.0
+
 # ---- fourth suit -------------------------------------------------------------------
 
 ...-?Z; fourth = fourth suit {Z}: p>10, artificial game force @!
@@ -228,21 +247,21 @@ penalty_pull_max_len = 1
 
 # ---- overcalls -------------------------------------------------------------------------------------
 
-...-1Z; !we_bid, !balancing, notopening, jump=0 = overcall: 5+Z p>7 OR 4+Z p>13
-...-2Z; !we_bid, !balancing, notopening, jump=0 = overcall: 5+Z p>10
-...-?Z; !we_bid, !balancing, notopening, jump=0, level>=3 = overcall: 6+Z p>12.5
-...-1Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 5+Z p>6.5 OR 4+Z p>10
-...-2Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 5+Z p>8
-...-?Z; !we_bid, balancing, notopening, jump=0, level>=3 = balancing overcall: 5+Z p>8
-...-1N; !we_bid, !balancing, notopening = 1NT overcall: p14.5-18.5 stop @0.5
-...-1N; !we_bid, balancing, notopening = balancing 1NT: p11.5-15.5 @0.5
+(1X)...-1Z; !we_bid, !balancing, notopening, jump=0 = overcall: 5+Z p>7 OR 4+Z p>13
+(1X)...-2Z; !we_bid, !balancing, notopening, jump=0 = overcall: 5+Z p>10
+(1X)...-?Z; !we_bid, !balancing, notopening, jump=0, !passed, level>=3 = overcall: 6+Z p>12.5
+(1X)...-1Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 5+Z p>6.5 OR 4+Z p>10
+(1X)...-2Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 5+Z p>8
+(1X)...-?Z; !we_bid, balancing, notopening, jump=0, level>=3 = balancing overcall: 5+Z p>8
+(1X)...-1N; !we_bid, !balancing, notopening, !passed = 1NT overcall: p14.5-18.5 stop @0.5
+(1X)...-1N; !we_bid, balancing, notopening, !passed = balancing 1NT: p11.5-15.5 @0.5
 
 # ---- doubles: penalty once a redouble by us, two prior doubles by us, a game force,
 # ---- or their 4S+ bid says the auction belongs to us -- otherwise takeout. TO/PENALTY
 # ---- describe the PARTNER's discipline, not the doubler's hand.
 
 ...-X; we_xx OR dbls_by_us>=2 OR gf OR their_bid>=4S = PENALTY -- partner pulls only with shortness in their suit
-1X-1Y-(?Z)-X = Power Double: p>16
+1X-1Y-(?Z)-X = Power Double: TO p>16
 1X-1Y-(X)-XX = Power ReDouble: p>16
 ...-X; partnerbid = TO
 ...-X; balancing = TO -- balancing takeout;
