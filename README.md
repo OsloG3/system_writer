@@ -77,6 +77,19 @@ the file refreshes the alerts without a restart (re-read on mtime change);
 `SYSTEM_FILE` overrides the path. Ship the file next to the checkpoint it
 describes.
 
+The trainer treats the same file as a **teacher**, not just a penalty
+filter: it gives a clean artificial convention a positive reward, adds an
+auxiliary supervised loss toward the file's applicable convention on every
+decision (`rl.sys_weight`), and can force conventions into self-play rollouts
+(`rl.sys_explore`) so the bot actually learns their follow-ups.
+`bidding_dt.conventions.gen` can also generate convention demonstration
+auctions from the file (`data.system_cache` in BC training). This matters
+because the deployed bot bids greedily: a convention the policy gives 2% to
+never wins the argmax, and a file that only says "you may not misuse this
+bid" leaves passing as the safe optimum. See `bidding-dt/README.md`,
+"Making the bot actually use the conventions" for the knobs and the
+coverage metrics (`conv_used_top`, `sys_agree`).
+
 ### Hand display setting (cards / diagram)
 
 Every account carries **one hand-display setting** (`cardView`: `cards` or

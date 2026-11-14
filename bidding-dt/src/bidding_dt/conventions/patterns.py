@@ -96,9 +96,10 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from ..data.vocab import CALL_PASS, CALL_X, CALL_XX, FIRST_BID
+from ..data.vocab import CALL_PASS, CALL_X, CALL_XX, FIRST_BID, VOCAB_SIZE
 from .auction import DENOM_N, MAJORS, AuctionReader, bid_id, is_game_or_above
-from .rules import ConventionConfig, HandInfo, Violation, check_call
+from .rules import (ConventionConfig, HandInfo, Violation, check_call,
+                    convention_bonus)
 
 VAR_CHARS = "XYZW"
 CTX_CHARS = "TPLO"                     # context suit refs (bound at match)
@@ -124,7 +125,7 @@ _COND_WORDS = frozenset({
 })
 
 _KEYWORD_TOKENS = {"F", "GF", "TO", "PENALTY", "balanced", "bal", "openp",
-                   "no4M", "noLong5M", "stop", "2top"}
+                   "no4M", "noMajor", "noLong5M", "stop", "2top"}
 
 # enforcer-level config keys (not ConventionConfig fields)
 SPEC_PARAMS = {
@@ -411,6 +412,56 @@ def _call_matches(step: Step, call: int, binds: dict) -> bool:
     else:
         ok = denom == CONCRETE_DENOM[d]
     return (not ok) if step.negated else ok
+
+
+def _last_step_possible(step: Step, action: int) -> bool:
+    """Necessary (not sufficient) condition: `step` could match `action`.
+
+    Used to index entries by their final call so a match only tries entries
+    whose last step can possibly fit. Errs on the permissive side: a negated
+    variable step (``!?Z``) matches any bid depending on what the variable
+    binds to, so it is always kept.
+    """
+    if step.kind == "any":
+        return True
+    if step.kind == "pass":
+        return action == CALL_PASS
+    if step.kind == "dbl":
+        return action == CALL_X
+    if step.kind == "rdbl":
+        return action == CALL_XX
+    if action < FIRST_BID:
+        return False                      # negated steps match bids only
+    level = (action - FIRST_BID) // 5 + 1
+    denom = (action - FIRST_BID) % 5
+    d = step.denom
+    if step.negated and d in VAR_CHARS:
+        return True                       # binding may make any bid fit
+    level_ok = step.level in (0, level)
+    if d == "N":
+        denom_ok = denom == DENOM_N
+    elif d in VAR_CHARS:
+        denom_ok = denom != DENOM_N       # variables are suits, never NT
+    else:
+        denom_ok = denom == CONCRETE_DENOM[d]
+    ok = level_ok and denom_ok
+    return (not ok) if step.negated else ok
+
+
+def entry_index(entries) -> list:
+    """Index entries by the call their final step can match.
+
+    Returns a list of ``VOCAB_SIZE`` lists (index 0 unused), each holding the
+    entries in file order. ``match_first`` over one of these lists gives the
+    same first match as over all entries but skips the patterns whose last
+    call cannot be the candidate.
+    """
+    by_call = [[] for _ in range(VOCAB_SIZE)]
+    for e in entries:
+        for action in range(1, VOCAB_SIZE):
+            if _last_step_possible(e.steps[-1], action):
+                by_call[action].append(e)
+    return by_call
 
 
 def _match_from(entry: Entry, dealer: int, seq: list, us: int, start: int,
@@ -768,6 +819,11 @@ def _token_ok(t: Token, binds: dict, hi: HandInfo, ctx: _Ctx) -> bool:
             if hi.length(md) >= 4 and bid_id(1, md) > ctx.reader.highest:
                 return False
         return True
+    if t.kind == "noMajor":
+        # Unlike no4M (biddable at the 1 level), this is an absolute shape
+        # check: used for Stayman denials after 1N/2N, where no 1-level suit
+        # bid is available anyway.
+        return all(hi.length(md) < 4 for md in MAJORS)
     if t.kind == "noLong5M":
         d = ctx.info.denom
         if not (0 <= d < DENOM_N):
@@ -846,6 +902,11 @@ class SystemEnforcer:
         self.pull_len = int(p.get("penalty_pull_max_len",
                                   SPEC_PARAMS["penalty_pull_max_len"]))
         self._states: dict = {}
+        # Last-call indexes: match() only tries entries whose final step can
+        # possibly be the candidate, and target() only scans the actions that
+        # can use an artificial entry.
+        self._index = entry_index(spec.entries)
+        self._art_index = entry_index([e for e in spec.entries if e.artificial])
 
     def state(self, dealer: int, calls) -> MatchState:
         """Memoized replay state; extends the parent prefix's state."""
@@ -863,8 +924,106 @@ class SystemEnforcer:
         return st
 
     def match(self, dealer: int, calls, action: int):
-        return match_first(self.spec.entries, dealer, calls, action,
+        action = int(action)
+        candidates = (self._index[action]
+                      if 0 <= action < VOCAB_SIZE else self.spec.entries)
+        if not candidates:
+            return None, None
+        return match_first(candidates, dealer, calls, action,
                            state=self.state(dealer, calls))
+
+    def clean_use(self, reader: AuctionReader, hero: int, hi,
+                  action: int, checkable_only: bool = True):
+        """The artificial entry `action` cleanly uses, or None.
+
+        A clean use means the action matches an artificial entry and the
+        hand satisfies its description (or, for a wildcard description, the
+        built-in convention check with its fit/values gate). This is the
+        positive counterpart of the violation checks: the trainer rewards
+        these calls with conv_bonus and targets them with the system policy.
+
+        checkable_only (default) skips entries with no hand tokens. A
+        wildcard like `...-4N; we_bid` can look "clean" in an unrelated
+        auction (e.g. 4NT over Stayman) because only the built-in gate
+        guards it; excluding it from the positive teacher keeps the policy
+        from being pushed into a context-free slam ask. The built-in
+        convention_bonus still rewards a genuinely classified use.
+        """
+        entry, binds = self.match(reader.dealer, list(reader.calls), action)
+        if entry is None or not entry.artificial:
+            return None
+        if checkable_only and not entry.checkable:
+            return None
+        hi = HandInfo(hi)
+        info = reader.classify(int(action), seat=hero)
+        if entry.checkable:
+            ctx = _Ctx(reader, info, self.cfg, hero)
+            if hand_violations(entry, binds or {}, hi, ctx):
+                return None
+            return entry
+        # Wildcard description: the file gives no shape, so use the built-in
+        # convention gate (e.g. RKCB ask needs a fit and slam values).
+        vs = check_call(reader, hero, hi, action, self.cfg)
+        if vs or convention_bonus(info, hi, vs, self.cfg) <= 0:
+            return None
+        return entry
+
+    def clean_actions(self, reader: AuctionReader, hero: int, hi, legal,
+                      probs=None, min_prob: float = 0.0,
+                      checkable_only: bool = True) -> list:
+        """Legal calls that cleanly use an artificial file entry."""
+        if isinstance(legal, np.ndarray) and legal.dtype == bool:
+            legal = np.flatnonzero(legal)
+        legal = [int(a) for a in legal if 0 <= int(a) < VOCAB_SIZE]
+        if not legal:
+            return []
+        hi = HandInfo(hi)
+        clean = []
+        for action in legal:
+            if not self._art_index[action]:
+                continue
+            if probs is not None and min_prob > 0.0 \
+                    and float(probs[action]) < min_prob:
+                continue
+            if self.clean_use(reader, hero, hi, action,
+                              checkable_only=checkable_only) is not None:
+                clean.append(action)
+        return clean
+
+    def target(self, reader: AuctionReader, hero: int, hi, legal,
+               floor: float = 0.02, probs=None, min_prob: float = 0.0,
+               checkable_only: bool = True):
+        """System-policy target over the legal calls, or None.
+
+        The target puts `1 - floor` of its mass uniformly on every legal
+        artificial convention whose hand description the hero satisfies, and
+        spreads `floor` uniformly over all legal calls (so the auxiliary loss
+        never demands a single deterministic action). None means no clean
+        artificial call is available in this position.
+
+        `probs` (the current policy's masked probabilities) + `min_prob` are
+        an applicability guard: a clean file entry the policy already gives
+        less than `min_prob` to is not forced. That keeps an underspecified
+        entry (e.g. "stayman: 4+H" with no strength clause) from overriding a
+        confident natural bid, while still promoting conventions the model
+        considers but underweights.
+        """
+        if isinstance(legal, np.ndarray) and legal.dtype == bool:
+            legal = np.flatnonzero(legal)
+        legal = [int(a) for a in legal if 0 <= int(a) < VOCAB_SIZE]
+        if not legal:
+            return None
+        clean = self.clean_actions(reader, hero, hi, legal, probs=probs,
+                                   min_prob=min_prob,
+                                   checkable_only=checkable_only)
+        if not clean:
+            return None
+        out = np.zeros(VOCAB_SIZE, dtype=np.float32)
+        floor = min(max(float(floor), 0.0), 0.99)
+        if floor > 0.0:
+            out[legal] = floor / len(legal)
+        out[clean] += (1.0 - floor) / len(clean)
+        return out
 
     def check(self, reader: AuctionReader, hero: int, hi,
               action: int) -> list:
@@ -873,8 +1032,7 @@ class SystemEnforcer:
         side = hero % 2
         info = reader.classify(action, seat=hero)
         st = self.state(dealer, calls)
-        entry, binds = match_first(self.spec.entries, dealer, calls, action,
-                                   state=st)
+        entry, binds = self.match(dealer, calls, action)
         hi = HandInfo(hi)
         ctx = _Ctx(reader, info, self.cfg, hero)
         out: list = []
@@ -957,6 +1115,7 @@ _KC_TEXT = {"0/3": "0 or 3 keycards", "1/4": "1 or 4 keycards",
 _TOKEN_TEXT = {"F": "forcing", "GF": "game force", "TO": "takeout",
                "PENALTY": "penalty", "OR": "or", "openp": "opening values",
                "no4M": "no biddable 4-card major",
+               "noMajor": "no 4-card major",
                "noLong5M": "no longer 5-card major",
                "stop": "stopper in their suit",
                "2top": "2 of the top 3 honours"}

@@ -11,6 +11,7 @@ with conventions.kr_points.
 import pathlib
 import tempfile
 
+import numpy as np
 import pytest
 
 from bidding_dt.conventions import (AuctionReader, ConventionConfig,
@@ -18,7 +19,7 @@ from bidding_dt.conventions import (AuctionReader, ConventionConfig,
                                     parse_entry, parse_system_file,
                                     replay_state)
 from bidding_dt.conventions.patterns import call_id_of, render_desc
-from bidding_dt.data.vocab import call_to_id
+from bidding_dt.data.vocab import VOCAB_SIZE, call_to_id, id_to_call
 
 B = call_to_id
 P, X, XX = "P", "X", "XX"
@@ -479,6 +480,75 @@ def test_enforcement_direct():
     # only 3 spades: violates 5+X (the entry replaces the built-in checks)
     vs = enf.check(r, 0, HandInfo("AK9.54.AKJ42.K98"), B("1S"))
     assert codes(vs) == ["pat:1X"]
+
+
+def test_entry_index_matches_full_match():
+    """The last-call index must not change first-match semantics."""
+    enf, spec = make_enforcer([
+        "1N-2C = 4+H OR 4+S stayman ask @!",
+        "1X-1Y-2Z; X<Z = reverse: 5+X 4+Z p>16 F @2.0",
+        "...-X = TO",
+        "1X-...-2Y; first, jump=1 = jump shift",
+        "1X-...-?Y-!2Z = shapes",
+    ])
+    for calls in ([], ["1C"], ["1N", P], ["1C", P, "1H", P]):
+        ids_ = ids(calls)
+        state = enf.state(0, ids_)
+        for action in range(1, VOCAB_SIZE):
+            got, _ = enf.match(0, ids_, action)
+            want, _ = match_first(spec.entries, 0, ids_, action, state=state)
+            assert (got is None) == (want is None), (calls, id_to_call(action))
+            if got is not None:
+                assert got.pat == want.pat
+
+
+def test_system_target_stayman():
+    enf, _ = make_enforcer(["1N-2C = 4+H OR 4+S stayman ask @!"])
+    r = feed_all(["1N", P])
+    mask = np.zeros(VOCAB_SIZE, dtype=bool)
+    for c in ("P", "2C", "2D", "2H"):
+        mask[B(c)] = True
+    hi = HandInfo("KJ7.QT94.743.T98")            # 4 hearts: 2C is available
+    e = enf.clean_use(r, 2, hi, B("2C"))
+    assert e is not None and e.pat == "1N-2C"
+    t = enf.target(r, 2, hi, mask)
+    assert t is not None
+    assert t[B("2C")] > 0.9                       # convention gets the mass
+    assert t[B("P")] > 0.0                        # ... but never a hard one-hot
+    assert t.sum() == pytest.approx(1.0)
+    # no 4-card major: the file gives no convention, so no target
+    assert enf.clean_use(r, 2, HandInfo("KJ7.732.K743.T98"), B("2C")) is None
+    assert enf.target(r, 2, HandInfo("KJ7.732.K743.T98"), mask) is None
+
+
+def test_system_target_stayman_response():
+    enf, _ = make_enforcer([
+        "1N-2C = 4+H OR 4+S stayman ask @!",
+        "1N-2C-2D = stayman response: no 4-card major noMajor @!",
+        "1N-2C-2H = stayman response: 4 hearts 4+H @!",
+        "1N-2C-2S = stayman response: 4 spades 4+S @!",
+    ])
+    r = feed_all(["1N", P, "2C", P])
+    no_major = HandInfo("KJ7.732.K743.T98")
+    four_hearts = HandInfo("KJ7.QT94.743.T98")
+    assert enf.clean_use(r, 0, no_major, B("2D")) is not None
+    assert enf.clean_use(r, 0, no_major, B("2H")) is None
+    assert enf.clean_use(r, 0, four_hearts, B("2D")) is None
+    assert enf.clean_use(r, 0, four_hearts, B("2H")) is not None
+
+
+def test_clean_use_wildcard_needs_builtin_gate():
+    # RKCB's file entry has no shape tokens. The positive teacher skips it by
+    # default (a wildcard `...-4N` can look clean over an unrelated Stayman
+    # auction); opting in uses the built-in fit/values gate instead of
+    # rewarding every 4NT.
+    enf, _ = make_enforcer(["...-4N; we_bid = RKCB ask for {T} @!"])
+    r = feed_all(["1S", P, "2S", P])
+    assert enf.clean_use(r, 0, HandInfo("KQJ.A753.AJT5.43"), B("4N")) is None
+    assert enf.clean_use(r, 0, HandInfo("KQJ.A753.AJT5.43"), B("4N"),
+                         checkable_only=False) is not None
+    assert enf.clean_use(r, 0, HandInfo("KQJ.752.T9854.T9"), B("4N"),
+                         checkable_only=False) is None
 
 
 def test_special_tokens():

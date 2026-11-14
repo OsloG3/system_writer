@@ -10,6 +10,9 @@ k % 4, so tests spell out the full auction (including the opponents' and
 partner's passes) up to the hero's decision.
 """
 
+import pathlib
+import tempfile
+
 import numpy as np
 import pytest
 
@@ -603,6 +606,36 @@ def test_team_row_rewards_convention_penalty():
     r = team_row_rewards(buf, conv_pen=conv, conv_weight=0.5, conv_bonus=bon,
                          **kw)
     assert np.allclose(r, [-9.0 + 0.05, 7.5])
+
+
+def test_convention_penalties_file_driven_bonus():
+    """A clean artificial entry from the system file earns the positive
+    reward and reports its pattern, not just the hard-coded rule kinds."""
+    from bidding_dt.conventions.system_file import parse_system_file
+    from bidding_dt.env.auction_env import AuctionBatch
+    from bidding_dt.env.deals import random_deals
+    from bidding_dt.rl.rollout import RolloutBuffer, convention_penalties
+    f = pathlib.Path(tempfile.mkdtemp()) / "system.txt"
+    f.write_text("1N = 15-17 balanced\n"
+                 "1N-2C = 4+H OR 4+S stayman ask @!\n")
+    spec = parse_system_file(f)
+    cfg = spec.config()
+    rng = np.random.default_rng(0)
+    deal = next(d for d in random_deals(rng, 200)
+                if len(d.hands[2].split(".")[1]) >= 4)
+    env = AuctionBatch([deal], np.array([0]), np.array([0]))
+    env.step(np.array([0]), np.array([B("1N")]))
+    env.step(np.array([0]), np.array([B(P)]))
+    buf = RolloutBuffer()
+    buf.deal_idx = [0]
+    buf.seat = [2]
+    buf.call_idx = [2]
+    buf.action = [B("2C")]
+    pens, codes, bonuses, used = convention_penalties(
+        buf, env, cfg, spec, return_used=True)
+    assert pens[0] == 0.0 and codes[0] == []
+    assert bonuses[0] == pytest.approx(cfg.conv_bonus)
+    assert used[0] == "1N-2C"
 
 
 def test_convention_penalties_matches_manual():

@@ -107,6 +107,7 @@ class RolloutBuffer:
     seat: list = field(default_factory=list)
     call_idx: list = field(default_factory=list)   # decision's call position
     dev: list = field(default_factory=list)        # greedy deviation per call
+    sys_target: list = field(default_factory=list) # (VOCAB_SIZE,) float32 or None
     adv: np.ndarray | None = None
     ret: np.ndarray | None = None
 
@@ -115,7 +116,8 @@ class RolloutBuffer:
         return len(self.action)
 
     def add_rows(self, idx, hero, tokens, hand, vuln_cls, row_len, masks,
-                 actions, logprobs, values, call_idx, devs=None):
+                 actions, logprobs, values, call_idx, devs=None,
+                 sys_target=None):
         for k, i in enumerate(idx):
             L = int(row_len[k])
             self.tokens.append(np.ascontiguousarray(tokens[k, :L]))
@@ -130,6 +132,9 @@ class RolloutBuffer:
             self.seat.append(int(hero[k]))
             self.call_idx.append(int(call_idx[k]))
             self.dev.append(float(devs[k]) if devs is not None else 0.0)
+            self.sys_target.append(
+                None if sys_target is None else np.asarray(sys_target[k],
+                                                           dtype=np.float32))
 
     def finish(self, row_reward: np.ndarray, gamma: float = 1.0,
                lam: float = 0.95):
@@ -167,6 +172,7 @@ class RolloutBuffer:
         mask = np.zeros((n, VOCAB_SIZE), dtype=bool)
         action = np.zeros(n, dtype=np.int64)
         logprob = np.zeros(n, dtype=np.float32)
+        sys_target = np.zeros((n, VOCAB_SIZE), dtype=np.float32)
         for r in range(n):
             tokens[r, : self.row_len[r]] = self.tokens[r]
             hand[r] = self.hand[r]
@@ -175,6 +181,8 @@ class RolloutBuffer:
             mask[r] = self.mask[r]
             action[r] = self.action[r]
             logprob[r] = self.logprob[r]
+            if r < len(self.sys_target) and self.sys_target[r] is not None:
+                sys_target[r] = self.sys_target[r]
         t = lambda a, dt: torch.as_tensor(a, dtype=dt, device=device)  # noqa: E731
         return {
             "tokens": t(tokens, torch.long),
@@ -187,6 +195,7 @@ class RolloutBuffer:
             "value": t(np.asarray(self.value, dtype=np.float32), torch.float32),
             "adv": t(self.adv, torch.float32),
             "ret": t(self.ret, torch.float32),
+            "sys_target": t(sys_target, torch.float32),
         }
 
 
@@ -230,6 +239,7 @@ def partner_greedy_dev(buf: RolloutBuffer) -> np.ndarray:
 def convention_penalties(buf: RolloutBuffer, env: AuctionBatch,
                          cfg: ConventionConfig | None = None,
                          spec=None,
+                         return_used: bool = False,
                          ) -> tuple[np.ndarray, list[list[str]], np.ndarray]:
     """(penalties (n,), violation codes per row, bonuses (n,)) for a rollout.
 
@@ -245,18 +255,25 @@ def convention_penalties(buf: RolloutBuffer, env: AuctionBatch,
     add the file-driven force/double discipline (f_pass, to_pass,
     penalty_pull) -- see conventions/patterns.SystemEnforcer.
 
-    The bonus per row is the small reward for one clean use of an
-    artificial convention (rules.convention_bonus): cfg.conv_bonus when the
-    call is XYZ 2C/2D, an RKCB ask with fit+values or a correct step
-    response, a splinter, smolen, fourth-suit GF or a support cuebid that
-    violates nothing -- 0.0 otherwise.
+    The bonus per row is the small reward for one clean use of an artificial
+    convention. With a system file, every matching artificial entry whose
+    hand description the hero satisfies earns conv_bonus (not just the seven
+    conventions hard-coded in rules.convention_kind). Without one, the
+    built-in reward applies (XYZ 2C/2D, RKCB ask/response, splinter, smolen,
+    fourth suit or a support cuebid that violates nothing).
+
+    return_used additionally returns the matched artificial entry pattern per
+    row (empty when the call was not a clean file convention), for coverage
+    logging.
     """
     n = buf.n
     pens = np.zeros(n, dtype=np.float64)
     codes: list[list[str]] = [[] for _ in range(n)]
     bonuses = np.zeros(n, dtype=np.float64)
+    used: list[str] = [""] * n
     if n == 0:
-        return pens, codes, bonuses
+        return (pens, codes, bonuses, used) if return_used else (pens, codes,
+                                                                 bonuses)
     cfg = cfg or ConventionConfig()
     enforcer = SystemEnforcer(spec, cfg) if spec is not None else None
     hands: dict[tuple[int, int], HandInfo] = {}
@@ -282,16 +299,24 @@ def convention_penalties(buf: RolloutBuffer, env: AuctionBatch,
         while reader.n < ci:
             reader.feed(int(env.calls[di, reader.n]))
         action = int(buf.action[i])
+        clean = None
         if enforcer is not None:
             vs = enforcer.check(reader, seat, hi, action)
+            if not vs:
+                clean = enforcer.clean_use(reader, seat, hi, action)
         else:
             vs = check_call(reader, seat, hi, action, cfg)
         if vs:
             pens[i] = sum(v.weight for v in vs)
             codes[i] = [v.code for v in vs]
-        bonuses[i] = convention_bonus(reader.classify(action, seat=seat),
-                                      hi, vs, cfg)
-    return pens, codes, bonuses
+        if clean is not None:
+            bonuses[i] = cfg.conv_bonus
+            used[i] = clean.pat
+        else:
+            bonuses[i] = convention_bonus(
+                reader.classify(action, seat=seat), hi, vs, cfg)
+    return (pens, codes, bonuses, used) if return_used else (pens, codes,
+                                                             bonuses)
 
 
 def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
@@ -361,6 +386,8 @@ class TeamRollout:
     conv_pen: np.ndarray | None = None      # (n,) convention penalty per row
     conv_codes: list | None = None          # (n,) violated rule codes per row
     conv_bonus: np.ndarray | None = None    # (n,) convention-usage reward/row
+    conv_used: list | None = None           # (n,) clean artificial entry pattern
+    sys_target: np.ndarray | None = None    # (n, VOCAB_SIZE) auxiliary targets
 
     def row_rewards(self, reward_scale: float, team_weight: float = 1.0,
                     par_weight: float = 0.25,
@@ -377,13 +404,14 @@ class TeamRollout:
 def _act(mdl, tokens, hand, vuln_cls, row_len, masks, device, greedy,
          temp: float = 1.0, amp: bool = False):
     """One batched decision step for `mdl` (numpy inputs); returns torch
-    (actions, logprobs, values, greedy_dev). temp > 1 flattens the sampling
-    distribution (logprobs are from the tempered distribution, matching PPO
-    recompute). greedy_dev = logp(argmax) - logp(action) under the UNTEMPERED
-    masked policy: 0 iff the action is the greedy one, growing with how
-    unlikely the sampled action was (used to discount negative rewards by a
-    partner's exploration noise). amp=True runs the forward under bf16
-    autocast (CPU speedup knob)."""
+    (actions, logprobs, values, greedy_dev, probs). temp > 1 flattens the
+    sampling distribution (logprobs are from the tempered distribution,
+    matching PPO recompute). greedy_dev = logp(argmax) - logp(action) under
+    the UNTEMPERED masked policy: 0 iff the action is the greedy one, growing
+    with how unlikely the sampled action was (used to discount negative
+    rewards by a partner's exploration noise). `probs` is the tempered masked
+    distribution (used by the system teacher's applicability filter).
+    amp=True runs the forward under bf16 autocast (CPU speedup knob)."""
     with torch.autocast(getattr(device, "type", device),
                         dtype=torch.bfloat16, enabled=amp):
         logits, values = mdl.forward_last(
@@ -405,12 +433,15 @@ def _act(mdl, tokens, hand, vuln_cls, row_len, masks, device, greedy,
         actions = dist.sample()
     dev = (lp0.max(-1).values
            - lp0.gather(-1, actions[:, None]).squeeze(-1)).clamp_min(0.0)
-    return actions, dist.log_prob(actions), values, dev
+    return actions, dist.log_prob(actions), values, dev, dist.probs
 
 
 @torch.no_grad()
 def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
-         buf: RolloutBuffer | None, temp: float, amp: bool = False):
+         buf: RolloutBuffer | None, temp: float, amp: bool = False,
+         conv_spec=None, conv_cfg=None, sys_target: bool = False,
+         sys_target_floor: float = 0.02, sys_target_min_prob: float = 0.0,
+         sys_explore: float = 0.0, rng: np.random.Generator | None = None):
     """Step env to completion; record learner decisions into buf (if any).
 
     Every learner-side seat samples at `temp` and is recorded -- in team mode
@@ -419,8 +450,25 @@ def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
     its greedy deviation (buf.dev, see `_act`) so negative rewards can be
     discounted by the partner's exploration noise (partner_greedy_dev).
     Opponent seats play their own frozen policy at temp=1 and are dropped.
+
+    conv_spec/conv_cfg + sys_target: when a parsed system file is given, each
+    learner decision also gets a (VOCAB_SIZE,) target distribution over the
+    legal calls from patterns.SystemEnforcer.target -- the system file's
+    applicable artificial conventions -- stored in buf.sys_target. The PPO
+    update uses it as an auxiliary supervised loss that makes those bids the
+    policy's preferred action instead of merely an unpenalized alternative.
+    sys_explore: with this probability, a learner decision that has a clean
+    system convention available is overridden with one of those calls (the
+    stored logprob is the policy's own logprob for it). This manufactures
+    on-policy samples of convention auctions even when the policy would
+    almost never draw the bid; rng seeds the choice.
     """
     use_opp = opponent is not None and learner_ns is not None
+    rng = rng or np.random.default_rng()
+    teacher = (SystemEnforcer(conv_spec, conv_cfg)
+               if (sys_target or sys_explore > 0) and conv_spec is not None
+               else None)
+    hand_cache: dict[tuple[int, int], HandInfo] = {}
     while env.any_active():
         idx = env.active_idx()
         tokens, hand, vuln_cls, hero, row_len = env.build_inputs(idx)
@@ -435,27 +483,78 @@ def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
 
         learn_rows = np.flatnonzero(is_learn)
         if len(learn_rows):
-            a, lp, v, dev = _act(model, tokens[learn_rows], hand[learn_rows],
-                                 vuln_cls[learn_rows], row_len[learn_rows],
-                                 masks[learn_rows], device, greedy, temp, amp)
+            a, lp, v, dev, probs = _act(
+                model, tokens[learn_rows], hand[learn_rows],
+                vuln_cls[learn_rows], row_len[learn_rows],
+                masks[learn_rows], device, greedy, temp, amp)
             a_np = a.cpu().numpy()
+            lp_np = lp.cpu().numpy()
+            dev_np = dev.cpu().numpy()
+            targets = None
+            if buf is not None:
+                if teacher is not None:
+                    targets = np.zeros((len(learn_rows), VOCAB_SIZE),
+                                       dtype=np.float32)
+                    for k, row in enumerate(learn_rows):
+                        i = int(idx[row])
+                        seat = int(hero[row])
+                        ci = int(env.n_calls[i])
+                        reader = AuctionReader(int(env.dealer[i]),
+                                               int(env.vuln[i]))
+                        for c in env.calls[i, :ci]:
+                            reader.feed(int(c))
+                        key = (i, seat)
+                        hi = hand_cache.get(key)
+                        if hi is None:
+                            hi = hand_cache[key] = HandInfo(
+                                env.deals[i].hands[seat])
+                        tgt = teacher.target(reader, seat, hi, masks[row],
+                                             floor=sys_target_floor,
+                                             probs=probs[k].cpu().numpy(),
+                                             min_prob=sys_target_min_prob)
+                        if tgt is not None:
+                            targets[k] = tgt
+                # System-guided exploration: force a clean convention into
+                # the rollout so PPO sees its outcome. The stored logprob is
+                # the policy's own, keeping the PPO ratio consistent.
+                if targets is not None and sys_explore > 0.0:
+                    for k, row in enumerate(learn_rows):
+                        if targets[k].sum() <= 0.0:
+                            continue
+                        if rng.random() >= sys_explore:
+                            continue
+                        legal = np.flatnonzero(masks[row])
+                        floor_mass = (sys_target_floor / len(legal)
+                                      if sys_target_floor > 0 else 0.0)
+                        clean = [int(a) for a in legal
+                                 if targets[k, a] > floor_mass + 1e-6]
+                        if not clean:
+                            continue
+                        a_new = int(rng.choice(clean))
+                        p = float(probs[k, a_new])
+                        if p <= 0.0:
+                            continue
+                        a_np[k] = a_new
+                        lp_np[k] = float(np.log(p))
+                        dev_np[k] = 0.0
             actions[learn_rows] = a_np
             if buf is not None:
                 buf.add_rows(idx[learn_rows], hero[learn_rows],
                              tokens[learn_rows], hand[learn_rows],
                              vuln_cls[learn_rows], row_len[learn_rows],
                              masks[learn_rows], a_np,
-                             lp.cpu().numpy(), v.cpu().numpy(),
+                             lp_np, v.cpu().numpy(),
                              env.n_calls[idx[learn_rows]],
-                             dev.cpu().numpy())
+                             dev_np, sys_target=targets)
         opp_rows = np.flatnonzero(~is_learn)
         if len(opp_rows):
             # frozen opponent plays its true policy (temp=1); only the learner's
             # own sampling is tempered, so the team swing measures skill, not
             # opponent noise, and stays consistent with the PPO logprob recompute
-            a, _, _, _ = _act(opponent, tokens[opp_rows], hand[opp_rows],
-                              vuln_cls[opp_rows], row_len[opp_rows],
-                              masks[opp_rows], device, greedy, 1.0, amp)
+            a, _, _, _, _ = _act(opponent, tokens[opp_rows],
+                                 hand[opp_rows], vuln_cls[opp_rows],
+                                 row_len[opp_rows], masks[opp_rows],
+                                 device, greedy, 1.0, amp)
             actions[opp_rows] = a.cpu().numpy()
 
         env.step(idx, actions)
@@ -480,9 +579,9 @@ def play_seat_policies(env: AuctionBatch, policies, seat_policy: np.ndarray,
         which = seat_policy[idx, hero]
         for pid in np.unique(which):
             rows = np.flatnonzero(which == pid)
-            a, _, _, _ = _act(policies[pid], tokens[rows], hand[rows],
-                              vuln_cls[rows], row_len[rows], masks[rows],
-                              device, greedy, temp, amp)
+            a, _, _, _, _ = _act(policies[pid], tokens[rows],
+                                 hand[rows], vuln_cls[rows], row_len[rows],
+                                 masks[rows], device, greedy, temp, amp)
             actions[rows] = a.cpu().numpy()
         env.step(idx, actions)
     return env
@@ -541,7 +640,10 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
                     opponent=None, greedy: bool = False, temp: float = 1.0,
                     record: bool = True, amp: bool = False,
                     presolve=None, conv_cfg=None,
-                    conv_spec=None) -> TeamRollout:
+                    conv_spec=None, sys_target: bool = False,
+                    sys_target_floor: float = 0.02,
+                    sys_target_min_prob: float = 0.0,
+                    sys_explore: float = 0.0) -> TeamRollout:
     """Play every deal at two tables (team match) and score the comparison.
 
     opponent given (league): the learner team is N-S at table 0 and E-W at
@@ -563,6 +665,10 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
     conv_spec: optional parsed system file (conventions/system_file.py) --
     its sequence-pattern entries extend/override the rule-code checks
     (see convention_penalties).
+    sys_target: when true (and conv_spec is given), also build the
+    per-decision auxiliary system-policy targets (buf.sys_target) used by
+    the PPO system-teacher loss; sys_target_floor is the mass spread over
+    all legal calls instead of the convention calls.
     """
     b = len(deals)
     dealer2 = np.concatenate([dealer, dealer]).astype(np.int64)
@@ -571,7 +677,11 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
     learner_ns = (np.concatenate([np.ones(b, bool), np.zeros(b, bool)])
                   if opponent is not None else None)
     buf = RolloutBuffer() if record else None
-    _run(env, model, device, opponent, learner_ns, greedy, buf, temp, amp)
+    _run(env, model, device, opponent, learner_ns, greedy, buf, temp, amp,
+         conv_spec=conv_spec, conv_cfg=conv_cfg, sys_target=sys_target,
+         sys_target_floor=sys_target_floor,
+         sys_target_min_prob=sys_target_min_prob, sys_explore=sys_explore,
+         rng=rng)
 
     _join_presolve(presolve)
     rewards = env.rewards(cache=cache)
@@ -581,14 +691,19 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
                           for j in range(b)], dtype=np.float64)
     diverge, diverged = _divergence(env, b)
     partner_dev = partner_greedy_dev(buf) if buf is not None else None
-    conv_pen = conv_codes = conv_bonus = None
+    conv_pen = conv_codes = conv_bonus = conv_used = None
     if buf is not None and conv_cfg is not None:
-        conv_pen, conv_codes, conv_bonus = convention_penalties(buf, env,
-                                                                conv_cfg,
-                                                                conv_spec)
+        conv_pen, conv_codes, conv_bonus, conv_used = convention_penalties(
+            buf, env, conv_cfg, conv_spec, return_used=True)
+    sys_targets = None
+    if buf is not None and buf.sys_target:
+        sys_targets = np.stack([
+            t if t is not None else np.zeros(VOCAB_SIZE, dtype=np.float32)
+            for t in buf.sys_target])
     return TeamRollout(buf=buf, env=env, n_deals=b, team_imps=team_imps,
                        diverge=diverge, diverged=diverged,
                        par_imps_ns=par_imps, score_ns=score_ns,
                        partner_dev=partner_dev,
                        conv_pen=conv_pen, conv_codes=conv_codes,
-                       conv_bonus=conv_bonus)
+                       conv_bonus=conv_bonus, conv_used=conv_used,
+                       sys_target=sys_targets)

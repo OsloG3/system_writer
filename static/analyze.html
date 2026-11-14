@@ -194,9 +194,11 @@
             .an-vpill.info { background: #3d3a36; color: #bababa; }
             .an-vpill.sm { font-size: 0.72rem; padding: 0.2rem 0.6rem; gap: 0.3rem; white-space: nowrap; }
             .an-vpill.sm .material-symbols-outlined { font-size: 0.95rem; }
-            /* the quick verdict for the card in focus, centred above the transport
-               inside the deal card so it stays in view while stepping */
-            .an-nowverdict { display: flex; justify-content: center; align-items: center; gap: 0.5rem; margin: 0.8rem 0 0.55rem; }
+            /* the deal card is the positioning context; the quick verdict pill for
+               the card in focus floats in its top-right corner so it stays in view
+               while stepping (the header/auction card scrolls away) */
+            .an-tablecard { position: relative; }
+            .an-verdict-corner { position: absolute; top: 0.45rem; right: 0.6rem; z-index: 2; }
             .an-kv { display: flex; flex-wrap: wrap; gap: 0.35rem 1.2rem; font-size: 0.84rem; color: #bababa; margin-top: 0.35rem; }
             .an-kv b { color: #e8e6e3; }
             .an-bestcards { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.5rem; }
@@ -808,7 +810,9 @@
                         defPair.defImps += -a.play_imps_decl; defPair.defBoards++;
                     }
                     a.plays.forEach((p, i) => {
-                        const pl = player(board, p.seat); pl.cards++;
+                        // declarer plays both hands: credit every dummy card (and
+                        // its mistakes) to the declarer
+                        const pl = player(board, p.seat === dummy ? decl : p.seat); pl.cards++;
                         if (p.mistake) {
                             pl.mistakes++; pl.tricksLost += p.cost; pl[roleOfPlay(i, p.seat, decl)]++;
                             totalMistakes++; totalTricksLost += p.cost;
@@ -831,10 +835,12 @@
 
             // ---- per-seat summary for one analysis (with the role split) ----
             function seatSummary(a) {
-                const decl = a.contract.declarer;
+                const decl = a.contract.declarer, dummy = (decl + 2) % 4;
                 const s = [0, 1, 2, 3].map((seat) => ({ seat, cards: 0, mistakes: 0, decl: 0, lead: 0, def: 0, tricksLost: 0, critical: 0 }));
                 a.plays.forEach((p, i) => {
-                    const o = s[p.seat]; o.cards++;
+                    // declarer plays both hands: credit every dummy card (and its
+                    // mistakes) to the declarer, so the dummy seat stays empty
+                    const o = s[p.seat === dummy ? decl : p.seat]; o.cards++;
                     if (p.mistake) { o.mistakes++; o.tricksLost += p.cost; o[roleOfPlay(i, p.seat, decl)]++; }
                     if (p.critical) o.critical++;
                 });
@@ -1025,13 +1031,10 @@
                     return `<div class="an-seat"><div class="nm"><b>${escapeHtml(nameFor(board.names, s))}</b> \u00b7 ${hcpOf(board.hands[s])} hcp${role}</div>${lines}</div>`;
                 };
                 const n = a.plays.length;
-                // The quick verdict for the card in focus lives INSIDE this card,
-                // right above the transport, so it stays in view while stepping
-                // (the header/auction card scrolls away). Transport sits with the
-                // cards too, so the diagram, the verdict and the arrows all fit
-                // on screen together.
-                const controls = n ? `<div class="an-nowverdict">${miniVerdict(a, stepIdx)}</div>
-                    <div class="an-stepper">
+                // The quick verdict pill floats in the top-right corner of this
+                // card so it stays in view while stepping; the transport sits with
+                // the cards too, so the diagram, verdict and arrows all fit together.
+                const controls = n ? `<div class="an-stepper">
                         <button class="an-btn sm" id="s-first" ${stepIdx === 0 ? "disabled" : ""} title="First card"><span class="material-symbols-outlined">skip_previous</span></button>
                         <button class="an-btn sm" id="s-prev" ${stepIdx === 0 ? "disabled" : ""} title="Previous card"><span class="material-symbols-outlined">chevron_left</span></button>
                         <span class="an-count">${stepIdx + 1} / ${n}</span>
@@ -1040,8 +1043,8 @@
                         <span class="an-bar"><i style="width:${Math.round(((stepIdx + 1) / n) * 100)}%"></i></span>
                         <button class="an-btn gold sm" id="s-mistake" title="Jump to the next card that was not double-dummy accurate"><span class="material-symbols-outlined">skip_next</span>Next mistake</button>
                     </div>` : "";
-                return `<div class="an-card" id="an-table-card">
-                    <div class="an-h">Deal \u2014 cards dim once played; the trick in focus is in the centre</div>
+                return `<div class="an-card an-tablecard" id="an-table-card">
+                    ${n ? `<div class="an-verdict-corner">${miniVerdict(a, stepIdx)}</div>` : ""}
                     <div class="an-table-layout">
                         <div class="an-tl-n">${seatHtml(0)}</div>
                         <div class="an-tl-w">${seatHtml(3)}</div>
@@ -1111,7 +1114,12 @@
             }
 
             function verdictPanel(a, p, stepIdx, names) {
-                const seatName = escapeHtml(nameFor(names, p.seat));
+                const decl = a.contract.declarer, dummy = (decl + 2) % 4;
+                const fromDummy = p.seat === dummy;
+                // the declarer plays both hands, so a dummy card is shown (and
+                // scored) as the declarer's play
+                const seatName = escapeHtml(nameFor(names, fromDummy ? decl : p.seat));
+                const dummyNote = fromDummy ? ` <span class="an-muted" style="font-weight:400">(from dummy)</span>` : "";
                 const sideName = p.decl_side ? "declarer side" : "defence";
                 let pill, body;
                 if (p.best == null) {
@@ -1138,7 +1146,7 @@
                        <div class="an-bestcards">${p.best_cards.slice(0, 12).map((t) => `<span class="an-minicard ${cardIsRed(t) ? "red" : "blk"}">${cardRank(t)}${SUIT_SYMBOL[t[1]]}</span>`).join("")}${p.best_cards.length > 12 ? `<span class="an-muted" style="font-size:.75rem">+${p.best_cards.length - 12} more</span>` : ""}</div>`
                     : "";
                 return `<div class="an-verdict">${pill}
-                        <span class="an-title" style="font-size:1rem">${seatName} played ${cardPretty(p.card)}</span></div>
+                        <span class="an-title" style="font-size:1rem">${seatName} played ${cardPretty(p.card)}${dummyNote}</span></div>
                     ${body}${bestCards}`;
             }
 
@@ -1170,7 +1178,7 @@
                         </tr></thead>
                         <tbody>${rows}</tbody>
                     </table></div>
-                    <p class="an-note" style="margin-top:.5rem">D = declarer, Dm = dummy. Decl + Lead + Def = Mistakes. Contract-critical means the error flipped make \u2194 defeat (target ${target} tricks).</p>
+                    <p class="an-note" style="margin-top:.5rem">D = declarer, Dm = dummy. The declarer plays both hands, so every dummy card and its mistakes are credited to the declarer (the dummy row stays empty). Decl + Lead + Def = Mistakes; contract-critical means the error flipped make \u2194 defeat (target ${target} tricks).</p>
                 </div>`;
             }
 
@@ -1287,7 +1295,7 @@
                         <div class="an-h">By player \u2014 DD mistakes &amp; declaring IMPs</div>
                         <div class="an-tablewrap"><table class="an-table">
                             <thead><tr>
-                                <th>${tip("Player", "Grouped by name, so a player's stats follow them even when the set rotates seats. Unnamed seats fall back to N/E/S/W.")}</th>
+                                <th>${tip("Player", "Grouped by name, so a player's stats follow them even when the set rotates seats. Unnamed seats fall back to N/E/S/W. The declarer plays both hands, so dummy cards and their mistakes are credited to that board's declarer.")}</th>
                                 <th class="n">${tip("Cards", "Cards this player played across all boards.")}</th>
                                 <th class="n">${tip("Mistakes", "Cards that gave up at least one trick versus DD.")}</th>
                                 <th class="n">${tip("/ board", "Mistakes per board.")}</th>

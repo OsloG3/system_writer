@@ -62,6 +62,19 @@ rl:
                             # makes a single violation cost like losing ~5 IMPs;
                             # lower it if conv_viol_rate stays high and IMPs
                             # regress, raise it if the bot ignores the system.
+  # --- system teacher (positive half) ----------------------------------------
+  # The penalty above only teaches "don't break the entry"; these make the
+  # entry's bid the preferred call. On each decision where the system file has
+  # a clean artificial convention, PPO also minimizes CE(target, policy).
+  sys_weight: 0.4           # auxiliary loss weight (0 disables)
+  sys_weight_end: 0.1       # anneal (a persistent floor keeps conventions)
+  sys_target_floor: 0.02    # target mass left on all legal calls
+  sys_target_min_prob: 0.0  # only target a convention the policy already
+                            # gives >= this probability (0 = always target;
+                            # raise to ~0.02-0.05 to protect underspecified
+                            # entries from overriding confident natural bids)
+  sys_explore: 0.1          # force a clean convention into this fraction of
+                            # eligible rollout decisions, so PPO sees it
   # conv_rules:             # per-rule weight overrides (0 disables a rule):
   #   gf_pass: 2.0
   #   open_values: 0.0

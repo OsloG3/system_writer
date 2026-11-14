@@ -52,6 +52,21 @@ class RLConfig:
                                    # override (0 disables one rule)
     conv_params: dict = field(default_factory=dict)  # ConventionConfig
                                    # threshold overrides (e.g. kr_tolerance)
+    # System-teacher auxiliary objective: on every learner decision where the
+    # system file has a clean artificial convention available, the PPO loss
+    # gets sys_weight * CE(target, pi) in addition to the reward. The target
+    # is the system's applicable convention(s), so the policy learns to make
+    # them the preferred call rather than only avoiding violations. Without
+    # this, a penalty-only system has a safe optimum at pass/natural bids.
+    sys_weight: float = 0.0        # 0 disables the auxiliary system loss
+    sys_weight_end: float = 0.0    # anneal target (e.g. 0.5 -> 0.1)
+    sys_target_floor: float = 0.02 # target mass spread over all legal calls
+    sys_target_min_prob: float = 0.0  # only target a clean convention the
+                                   # current policy already gives at least
+                                   # this probability (0 = always target);
+                                   # guards underspecified file entries
+    sys_explore: float = 0.0       # phase-2: probability of overriding a
+                                   # learner sample with a clean system call
     # ppo
     lr: float = 1e-4
     weight_decay: float = 0.01

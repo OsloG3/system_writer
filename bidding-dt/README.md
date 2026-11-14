@@ -393,19 +393,20 @@ Top-level `key = value` **config lines** tune the rest: `kr_tolerance`,
 Two consumers, one file:
 
 - **Training interprets it at startup** (`rl/train_ppo.py`, when
-  `rl.conv_weight > 0`): the config lines fold into a `ConventionConfig`
-  (`system_file.SystemSpec.config`, with `rl.conv_rules` / `rl.conv_params`
-  from the YAML layering on top for experiments) and the entries are
-  enforced per call by `patterns.SystemEnforcer` (wired through
+  `rl.conv_weight > 0` or `rl.sys_weight > 0`): the config lines fold into a
+  `ConventionConfig` (`system_file.SystemSpec.config`, with `rl.conv_rules` /
+  `rl.conv_params` from the YAML layering on top for experiments) and the
+  entries are enforced per call by `patterns.SystemEnforcer` (wired through
   `rl/rollout.convention_penalties`): a matched entry with weight>0
   REPLACES the built-in check for that call, OR branches are checked
   against the hero's hand in K&R points, and F/GF/TO/PENALTY add the force
   and double-discipline penalties (`f_pass`, `gf_pass`, `to_pass`,
   `penalty_pull`, `pat:<pattern>` violation codes in the log's `conv_top`).
   Calls no entry matches fall back to the built-in rule checks
-  (`conventions/rules.py`, default weights). The init log line records which
-  file was read; a missing explicit `--system` path is a hard error, a
-  missing default falls back to the built-in values.
+  (`conventions/rules.py`, default weights). The same entries are the
+  positive teacher described below (`clean_use` / `target`). The init log
+  line records which file was read; a missing explicit `--system` path is a
+  hard error, a missing default falls back to the built-in values.
 - **The website generates its bid alerts from it** (system_writer's
   `system_file.go` + `patterns.go` + `auction.go`): the Go server replays
   the live auction through ports of the Python auction reader and pattern
@@ -421,6 +422,72 @@ the bots actually enforce. `tests/test_patterns.py` +
 `tests/test_system_file.py` and the Go `TestPattern*` goldens keep the two
 implementations in lockstep. The full grammar lives in
 `conventions/patterns.py` (Python) and `system_writer/patterns.go` (Go).
+
+### Making the bot actually use the conventions
+
+Enforcement alone has a bad optimum: a violation is penalized, but a pass or
+a safe natural bid that ignores an available convention is not, so the policy
+learns to avoid the risk. The bid also has to survive **greedy serving** (the
+website's `/bid` uses temperature 0), where a 2%-probability convention never
+wins. Three mechanisms in the trainer close that gap; they are independent
+and can be enabled together:
+
+- **Positive, file-driven reward.** `convention_penalties` now calls
+  `SystemEnforcer.clean_use`: a call matching an artificial entry whose hand
+  description the hero satisfies earns `conv_bonus`, and its pattern is
+  reported in `conv_used` (not just the seven hard-coded rule kinds in
+  `rules.py`). This is the reward-side counterpart of the penalty.
+- **System-teacher auxiliary loss (`rl.sys_weight`).** On every learner
+  decision with a clean artificial convention available,
+  `SystemEnforcer.target` builds a distribution over the legal calls with
+  `1 - sys_target_floor` of its mass on the convention(s) and the rest spread
+  uniformly. PPO minimizes `sys_weight * CE(target, pi)` in addition to the
+  IMP reward, so the convention becomes the policy's *preferred* call rather
+  than merely an unpenalized alternative. `sys_weight` anneals to
+  `sys_weight_end`; a small persistent floor is deliberate. `sys_target_min_prob`
+  is a safety valve: a convention the policy already gives less than that
+  probability to is not forced, which protects underspecified entries (e.g.
+  a Stayman entry with no strength clause) from overriding a confident
+  natural bid. Entries with no hand tokens at all (e.g. the wildcard
+  `...-4N; we_bid` RKCB ask) are skipped by the positive teacher, because a
+  context-free pattern can look "clean" in an unrelated auction; give such an
+  entry a shape/context clause if you want it targeted.
+- **System-guided exploration (`rl.sys_explore`).** With this probability, a
+  learner decision that has a clean convention is overridden with one of
+  those calls (the stored logprob is the policy's own, and the choice is
+  seeded by the rollout RNG). This manufactures convention auctions even when
+  the policy would almost never draw the bid, so PPO gets outcome data for
+  it. It also makes both partners practice the follow-ups in self-play.
+
+The per-iteration log now carries `conv_used_rate` / `conv_used_top` /
+`conv_used_entries` (which file entries were used cleanly), `sys_target_rate`
+(how often an auxiliary target existed), `sys_agree` (how often the chosen
+call had target mass) and `sys_ce` (the auxiliary loss). Watch `conv_used_top`
+to see which conventions are migrating into the policy; entries that never
+appear there are the ones the file may describe too narrowly (or that the
+bot never reaches).
+
+**Demonstrations for the rest.** If a convention is still never reached,
+`conventions/gen.py` rolls random deals with a fallback bidding model and
+substitutes a clean system call with probability `--conv-prob`, producing a
+`data/parse.py`-compatible cache of *convention auctions*:
+
+```
+uv run python -m bidding_dt.conventions.gen \
+    --system ../models/system.txt --deals 50000 --conv-prob 0.85 \
+    --policy bc:runs/bc_small/best.pt --out cache/system
+```
+
+Mix it into BC with `data.system_cache` / `data.system_repeat` (or
+`--system-cache` / `--system-repeat`; see `configs/small_system.yaml`). The
+generated auctions use exactly the file's hand constraints, including the
+built-in RKCB fit/values gate for wildcard entries, so they teach the system
+the bot is supposed to play. A good loop is: generate demonstrations, BC on
+the mixture, then RL with `conv_weight` + `sys_weight` + `sys_explore`.
+
+`configs/rl_conv.yaml` carries the starting values (`sys_weight: 0.4` down to
+`0.1`, `sys_explore: 0.1`); lower `sys_weight` or raise `sys_target_min_prob`
+if IMPs regress, raise them if `conv_used_rate` stays near zero.
 
 ## Hand inference (VQ encoder-decoder)
 

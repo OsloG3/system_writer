@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import ConcatDataset, DataLoader
 
 from .config import Config
 from .data.dataset import IGNORE, BiddingDataset, collate
@@ -91,6 +91,11 @@ def main():
     ap.add_argument("--epochs", type=int, default=None)
     ap.add_argument("--max-steps", type=int, default=None)
     ap.add_argument("--max-deals", type=int, default=None, help="subsample train split")
+    ap.add_argument("--system-cache", default=None,
+                    help="generated system-convention cache "
+                         "(bidding_dt.conventions.gen) mixed into the train split")
+    ap.add_argument("--system-repeat", type=int, default=None,
+                    help="repeat the system cache this many times (oversample)")
     ap.add_argument("--val-every", type=int, default=None)
     ap.add_argument("--val-batches", type=int, default=None)
     ap.add_argument("--workers", type=int, default=None)
@@ -111,6 +116,10 @@ def main():
         cfg.train.max_steps = args.max_steps
     if args.max_deals is not None:
         cfg.data.max_deals = args.max_deals
+    if args.system_cache is not None:
+        cfg.data.system_cache = args.system_cache
+    if args.system_repeat is not None:
+        cfg.data.system_repeat = args.system_repeat
     if args.val_every is not None:
         cfg.train.val_every = args.val_every
     if args.val_batches is not None:
@@ -135,6 +144,12 @@ def main():
     use_amp = cfg.train.bf16 and device.type == "cuda"
 
     train_ds = BiddingDataset(cfg.data.cache_dir, "train", max_deals=cfg.data.max_deals)
+    if cfg.data.system_cache:
+        extra = [BiddingDataset(cfg.data.system_cache, "train")]
+        extra *= max(1, int(cfg.data.system_repeat))
+        train_ds = ConcatDataset([train_ds, *extra])
+        print(f"train data: {len(train_ds)} sequences "
+              f"(+ {len(extra[0])} x {len(extra)} system-convention sequences)")
     val_ds = BiddingDataset(cfg.data.cache_dir, "val", max_deals=cfg.data.max_deals)
     pin = device.type == "cuda"
     train_loader = DataLoader(train_ds, batch_size=cfg.train.batch_size, shuffle=True,

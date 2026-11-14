@@ -1,0 +1,31 @@
+# BC on the human cache PLUS generated system-convention demonstrations.
+# The demonstrations come from conventions/gen.py: auctions where the system
+# file's artificial conventions were substituted in, so the model sees full
+# convention sequences instead of only hearing "don't violate this entry".
+#
+#   uv run python -m bidding_dt.conventions.gen \
+#       --out cache/system --deals 50000 \
+#       --policy bc:runs/bc_small/best.pt --conv-prob 0.85
+#   uv run python -m bidding_dt.train --config configs/small_system.yaml \
+#       --out runs/small_system
+#
+# system_repeat oversamples the (much smaller) convention cache; 3-5 is a
+# reasonable starting point. Validation stays on the human val split.
+model:
+  d_model: 176
+  n_layers: 6
+  n_heads: 8
+  d_ff: 448
+  dropout: 0.0
+train:
+  batch_size: 512
+  lr: 6.0e-4
+  epochs: 2
+  warmup_steps: 2000
+  val_every: 2000
+  log_every: 100
+data:
+  cache_dir: cache
+  num_workers: 8
+  system_cache: cache/system
+  system_repeat: 3

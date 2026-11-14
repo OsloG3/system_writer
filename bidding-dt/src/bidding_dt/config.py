@@ -61,6 +61,9 @@ class DataConfig:
     cache_dir: str = "cache"
     num_workers: int = 4
     max_deals: int | None = None    # subsample train split (smoke runs)
+    system_cache: str = ""          # generated convention demonstrations
+                                    # (conventions/gen.py), mixed into train
+    system_repeat: int = 1          # oversample the system cache
 
 
 @dataclass

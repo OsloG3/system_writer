@@ -157,6 +157,12 @@ penalty_pull_max_len = 1
 
 1N-2C = 4+H OR 4+S stayman ask @!
 2N-3C = 4+H OR 4+S stayman ask @!
+1N-2C-2D = stayman response: noMajor @!
+1N-2C-2H = stayman response: 4+H @!
+1N-2C-2S = stayman response: 4+S @!
+2N-3C-3D = stayman response: noMajor @!
+2N-3C-3H = stayman response: 4+H @!
+2N-3C-3S = stayman response: 4+S @!
 1N-2C-2X-3Y; Y<H = 5+Y GF @1.0
 1N-2C-2D-3H = smolen: 4+H and 5+S, game force GF @!
 1N-2C-2D-3S = smolen: 4+S and 5+H, game force GF @!

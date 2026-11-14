@@ -779,8 +779,9 @@ var kcText = map[string]string{
 var keywordText = map[string]string{
 	"F": "forcing", "GF": "game force", "TO": "takeout",
 	"PENALTY": "penalty", "OR": "or", "openp": "opening values",
-	"no4M": "no biddable 4-card major", "noLong5M": "no longer 5-card major",
-	"stop": "stopper in their suit", "2top": "2 of the top 3 honours",
+	"no4M": "no biddable 4-card major", "noMajor": "no 4-card major",
+	"noLong5M": "no longer 5-card major",
+	"stop":     "stopper in their suit", "2top": "2 of the top 3 honours",
 }
 
 func suitSym(ref byte, binds map[byte]int) string {
