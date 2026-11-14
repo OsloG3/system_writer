@@ -115,22 +115,22 @@ open_min_kr = 11.0
 open_min_kr_late = 9.5
 open_rule20 = yes
 rkcb_min_kr = 11.0
-rkcb_min_fit = 3
+rkcb_min_fit = 2
 f_pass_weight = 2.0
 to_pass_weight = 1.0
 penalty_pull_weight = 1.0
-to_pass_min_len = 4
-penalty_pull_max_len = 2
+to_pass_min_len = 3
+penalty_pull_max_len = 1
 
 # ---- openings ---------------------------------------------------------------
 
 1N = p15-17 balanced
-2N = p20-21 balanced
-2C = p>20.5 OR 8+any OR 6+any 2top p>16.5 -- strong artificial, game force until opener rebids 2NT @!
+2N = p20-22 balanced
+2C = p>22 GF -- any GF hand @!
 1X; X>=H = 5+X openp
 1D = 3+D noLong5M openp
-1C = 2+C noLong5M openp
-2X = 5-7X p4-12 weak two @! @0.1
+1C = 3+C noLong5M openp
+2X = 5-7X p4-11.0 weak two @! @0.1
 ?X = weak preempt @0
 
 # ---- strong 2C responses -----------------------------------------------------
@@ -141,9 +141,9 @@ penalty_pull_max_len = 2
 
 # ---- XYZ (uncontested 1x-1y-1z) ------------------------------------------------
 
-1X-1Y-1Z-2C = XYZ relay: p9.5-12.5 any invite OR p<9.5 5+D weak diamond signoff @!
+1X-1Y-1Z-2C = XYZ relay: p10.0-12.5 any invite OR p<10.0 4+D weak diamond signoff @!
 1X-1Y-1Z-2D = XYZ: p>11.5 artificial GF @!
-1X-1Y-1Z-2C-2D = completes the XYZ relay -- minimum @! @0
+1X-1Y-1Z-2C-2D = completes the XYZ relay: p<16.0 -- minimum @! @0
 1X-1Y-1Z-2C-!2D = broke the XYZ relay: p>15.5 @! @2.5
 1X-1Y-1Z-2C-2D-P = diamond signoff -- p<9.5 @! @2.5
 
@@ -151,24 +151,32 @@ penalty_pull_max_len = 2
 
 1N-2C = 4+H OR 4+S stayman ask @!
 2N-3C = 4+H OR 4+S stayman ask @!
-1N-2C-2D-3X; X>=H = smolen: 4+X and 5+O, game force GF @!
-2N-3C-3D-3X; X>=H = smolen: 4+X and 5+O, game force GF @!
+1N-2C-2X-3Y; Y<H = 5+Y GF @1.0
+1N-2C-2D-3H = smolen: 4+H and 5+S, game force GF @!
+1N-2C-2D-3S = smolen: 4+S and 5+H, game force GF @!
+2N-2C-2D-3H = smolen: 4+H and 5+S, game force GF @!
+2N-2C-2D-3S = smolen: 4+S and 5+H, game force GF @!
 
 # ---- RKCB ----------------------------------------------------------------------
 
-...-4N; we_bid = RKCB ask for {T}: keycard ask (steps 0/3, 1/4, 2, 2+Q) @!
-...-4N-(P)-5C; we_bid = RKCB response for {T}: kc=0/3 @!
-...-4N-(P)-5D; we_bid = RKCB response for {T}: kc=1/4 @!
+...-4N; we_bid = RKCB ask for {T}: keycard ask (steps 1/4, 0/3, 2, 2+Q) @!
+...-4N-(P)-5C; we_bid = RKCB response for {T}: kc=1/4 @!
+...-4N-(P)-5D; we_bid = RKCB response for {T}: kc=3/0 @!
 ...-4N-(P)-5H; we_bid = RKCB response for {T}: kc=2- @!
 ...-4N-(P)-5S; we_bid = RKCB response for {T}: kc=2+ @!
 
 # ---- 2/1 game force --------------------------------------------------------------
 
-1X-...-2C; first, bids_by_them=0 = 2/1: 3+C p>11.5 GF
-1X-...-2Y; first, bids_by_them=0, Y!=C = 2/1: 4+Y p>11.5 GF
-1X-(1Y)-2C; C<Y, X!=C, first = 2/1 over their bid: 3+C p>11.5 GF
-1X-(1Y)-2Z; Z<Y, first = 2/1 over their bid: 4+Z p>11.5 GF
+1X-2C; X!=C, bids_by_them=0 = 2/1: 2+C p>11.5 GF
+1X-2D; X>=H = 5+D p>11.5 GF
+1X-(?Y)-2Z; Z<Y, first = 2/1 GF: 5+Z p>11.5 GF
+1X-(?Y)-3Z; Z<Y, first = 5+Z p>11.5 GF
 
+1X-(?Y)-2Z; Z>Y, first = IJS: 6+Z p>10-12.5
+1X-(?Y)-3Z; Z>Y, first = IJS: 6+Z p10-12.5
+
+1X-2Y; Z>Y, first = IJS: 6+Z p>10-12.5
+1X-3Y; Z>Y, first = IJS: 6+Z p10-12.5
 # ---- fourth suit -------------------------------------------------------------------
 
 ...-?Z; fourth = fourth suit {Z}: p>10, artificial game force @!
@@ -179,10 +187,8 @@ penalty_pull_max_len = 2
 
 # ---- jump shifts ----------------------------------------------------------------------
 
-...-2Z; opener, jump=1, newsuit, nostrong2c = opener's jump shift -- strong: p>17 OR 6+Z p>14 @0.5
-...-3Z; opener, jump=1, newsuit, nostrong2c = opener's jump shift -- strong: p>17 OR 6+Z p>14 @0.5
-...-2Z; jump=1, notopening, newsuit, !passed, Z!=P, Z!=L, noxyz, nostrong2c = invitational jump shift: 6+Z p10.5-12.5 @2.0
-...-3Z; jump=1, notopening, newsuit, !passed, Z!=P, Z!=L, nostrong2c = invitational jump shift: 6+Z p10.5-12.5 @2.0
+1X-1X-2Z; opener, Z>Y, newsuit, nostrong2c = GF jump shift: p>17.5 4+Z GF @1
+1X-1Y-3Z; opener, Z<Y, newsuit, nostrong2c = GF jump shift: p>17.5 4+Z GF @1
 
 # ---- splinters -------------------------------------------------------------------------
 
@@ -194,11 +200,11 @@ penalty_pull_max_len = 2
 # ---- notrump responses and rebids ---------------------------------------------------------
 
 1X-...-1N; first = p5-12 no4M @0.5
-(1Y)-...-1N; first, partnerbid = p5-12 @0.5
+(1Y)-...-1N; first, partnerbid = stop p8-12 @0.5
 ...-1N; opener = opener's 1NT rebid: p11.5-14.5 @0.5
 1X-...-2N; first, jump=1 = p10.5-12.5 balanced @0.5
-(1Y)-...-2N; first, partnerbid, jump=1 = p10.5-12.5 balanced @0.5
-...-2N; opener, jump=1 = opener's jump 2NT rebid: p17.5-19.5 balanced @0.5
+(1Y)-...-2N; first, partnerbid, jump=1 = stop p12-14 @0.5
+...-2N; opener, jump=1 = 2NT rebid: p18-19.5 balanced @0.5
 1X-...-3N; first, jump=2 = p12.5-15.5 balanced @0.5
 
 # ---- cuebid of their suit -------------------------------------------------------------------
@@ -208,23 +214,24 @@ penalty_pull_max_len = 2
 
 # ---- raises -----------------------------------------------------------------------------------
 
-1X-...-2X; first, X>=H = raise: 3+X p5-12.5 @0.5
-1X-...-2X; first, X<H = raise: 4+X p5-12.5 @0.5
-1X-...-3X; first, jump=0, X>=H = raise: 3+X p5-12.5 @0.5
-1X-...-3X; first, jump=0, X<H = raise: 4+X p5-12.5 @0.5
-1X-...-3X; first, jump=1, X>=H = limit raise: 3+X p10-13 @0.5
-1X-...-3X; first, jump=1, X<H = limit raise: 4+X p10-13 @0.5
-1X-...-4X; first, jump=0, X<H = raise: 4+X p5-12.5 @0.5
-1X-...-4X; first, jump=1, X<H = limit raise: 4+X p10-13 @0.5
-1X-...-4X; first, X>=H = game raise -- natural @0
-1X-...-5X; first, X<H = game raise -- natural @0
+1X-2X; first, X>=H = raise: 3+X p5-12.5 @0.5
+1X-2X; first, X<H = raise: 4+X p5-12.5 @0.5
+1X-3X; first, jump=0, X>=H = raise: 3+X p5-11.5 @0.5
+1X-3X; first, jump=0, X<H = raise: 4+X p5-12.5 @0.5
+1X-3X; first, jump=1, X>=H = preemptive raise: 4+X p<7.0 @0.5
+1X-3X; first, jump=1, X<H = limit raise: 4+X p10-13 @0.5
+1X-4X; first, jump=0, X<H = raise: 4+X p5-12.5 @0.5
+1X-4X; first, jump=1, X<H = limit raise: 4+X p10-13 @0.5
+1X-4X; first, X>=H = game raise -- natural @0
+1X-5X; first, X<H = game raise -- natural @0
+1X-2NT; X>=H = Invitational raise: p10-14 3+X @! @2.0 
 
 # ---- overcalls -------------------------------------------------------------------------------------
 
 ...-1Z; !we_bid, !balancing, notopening, jump=0 = overcall: 5+Z p>7 OR 4+Z p>13
 ...-2Z; !we_bid, !balancing, notopening, jump=0 = overcall: 5+Z p>10
 ...-?Z; !we_bid, !balancing, notopening, jump=0, level>=3 = overcall: 6+Z p>12.5
-...-1Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 4+Z p>6.5
+...-1Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 5+Z p>6.5 OR 4+Z p>10
 ...-2Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 5+Z p>8
 ...-?Z; !we_bid, balancing, notopening, jump=0, level>=3 = balancing overcall: 5+Z p>8
 ...-1N; !we_bid, !balancing, notopening = 1NT overcall: p14.5-18.5 stop @0.5
@@ -235,6 +242,20 @@ penalty_pull_max_len = 2
 # ---- describe the PARTNER's discipline, not the doubler's hand.
 
 ...-X; we_xx OR dbls_by_us>=2 OR gf OR their_bid>=4S = PENALTY -- partner pulls only with shortness in their suit
-...-X; partnerbid = TO -- negative double: values or an unbid 4-card major; partner passes only with a trump stack
-...-X; balancing = TO -- balancing takeout; partner passes only with a trump stack
-...-X = TO -- partner passes only with a trump stack
+1X-1Y-(?Z)-X = Power Double: p>16
+1X-1Y-(X)-XX = Power ReDouble: p>16
+...-X; partnerbid = TO
+...-X; balancing = TO -- balancing takeout;
+...-X = TO
+
+
+# ---- Lebensohl -------------------------------------------------------------------------------------
+(2X)-X-2NT; X>=H = Lebensohl: p0-7 OR p>12.5 F @! @2.0
+(2X)-X-3Y; X>=H = Lebensohl Positive: p8-12.5 @2.0
+(2X)-X-3Y; X>=H = Lebensohl Positive: p8-12.5 @2.0
+(2H)-X-3H = Lebensohl, 4S no stop: p>11 S>=4 !stop @! @2.0
+(2S)-X-3S = Lebensohl, 4S no stop: p>11 H>=4 !stop @! @2.0
+(2X)-X-2NT-!3C = Lebensohl break: p>17 @2.0
+(2H)-X-2NT-3C-3H = Lebensohl, 4S + stop: p>11 S>=4 stop @! @2.0
+(2S)-X-2NT-3C-3S = Lebensohl, 4H + stop: p>11 H>=4 stop @! @2.0
+(2X)-X-3NT = Lebensohl, fast denies: p>11 !stop @! @2.0
