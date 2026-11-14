@@ -2160,6 +2160,27 @@
             const PLAY_PACE_MS = 1000;
             const SESSION_KEY = "atheneum_drill_session";
 
+            // A shared drill link (/drills/<id>): the problem is started as
+            // soon as auth is known, so a logged-out recipient lands straight
+            // in the practice intro right after logging in.
+            let pendingDrill = null;
+            {
+                const id = window.location.pathname.replace(/^\/drills\/?/, "").split("/")[0];
+                if (/^[A-Za-z0-9_-]{1,64}$/.test(id)) pendingDrill = id;
+            }
+            // Keep the address bar in step with the problem on screen, so the
+            // URL can be copied and shared at any point of a practice run.
+            function syncDrillUrl(id) {
+                const url = id ? "/drills/" + id : "/drills";
+                if (window.location.pathname !== url) history.replaceState({}, "", url);
+            }
+            async function shareDrillLink(id) {
+                const url = window.location.origin + "/drills/" + id;
+                const ok = await copyToClipboard(url);
+                if (ok) showToast("Drill link copied \u2014 anyone can practise it");
+                else showToast("Could not copy \u2014 the link is " + url, true);
+            }
+
             // ---- app state ----
             let view = "lobby"; // "lobby" | "session"
             let lobbyTab = "practice"; // "practice" | "create"
@@ -2860,6 +2881,7 @@
                         showToast("This practice session is no longer on the server", true);
                         view = "lobby"; state = null;
                         localStorage.removeItem(SESSION_KEY);
+                        syncDrillUrl(null);
                         render(); loadLibrary();
                         return;
                     }
@@ -2897,6 +2919,7 @@
                     claimSeen = false;
                 }
                 if (data.id) localStorage.setItem(SESSION_KEY, data.id);
+                if (data.problemId) syncDrillUrl(data.problemId);
                 hintMsg = null;
                 wrongMsg = null;
                 wrongFlash = false;
@@ -2923,6 +2946,7 @@
                         <div class="t">${escapeHtml(t)}</div>
                         <div class="s">${state.role === "declarer" ? "Declarer" : "Defense"} \u00b7 ${stars(state.difficulty)} \u00b7 by ${escapeHtml(state.owner || "")} \u00b7 \u2717 ${state.wrong || 0}</div>
                     </div>
+                    <button id="drShareBtn" class="cb-iconbtn" title="Copy a link to this problem"><span class="material-symbols-outlined">share</span></button>
                     <button id="drCardViewBtn" class="cb-iconbtn" title="${dg ? "Hand display: diagram — tap for card faces" : "Hand display: card faces — tap for diagram"}"><span class="material-symbols-outlined">${dg ? "view_agenda" : "playing_cards"}</span></button>
                     <button id="drRestartBtn" class="cb-iconbtn" title="Restart"><span class="material-symbols-outlined">restart_alt</span></button>
                 </div>`;
@@ -3185,11 +3209,12 @@
                     ? `<button class="dr-btn ghost" data-arch-toggle="${p.id}" title="${inSelectedArchive(p.id) ? "Remove from" : "Add to"} ${escapeHtml(arch.name)}"><span class="material-symbols-outlined" style="${inSelectedArchive(p.id) ? "font-variation-settings:'FILL' 1;color:#cbb3ff" : ""}">${inSelectedArchive(p.id) ? "bookmark" : "bookmark_border"}</span></button>`
                     : "";
                 const dlBtn = `<button class="dr-btn ghost" data-dl="${p.id}" title="Download as .pbn (Line 1)"><span class="material-symbols-outlined">download</span></button>`;
+                const shareBtn = `<button class="dr-btn ghost" data-share="${p.id}" title="Copy a link that opens this problem for anyone"><span class="material-symbols-outlined">share</span></button>`;
                 const right = mine
-                    ? `${dlBtn}
+                    ? `${shareBtn}${dlBtn}
                        <button class="dr-btn ghost" data-edit="${p.id}"><span class="material-symbols-outlined">edit</span>Edit</button>
                        <button class="dr-btn danger" data-del="${p.id}"><span class="material-symbols-outlined">delete</span></button>`
-                    : `${dlBtn}<button class="dr-btn gold" data-practice="${p.id}"><span class="material-symbols-outlined">playing_cards</span>Practise</button>`;
+                    : `${shareBtn}${dlBtn}<button class="dr-btn gold" data-practice="${p.id}"><span class="material-symbols-outlined">playing_cards</span>Practise</button>`;
                 return `<div class="dr-row${p.played ? " played" : ""}"${p.played ? ` title="You finished this problem"` : ""}>
                     <div class="dr-title">${escapeHtml(title)}</div>
                     <div class="dr-actions">${bm}${right}</div>
@@ -3288,7 +3313,7 @@
                 try {
                     const r = await api("POST", `/api/drills/${id}/session`);
                     busy = false;
-                    if (!r.ok) { showToast((r.data && r.data.error) || "Could not start", true); render(); return; }
+                    if (!r.ok) { syncDrillUrl(null); showToast((r.data && r.data.error) || "Could not start", true); render(); return; }
                     view = "session"; showIntro = true;
                     onSessionState(r.data, true);
                 } catch (e) { busy = false; render(); }
@@ -3309,6 +3334,7 @@
                 clearTimeout(paceTimer);
                 clearTimeout(wrongTimer); wrongFlash = false;
                 localStorage.removeItem(SESSION_KEY);
+                syncDrillUrl(null);
                 render();
                 if (id) { try { await api("DELETE", `/api/drill/session/${id}`); } catch (e) { } }
                 loadLibrary();
@@ -4424,6 +4450,9 @@
                 document.querySelectorAll("[data-dl]").forEach((el) => {
                     el.onclick = () => problemDownloadPBN(el.getAttribute("data-dl"));
                 });
+                document.querySelectorAll("[data-share]").forEach((el) => {
+                    el.onclick = () => shareDrillLink(el.getAttribute("data-share"));
+                });
                 document.querySelectorAll("[data-del]").forEach((el) => {
                     el.onclick = () => { modal = { kind: "delete", id: el.getAttribute("data-del") }; render(); };
                 });
@@ -4492,10 +4521,11 @@
                 // session
                 on("drBackBtn", () => leaveSession());
                 on("drRestartBtn", () => restartSession());
+                on("drShareBtn", () => { if (state && state.problemId) shareDrillLink(state.problemId); });
                 on("drCardViewBtn", () => toggleCardViewSetting());
                 on("drAgainBtn", () => restartSession());
                 on("drClaimView", () => { claimSeen = true; render(); });
-                on("drLibBtn", () => { view = "lobby"; state = null; localStorage.removeItem(SESSION_KEY); render(); loadLibrary(); });
+                on("drLibBtn", () => { view = "lobby"; state = null; localStorage.removeItem(SESSION_KEY); syncDrillUrl(null); render(); loadLibrary(); });
                 document.querySelectorAll("[data-rate]").forEach((el) => {
                     el.onclick = () => rateProblem(parseInt(el.dataset.rate));
                 });
@@ -4706,8 +4736,15 @@
             document.addEventListener("authchange", () => {
                 if (window.currentUser) {
                     loadLibrary();
-                    const sid = localStorage.getItem(SESSION_KEY);
-                    if (sid) resumeSession(sid);
+                    if (pendingDrill) {
+                        // a shared link wins over resuming an old session
+                        const id = pendingDrill;
+                        pendingDrill = null;
+                        startSession(id);
+                    } else {
+                        const sid = localStorage.getItem(SESSION_KEY);
+                        if (sid) resumeSession(sid);
+                    }
                 } else {
                     view = "lobby"; state = null; wiz = null; modal = null;
                     archives = null; selArchive = "all"; archScope = "in";

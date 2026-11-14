@@ -65,8 +65,9 @@ type Session struct {
 // dataDir holds all persisted state. It defaults to ./data but can be
 // pointed outside the repo with ATHENEUM_DATA_DIR so that git operations /
 // redeploys never touch user accounts. Bidding systems live in
-// data/sistems/<id>.json and game data (partner tables, solo history) in
-// data/game/; accounts, sessions and push state stay at the data root.
+// data/sistems/<id>.json, game data (partner tables, solo history) in
+// data/game/ and shared analysis snapshots in data/analysis/; accounts,
+// sessions and push state stay at the data root.
 var dataDir = "./data"
 
 func sistemsDir() string { return filepath.Join(dataDir, "sistems") }
@@ -86,6 +87,9 @@ func migrateDataLayout() error {
 		return err
 	}
 	if err := os.MkdirAll(drillArchivesDir(), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(analysisDir(), 0o755); err != nil {
 		return err
 	}
 	entries, err := os.ReadDir(dataDir)
@@ -204,6 +208,8 @@ func main() {
 	http.HandleFunc("GET /api/play/stats", handlePlayStats)
 	http.HandleFunc("GET /api/play/rankings", handleRankings)
 	http.HandleFunc("POST /api/analyze/board", handleAnalyzeBoard)
+	http.HandleFunc("POST /api/analyze/share", handleAnalyzeShareCreate)
+	http.HandleFunc("GET /api/analyze/share/{id}", handleAnalyzeShareGet)
 	http.HandleFunc("GET /api/play/{id}", handlePlayGet)
 	http.HandleFunc("POST /api/play/{id}/call", handlePlayCall)
 	http.HandleFunc("POST /api/play/{id}/card", handlePlayCard)

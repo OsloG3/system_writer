@@ -225,6 +225,12 @@ sabotage the problem. Two tabs:
   it again while browsing the archive. Members are added/removed with
   `POST /api/drill-archives/{id}/drills` (`{drillId, action: add|remove}`);
   deleting a problem sweeps it from every archive.
+- **Share links** — every problem has its own URL, `/drills/<id>` (a **Share**
+  button on each library row and in the practice top bar copies it). Opening one
+  drops the recipient straight into that problem's practice intro; logged-out
+  visitors see the login card first and land in the drill right after signing
+  in. The address bar follows the drill on screen, so the URL can be copied at
+  any point of a run and resets to `/drills` on leaving.
 
 Practice runs are in-memory sessions (`DrillSession`, 6 h TTL, one per user, the
 problem snapshotted at the start so an edit cannot desync a run in flight); the
@@ -291,6 +297,20 @@ that deep-links to `/analyze?ts=<timestamp>` and opens that board directly. Like
 the rest of the bot-backed features, analysis requires the bidding-dt sidecar to
 be running (see below). A hand that passes out is rejected — there is no play to
 analyze.
+
+**Sharing** — a single-hand or bulk analysis can be shared as a link. Because an
+analysis lives only in the browser, **Share** (top bar of both the single-hand
+and the bulk view, login required) stores a snapshot — the boards plus their
+double-dummy results — server-side via `POST /api/analyze/share`
+(`data/analysis/<id>.json`; boards are validated and their display strings
+capped, client-only fields like history timestamps stay out) and copies
+`/analyze?share=<id>` to the clipboard. Opening that link is **public** (no
+login, like a shared system tree — the random ID is the capability and shared
+links are never listed): the page rebuilds the exact view, recomputing the bulk
+aggregate from the stored results, so the recipient needs no sidecar and no
+history of their own. The address bar adopts the share URL (re-sharing then just
+copies it) and drops the parameter as soon as you navigate to different content,
+so a Share button never links to something other than what is on screen.
 
 ## Rankings
 

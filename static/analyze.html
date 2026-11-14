@@ -306,6 +306,7 @@
             let bulk = null;           // {done,total,results,errors,agg}
             let showLog = true;        // the full play log stays open across steps
             let showPaste = false;     // the paste-PBN box is open
+            let shareBusy = false;     // a share-link POST is in flight
 
             // ---- small helpers ----
             function $(id) { return document.getElementById(id); }
@@ -662,7 +663,7 @@
             }
             async function pickHistory() {
                 if (!window.currentUser) { showAuthDialog("login"); return; }
-                sourceError = null; busy = true; view = "list"; boards = []; boardResults = {}; sourceKind = "history"; render();
+                sourceError = null; busy = true; view = "list"; boards = []; boardResults = {}; sourceKind = "history"; clearShareUrl(); render();
                 try {
                     boards = await loadHistoryBoards();
                     if (!boards.length) sourceError = "No played-out hands in your history yet. Play a few hands in \u201cPlay bridge\u201d first.";
@@ -678,7 +679,7 @@
                     view = "source"; sourceError = "Log in to open that hand from your history.";
                     render(); showAuthDialog("login"); return;
                 }
-                sourceError = null; busy = true; view = "list"; boards = []; boardResults = {}; sourceKind = "history"; render();
+                sourceError = null; busy = true; view = "list"; boards = []; boardResults = {}; sourceKind = "history"; clearShareUrl(); render();
                 try {
                     boards = await loadHistoryBoards();
                     const idx = boards.findIndex((b) => b.ts === ts);
@@ -701,6 +702,7 @@
             }
             function loadPBNText(text) {
                 sourceError = null;
+                clearShareUrl();
                 const chunks = splitPBNBoards(text);
                 const parsed = []; const errors = [];
                 for (const ch of chunks) {
@@ -724,10 +726,10 @@
             }
 
             // ---- navigation ----
-            function goSource() { view = "source"; sourceError = null; showPaste = false; render(); }
-            function goList() { view = "list"; render(); }
+            function goSource() { view = "source"; sourceError = null; showPaste = false; clearShareUrl(); render(); }
+            function goList() { view = "list"; clearShareUrl(); render(); }
             async function openBoard(i) {
-                curIdx = i; step = 0; view = "single"; busy = true; render();
+                curIdx = i; step = 0; view = "single"; busy = true; clearShareUrl(); render();
                 if (!boardResults[i]) { await ensureAnalysis(i); }
                 busy = false; render();
             }
@@ -867,6 +869,133 @@
                 return s;
             }
 
+            // ---- sharing ----
+            // A share snapshot stores the boards plus their double-dummy results
+            // on the server (POST /api/analyze/share), so the recipient -- logged
+            // in or not -- sees exactly this analysis at /analyze?share=<id>.
+            // Creating a snapshot needs login; the address bar then adopts the
+            // share URL, so the page stays reloadable and can be shared on.
+            function shareableBoard(b) {
+                return {
+                    title: b.title || "",
+                    hands: b.hands, dealer: b.dealer, vuln: b.vuln,
+                    calls: b.calls || [],
+                    plays: (b.plays || []).map((p) => ({ seat: p.seat, card: p.card })),
+                    resultTricks: b.resultTricks != null ? b.resultTricks : null,
+                    names: b.names || ["", "", "", ""],
+                    idxLabel: b.idxLabel != null ? b.idxLabel : null,
+                    contractStr: b.contractStr || "",
+                };
+            }
+            async function copyShareUrl(url) {
+                const ok = await copyToClipboard(url);
+                if (ok) showToast("Analysis link copied \u2014 anyone can open it");
+                else showToast("Could not copy \u2014 the link is " + url, true);
+            }
+            // Drop a stale ?share= from the address bar whenever the analysis on
+            // screen stops being that snapshot (new source, drilling into one
+            // board of a shared bulk set, ...), so Share never copies a link to
+            // something else than what is shown.
+            function clearShareUrl() {
+                try {
+                    const u = new URL(window.location);
+                    if (!u.searchParams.has("share")) return;
+                    u.searchParams.delete("share");
+                    history.replaceState({}, "", u.pathname + u.search);
+                } catch (e) { /* ignore */ }
+            }
+            async function shareAnalysis() {
+                if (shareBusy) return;
+                if (!window.currentUser) { showAuthDialog("login"); return; }
+                // Sitting on a share URL means the screen IS that snapshot:
+                // copy the link instead of storing a second one.
+                const existing = new URLSearchParams(window.location.search).get("share");
+                if (existing) {
+                    await copyShareUrl(window.location.origin + "/analyze?share=" + existing);
+                    return;
+                }
+                let payload = null;
+                if (view === "single") {
+                    const a = boardResults[curIdx];
+                    if (boards[curIdx] && a && !a.error)
+                        payload = { kind: "single", boards: [shareableBoard(boards[curIdx])], results: [a] };
+                } else if (view === "bulk" && bulk && bulk.agg) {
+                    payload = {
+                        kind: "bulk",
+                        boards: boards.map(shareableBoard),
+                        results: boards.map((b, i) => {
+                            const a = boardResults[i];
+                            return a && !a.error ? a : null;
+                        }),
+                    };
+                }
+                if (!payload) { showToast("Nothing to share yet", true); return; }
+                shareBusy = true; render();
+                try {
+                    const res = await fetch("/api/analyze/share", {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                    });
+                    const data = await res.json().catch(() => null);
+                    if (res.status === 401) { showAuthDialog("login"); return; }
+                    if (!res.ok || !data || !data.id) {
+                        showToast((data && data.error) || "Could not create the share link", true);
+                        return;
+                    }
+                    history.replaceState({}, "", "/analyze?share=" + data.id);
+                    await copyShareUrl(window.location.origin + "/analyze?share=" + data.id);
+                } catch (e) {
+                    showToast("Could not create the share link", true);
+                } finally {
+                    shareBusy = false; render();
+                }
+            }
+            // Open a shared snapshot: rebuild boards + results, then land in the
+            // single-hand view (kind "single") or the finished bulk view with the
+            // aggregate recomputed from the stored results (kind "bulk").
+            async function openSharedAnalysis(id) {
+                busy = true; view = "list"; boards = []; boardResults = {}; bulk = null; render();
+                try {
+                    const res = await fetch("/api/analyze/share/" + encodeURIComponent(id));
+                    const data = await res.json().catch(() => null);
+                    busy = false;
+                    if (!res.ok || !data || !Array.isArray(data.boards) || !data.boards.length) {
+                        view = "source"; sourceError = "That shared analysis could not be found.";
+                        clearShareUrl(); render(); return;
+                    }
+                    boards = data.boards.map((b, k) => ({
+                        title: b.title || ("Board " + (b.idxLabel || k + 1)),
+                        hands: b.hands, dealer: b.dealer, vuln: b.vuln,
+                        calls: b.calls || [], plays: b.plays || [],
+                        resultTricks: b.resultTricks != null ? b.resultTricks : null,
+                        names: b.names || ["", "", "", ""],
+                        idxLabel: b.idxLabel != null ? b.idxLabel : k + 1,
+                        contractStr: b.contractStr || "",
+                    }));
+                    boardResults = {};
+                    (Array.isArray(data.results) ? data.results : []).forEach((a, i) => {
+                        if (a && !a.error) boardResults[i] = a;
+                    });
+                    sourceKind = "shared";
+                    if (data.kind === "bulk") {
+                        const done = [];
+                        boards.forEach((b, i) => { if (boardResults[i]) done.push({ i, board: b, analysis: boardResults[i] }); });
+                        bulk = { done: boards.length, total: boards.length, results: done, errors: [], agg: aggregate(done) };
+                        view = "bulk";
+                    } else if (boardResults[0]) {
+                        curIdx = 0; step = 0; view = "single";
+                    } else {
+                        view = "source"; sourceError = "That shared analysis carries no result.";
+                        clearShareUrl();
+                    }
+                    render();
+                } catch (e) {
+                    busy = false; view = "source";
+                    sourceError = "Could not load the shared analysis.";
+                    clearShareUrl(); render();
+                }
+            }
+
             // ================= RENDER =================
             function render() {
                 const mc = $("main-content");
@@ -929,7 +1058,7 @@
                 return `<div class="an-wrap">
                     <div class="an-topbar">
                         <button class="an-btn sm" id="backSrc"><span class="material-symbols-outlined">arrow_back</span>Back</button>
-                        <span class="an-title" style="font-size:1rem">${sourceKind === "history" ? "Your played hands" : "PBN boards"} <span class="an-muted">(${boards.length})</span></span>
+                        <span class="an-title" style="font-size:1rem">${sourceKind === "history" ? "Your played hands" : sourceKind === "shared" ? "Shared analysis" : "PBN boards"} <span class="an-muted">(${boards.length})</span></span>
                         <span class="spacer"></span>
                         ${boards.length > 1 ? `<button class="an-btn gold sm" id="bulkGo"><span class="material-symbols-outlined">bar_chart</span>Analyze all (${boards.length})</button>` : ""}
                     </div>
@@ -945,9 +1074,11 @@
             function singleView() {
                 const board = boards[curIdx];
                 const a = boardResults[curIdx];
+                const canShare = !busy && a && !a.error;
                 const top = `<div class="an-topbar">
                     <button class="an-btn sm" id="backList"><span class="material-symbols-outlined">arrow_back</span>${boards.length > 1 ? "Boards" : "Back"}</button>
                     <span class="spacer"></span>
+                    ${canShare ? `<button class="an-btn sm" id="shareBtn" ${shareBusy ? "disabled" : ""} title="Copy a link that opens this exact analysis for anyone"><span class="material-symbols-outlined">share</span>${shareBusy ? "Sharing\u2026" : "Share"}</button>` : ""}
                     <button class="an-btn sm" id="prevBoard" ${curIdx === 0 ? "disabled" : ""}><span class="material-symbols-outlined">chevron_left</span></button>
                     <span class="an-count" style="min-width:auto">${curIdx + 1} / ${boards.length}</span>
                     <button class="an-btn sm" id="nextBoard" ${curIdx >= boards.length - 1 ? "disabled" : ""}><span class="material-symbols-outlined">chevron_right</span></button>
@@ -1233,9 +1364,12 @@
 
             // ---- bulk view ----
             function bulkView() {
+                const canShare = !busy && bulk && bulk.agg;
                 const top = `<div class="an-topbar">
                     <button class="an-btn sm" id="backList"><span class="material-symbols-outlined">arrow_back</span>Boards</button>
                     <span class="an-title" style="font-size:1rem">Bulk analysis</span>
+                    <span class="spacer"></span>
+                    ${canShare ? `<button class="an-btn sm" id="shareBtn" ${shareBusy ? "disabled" : ""} title="Copy a link that opens this exact bulk analysis for anyone"><span class="material-symbols-outlined">share</span>${shareBusy ? "Sharing\u2026" : "Share"}</button>` : ""}
                 </div>`;
                 if (!bulk) return `<div class="an-wrap">${top}</div>`;
                 const prog = `<div class="an-card">
@@ -1377,6 +1511,7 @@
                 on("pasteGo", "click", () => { const t = $("pasteBox"); if (t && t.value.trim()) loadPBNText(t.value); else showToast("Paste some PBN text first", true); });
                 on("backSrc", "click", goSource);
                 on("backList", "click", () => { if (boards.length > 1) goList(); else goSource(); });
+                on("shareBtn", "click", shareAnalysis);
                 on("bulkGo", "click", runBulk);
                 on("prevBoard", "click", prevBoard);
                 on("nextBoard", "click", nextBoard);
@@ -1409,12 +1544,19 @@
                 render();
             });
             render();
-            // A "?ts=<timestamp>" deep link (the Play-bridge history "Analyze"
-            // button) opens that hand from your history once auth is known.
+            // Deep links, opened once auth is known: "?share=<id>" loads a
+            // shared analysis snapshot (viewable logged out) and "?ts=<timestamp>"
+            // (the Play-bridge history "Analyze" button) opens that hand from
+            // your own history.
             refreshAuthState().then(() => {
-                let ts = null;
-                try { ts = new URLSearchParams(window.location.search).get("ts"); } catch (e) {}
-                if (ts) openHistoryByTs(ts);
+                let share = null, ts = null;
+                try {
+                    const params = new URLSearchParams(window.location.search);
+                    share = params.get("share");
+                    ts = params.get("ts");
+                } catch (e) {}
+                if (share) openSharedAnalysis(share);
+                else if (ts) openHistoryByTs(ts);
             });
         </script>
     </body>
