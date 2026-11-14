@@ -147,7 +147,7 @@ penalty_pull_max_len = 1
 1X-1Y-1Z-2C-!2D = broke the XYZ relay: p>15.5 @! @2.5
 1X-1Y-1Z-2C-2D-P = diamond signoff -- p<9.5 @! @2.5
 
-1X-1Y-1NT<-2C = XYZ relay: p10.0-12.5 any invite OR p<10.0 4+D weak diamond signoff @!
+1X-1Y-1NT-2C = XYZ relay: p10.0-12.5 any invite OR p<10.0 4+D weak diamond signoff @!
 1X-1Y-1NT-2D = XYZ: p>11.5 artificial GF @!
 1X-1Y-1NT-2C-2D = completes the XYZ relay: p<16.0 @! @2.5
 1X-1Y-1NT-2C-!2D = broke the XYZ relay: p>15.5 @! @2.5
@@ -247,14 +247,14 @@ penalty_pull_max_len = 1
 
 # ---- overcalls -------------------------------------------------------------------------------------
 
-(1X)...-1Z; !we_bid, !balancing, notopening, jump=0 = overcall: 5+Z p>7 OR 4+Z p>13
-(1X)...-2Z; !we_bid, !balancing, notopening, jump=0 = overcall: 5+Z p>10
-(1X)...-?Z; !we_bid, !balancing, notopening, jump=0, !passed, level>=3 = overcall: 6+Z p>12.5
-(1X)...-1Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 5+Z p>6.5 OR 4+Z p>10
-(1X)...-2Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 5+Z p>8
-(1X)...-?Z; !we_bid, balancing, notopening, jump=0, level>=3 = balancing overcall: 5+Z p>8
-(1X)...-1N; !we_bid, !balancing, notopening, !passed = 1NT overcall: p14.5-18.5 stop @0.5
-(1X)...-1N; !we_bid, balancing, notopening, !passed = balancing 1NT: p11.5-15.5 @0.5
+(1X)-...-1Z; !we_bid, !balancing, notopening, jump=0 = overcall: 5+Z p>7 OR 4+Z p>13
+(1X)-...-2Z; !we_bid, !balancing, notopening, jump=0 = overcall: 5+Z p>10
+(1X)-...-?Z; !we_bid, !balancing, notopening, jump=0, !passed, level>=3 = overcall: 6+Z p>12.5
+(1X)-...-1Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 5+Z p>6.5 OR 4+Z p>10
+(1X)-...-2Z; !we_bid, balancing, notopening, jump=0 = balancing overcall: 5+Z p>8
+(1X)-...-?Z; !we_bid, balancing, notopening, jump=0, level>=3 = balancing overcall: 5+Z p>8
+(1X)-...-1N; !we_bid, !balancing, notopening, !passed = 1NT overcall: p14.5-18.5 stop @0.5
+(1X)-...-1N; !we_bid, balancing, notopening, !passed = balancing 1NT: p11.5-15.5 @0.5
 
 # ---- doubles: penalty once a redouble by us, two prior doubles by us, a game force,
 # ---- or their 4S+ bid says the auction belongs to us -- otherwise takeout. TO/PENALTY
