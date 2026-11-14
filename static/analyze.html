@@ -367,6 +367,11 @@
             function tip(label, text) {
                 return `<span class="an-hastip" title="${escapeHtml(text)}">${label}</span>`;
             }
+            // A role-bucket cell: "total mistakes / contract-critical mistakes".
+            function mcCell(m, c) {
+                if (!m && !c) return "\u00b7";
+                return `${m} <span style="opacity:.5">/</span> <span style="color:${c ? "#ffd7d1" : "#908f8d"}">${c}</span>`;
+            }
             function resultText(c, tricks) {
                 if (!c || tricks == null) return "";
                 const pen = ["", "X", "XX"][c.penalty] || "";
@@ -770,8 +775,8 @@
                     const key = pidOf(board, seat);
                     let p = players.get(key);
                     if (!p) { p = { key, name: pnameOf(board, seat), named: !!seatName(board, seat),
-                        cards: 0, mistakes: 0, decl: 0, lead: 0, def: 0, tricksLost: 0,
-                        critical: 0, declImps: 0, declBoards: 0 }; players.set(key, p); }
+                        cards: 0, mistakes: 0, decl: 0, lead: 0, def: 0, declCrit: 0, leadCrit: 0, defCrit: 0,
+                        tricksLost: 0, critical: 0, declImps: 0, declBoards: 0 }; players.set(key, p); }
                     return p;
                 };
                 const pair = (board, s1, s2) => {
@@ -813,11 +818,12 @@
                         // declarer plays both hands: credit every dummy card (and
                         // its mistakes) to the declarer
                         const pl = player(board, p.seat === dummy ? decl : p.seat); pl.cards++;
+                        const role = roleOfPlay(i, p.seat, decl);
                         if (p.mistake) {
-                            pl.mistakes++; pl.tricksLost += p.cost; pl[roleOfPlay(i, p.seat, decl)]++;
+                            pl.mistakes++; pl.tricksLost += p.cost; pl[role]++;
                             totalMistakes++; totalTricksLost += p.cost;
                         }
-                        if (p.critical) { pl.critical++; totalCritical++; }
+                        if (p.critical) { pl.critical++; pl[role + "Crit"]++; totalCritical++; }
                     });
                 }
                 const n = results.length || 1;
@@ -836,13 +842,14 @@
             // ---- per-seat summary for one analysis (with the role split) ----
             function seatSummary(a) {
                 const decl = a.contract.declarer, dummy = (decl + 2) % 4;
-                const s = [0, 1, 2, 3].map((seat) => ({ seat, cards: 0, mistakes: 0, decl: 0, lead: 0, def: 0, tricksLost: 0, critical: 0 }));
+                const s = [0, 1, 2, 3].map((seat) => ({ seat, cards: 0, mistakes: 0, decl: 0, lead: 0, def: 0, declCrit: 0, leadCrit: 0, defCrit: 0, tricksLost: 0, critical: 0 }));
                 a.plays.forEach((p, i) => {
                     // declarer plays both hands: credit every dummy card (and its
                     // mistakes) to the declarer, so the dummy seat stays empty
                     const o = s[p.seat === dummy ? decl : p.seat]; o.cards++;
-                    if (p.mistake) { o.mistakes++; o.tricksLost += p.cost; o[roleOfPlay(i, p.seat, decl)]++; }
-                    if (p.critical) o.critical++;
+                    const role = roleOfPlay(i, p.seat, decl);
+                    if (p.mistake) { o.mistakes++; o.tricksLost += p.cost; o[role]++; }
+                    if (p.critical) { o.critical++; o[role + "Crit"]++; }
                 });
                 return s;
             }
@@ -1157,9 +1164,9 @@
                     <td><span class="seat-badge">${SEAT_LETTER[s.seat]}</span> <span style="margin-left:.4rem">${escapeHtml(nameFor(names, s.seat))}</span>${tag(s)}</td>
                     <td class="n">${s.cards}</td>
                     <td class="n" style="color:${s.mistakes ? "#f6d9a8" : "#8fd694"}">${s.mistakes}</td>
-                    <td class="n">${s.decl || "\u00b7"}</td>
-                    <td class="n">${s.lead || "\u00b7"}</td>
-                    <td class="n">${s.def || "\u00b7"}</td>
+                    <td class="n">${mcCell(s.decl, s.declCrit)}</td>
+                    <td class="n">${mcCell(s.lead, s.leadCrit)}</td>
+                    <td class="n">${mcCell(s.def, s.defCrit)}</td>
                     <td class="n">${s.tricksLost}</td>
                     <td class="n" style="color:${s.critical ? "#ffd7d1" : "#bababa"}">${s.critical}</td>
                 </tr>`).join("");
@@ -1170,15 +1177,15 @@
                             <th>Player</th>
                             <th class="n">${tip("Cards", "Cards this seat played.")}</th>
                             <th class="n">${tip("Mistakes", "Cards that gave up at least one trick versus double-dummy best play.")}</th>
-                            <th class="n">${tip("Decl", "Mistakes while on the declaring side (playing declarer's or dummy's cards).")}</th>
-                            <th class="n">${tip("Lead", "Mistakes on a defensive lead \u2014 the first card of a trick.")}</th>
-                            <th class="n">${tip("Def", "Defensive mistakes when following suit or discarding (not leading).")}</th>
+                            <th class="n">${tip("Decl", "While on the declaring side (declarer's or dummy's cards): mistakes / contract-critical mistakes.")}</th>
+                            <th class="n">${tip("Lead", "On a defensive lead (first card of a trick): mistakes / contract-critical mistakes.")}</th>
+                            <th class="n">${tip("Def", "Defending when following suit or discarding (not leading): mistakes / contract-critical mistakes.")}</th>
                             <th class="n">${tip("Tricks lost", "Total tricks given up versus DD \u2014 the over/under against perfect play.")}</th>
                             <th class="n">${tip("Critical", "Mistakes that flipped the contract between make and defeat.")}</th>
                         </tr></thead>
                         <tbody>${rows}</tbody>
                     </table></div>
-                    <p class="an-note" style="margin-top:.5rem">D = declarer, Dm = dummy. The declarer plays both hands, so every dummy card and its mistakes are credited to the declarer (the dummy row stays empty). Decl + Lead + Def = Mistakes; contract-critical means the error flipped make \u2194 defeat (target ${target} tricks).</p>
+                    <p class="an-note" style="margin-top:.5rem">D = declarer, Dm = dummy. The declarer plays both hands, so every dummy card and its mistakes are credited to the declarer (the dummy row stays empty). The Decl / Lead / Def cells read <b>mistakes / contract-critical</b>; those three mistake counts sum to the Mistakes column, and a contract-critical error flipped make \u2194 defeat (target ${target} tricks).</p>
                 </div>`;
             }
 
@@ -1236,9 +1243,9 @@
                     <td class="n">${p.cards}</td>
                     <td class="n" style="color:${p.mistakes ? "#f6d9a8" : "#8fd694"}">${p.mistakes}</td>
                     <td class="n">${(p.mistakes / (ag.boards || 1)).toFixed(2)}</td>
-                    <td class="n">${p.decl || "\u00b7"}</td>
-                    <td class="n">${p.lead || "\u00b7"}</td>
-                    <td class="n">${p.def || "\u00b7"}</td>
+                    <td class="n">${mcCell(p.decl, p.declCrit)}</td>
+                    <td class="n">${mcCell(p.lead, p.leadCrit)}</td>
+                    <td class="n">${mcCell(p.def, p.defCrit)}</td>
                     <td class="n">${p.tricksLost}</td>
                     <td class="n" style="color:${p.critical ? "#ffd7d1" : "#bababa"}">${p.critical}</td>
                     <td class="n" style="color:${impColor(p.declImps)}">${p.declBoards ? signed(p.declImps) : "\u2013"}</td>
@@ -1299,9 +1306,9 @@
                                 <th class="n">${tip("Cards", "Cards this player played across all boards.")}</th>
                                 <th class="n">${tip("Mistakes", "Cards that gave up at least one trick versus DD.")}</th>
                                 <th class="n">${tip("/ board", "Mistakes per board.")}</th>
-                                <th class="n">${tip("Decl", "Mistakes while on the declaring side.")}</th>
-                                <th class="n">${tip("Lead", "Mistakes on a defensive lead.")}</th>
-                                <th class="n">${tip("Def", "Defensive mistakes when following or discarding.")}</th>
+                                <th class="n">${tip("Decl", "On the declaring side: mistakes / contract-critical mistakes.")}</th>
+                                <th class="n">${tip("Lead", "On a defensive lead: mistakes / contract-critical mistakes.")}</th>
+                                <th class="n">${tip("Def", "Defending when following or discarding: mistakes / contract-critical mistakes.")}</th>
                                 <th class="n">${tip("Tricks lost", "Total tricks given up versus DD.")}</th>
                                 <th class="n">${tip("Critical", "Mistakes that flipped make \u2194 defeat.")}</th>
                                 <th class="n">${tip("Decl IMPs", "IMPs this player's declaring gained (+) or lost (\u2212) versus a double-dummy play of the same contracts, summed over the boards they declared.")}</th>
