@@ -775,14 +775,16 @@
                     const key = pidOf(board, seat);
                     let p = players.get(key);
                     if (!p) { p = { key, name: pnameOf(board, seat), named: !!seatName(board, seat),
-                        cards: 0, mistakes: 0, decl: 0, lead: 0, def: 0, declCrit: 0, leadCrit: 0, defCrit: 0,
+                        boards: 0, cards: 0, mistakes: 0, decl: 0, lead: 0, def: 0,
+                        declCrit: 0, leadCrit: 0, defCrit: 0,
+                        declCards: 0, leadCards: 0, defCards: 0,
                         tricksLost: 0, critical: 0, declImps: 0, declBoards: 0 }; players.set(key, p); }
                     return p;
                 };
                 const pair = (board, s1, s2) => {
                     const key = pairKeyOf(board, s1, s2);
                     let pr = pairs.get(key);
-                    if (!pr) { pr = { key, name: pairNameOf(board, s1, s2), declared: 0, made: 0,
+                    if (!pr) { pr = { key, name: pairNameOf(board, s1, s2), boards: 0, declared: 0, made: 0,
                         missedGame: 0, missedSlam: 0, defImps: 0, defBoards: 0 }; pairs.set(key, pr); }
                     return pr;
                 };
@@ -795,6 +797,10 @@
                     const declPos = (decl % 2 === 0) ? "ns" : "ew";
                     const defPos = declPos === "ns" ? "ew" : "ns";
                     const declPair = pair(board, decl, dummy), defPair = pair(board, d1, d2);
+                    // count the board for each partnership and each seated player,
+                    // used to order the tables by how much each one played
+                    declPair.boards++; defPair.boards++;
+                    for (let s = 0; s < 4; s++) player(board, s).boards++;
                     levelSum += c.level; levelCount++;
                     if (actual != null) {
                         const made = actual >= target;
@@ -819,6 +825,7 @@
                         // its mistakes) to the declarer
                         const pl = player(board, p.seat === dummy ? decl : p.seat); pl.cards++;
                         const role = roleOfPlay(i, p.seat, decl);
+                        pl[role + "Cards"]++;   // cards played in each role, for the per-card rates
                         if (p.mistake) {
                             pl.mistakes++; pl.tricksLost += p.cost; pl[role]++;
                             totalMistakes++; totalTricksLost += p.cost;
@@ -827,8 +834,11 @@
                     });
                 }
                 const n = results.length || 1;
-                const playersArr = [...players.values()].sort((x, y) => x.name.localeCompare(y.name));
-                const pairsArr = [...pairs.values()].sort((x, y) => (y.declared + y.defBoards) - (x.declared + x.defBoards));
+                // order both tables by how many boards each player / partnership
+                // actually played (most active first), name as the tie-break
+                const byBoards = (x, y) => (y.boards - x.boards) || x.name.localeCompare(y.name);
+                const playersArr = [...players.values()].sort(byBoards);
+                const pairsArr = [...pairs.values()].sort(byBoards);
                 return {
                     boards: results.length, players: playersArr, pairs: pairsArr,
                     unmakeableMade, levelSum, levelCount, ddDiffSum, ddDiffCount,
@@ -1238,26 +1248,32 @@
 
                 const ag = bulk.agg;
                 const impColor = (v) => v > 0 ? "#8fd694" : v < 0 ? "#f1948a" : "#bababa";
-                const playerRows = ag.players.map((p) => `<tr>
+                const rate = (m, c) => c ? (m / c).toFixed(2) : "\u2013";
+                const playerRows = ag.players.map((p) => {
+                    const defCards = p.leadCards + p.defCards, defMk = p.lead + p.def;
+                    return `<tr>
                     <td><span style="font-weight:700;color:#e8e6e3">${escapeHtml(p.name)}</span></td>
+                    <td class="n">${p.boards}</td>
                     <td class="n">${p.cards}</td>
                     <td class="n" style="color:${p.mistakes ? "#f6d9a8" : "#8fd694"}">${p.mistakes}</td>
-                    <td class="n">${(p.mistakes / (ag.boards || 1)).toFixed(2)}</td>
+                    <td class="n">${rate(p.decl, p.declCards)}</td>
+                    <td class="n">${rate(defMk, defCards)}</td>
                     <td class="n">${mcCell(p.decl, p.declCrit)}</td>
                     <td class="n">${mcCell(p.lead, p.leadCrit)}</td>
                     <td class="n">${mcCell(p.def, p.defCrit)}</td>
                     <td class="n">${p.tricksLost}</td>
                     <td class="n" style="color:${p.critical ? "#ffd7d1" : "#bababa"}">${p.critical}</td>
                     <td class="n" style="color:${impColor(p.declImps)}">${p.declBoards ? signed(p.declImps) : "\u2013"}</td>
-                </tr>`).join("");
+                </tr>`;}).join("");
 
                 const pairRows = ag.pairs.map((pr) => `<tr>
                     <td><span style="font-weight:700;color:#e8e6e3">${pr.name}</span></td>
+                    <td class="n">${pr.boards}</td>
                     <td class="n">${pr.declared}</td>
                     <td class="n">${pct(pr.made, pr.declared)}</td>
                     <td class="n" style="color:${pr.missedGame ? "#f6d9a8" : "#bababa"}">${pr.missedGame}</td>
                     <td class="n" style="color:${pr.missedSlam ? "#f6d9a8" : "#bababa"}">${pr.missedSlam}</td>
-                    <td class="n" style="color:${impColor(pr.defImps)}">${pr.defBoards ? signed(pr.defImps) : "\u2013"}</td>
+                    <td class="n" style="color:${impColor(pr.defImps)}">${pr.defBoards ? signed(pr.defImps / pr.defBoards, 2) : "\u2013"}</td>
                 </tr>`).join("");
 
                 const boardRows = bulk.results.map(({ i, board, analysis: a }) => {
@@ -1302,10 +1318,12 @@
                         <div class="an-h">By player \u2014 DD mistakes &amp; declaring IMPs</div>
                         <div class="an-tablewrap"><table class="an-table">
                             <thead><tr>
-                                <th>${tip("Player", "Grouped by name, so a player's stats follow them even when the set rotates seats. Unnamed seats fall back to N/E/S/W. The declarer plays both hands, so dummy cards and their mistakes are credited to that board's declarer.")}</th>
-                                <th class="n">${tip("Cards", "Cards this player played across all boards.")}</th>
+                                <th>${tip("Player", "Grouped by name, so a player's stats follow them even when the set rotates seats. Unnamed seats fall back to N/E/S/W. The declarer plays both hands, so dummy cards and their mistakes are credited to that board's declarer. Rows are ordered by boards played.")}</th>
+                                <th class="n">${tip("Boards", "Boards this player sat in \u2014 the table is ordered by this, most active first.")}</th>
+                                <th class="n">${tip("Cards", "Cards credited to this player across all boards (a dummy's cards count for the declarer).")}</th>
                                 <th class="n">${tip("Mistakes", "Cards that gave up at least one trick versus DD.")}</th>
-                                <th class="n">${tip("/ board", "Mistakes per board.")}</th>
+                                <th class="n">${tip("Decl /card", "Declarer-side mistakes per card played as declarer (who plays both hands): decl mistakes \u00f7 declarer-side cards.")}</th>
+                                <th class="n">${tip("Def /card", "Defensive mistakes per card played as a defender: (lead + follow mistakes) \u00f7 cards played defending.")}</th>
                                 <th class="n">${tip("Decl", "On the declaring side: mistakes / contract-critical mistakes.")}</th>
                                 <th class="n">${tip("Lead", "On a defensive lead: mistakes / contract-critical mistakes.")}</th>
                                 <th class="n">${tip("Def", "Defending when following or discarding: mistakes / contract-critical mistakes.")}</th>
@@ -1320,12 +1338,13 @@
                         <div class="an-h">By pair \u2014 contracts, missed games/slabs &amp; defence IMPs</div>
                         <div class="an-tablewrap"><table class="an-table">
                             <thead><tr>
-                                <th>${tip("Pair", "The two partners, by name (or N-S / E-W when unnamed).")}</th>
+                                <th>${tip("Pair", "The two partners, by name (or N-S / E-W when unnamed). Rows are ordered by boards played together.")}</th>
+                                <th class="n">${tip("Boards", "Boards this partnership played together (as the declaring or the defending side) \u2014 the table is ordered by this.")}</th>
                                 <th class="n">${tip("Declared", "Boards where this pair were the declaring side.")}</th>
                                 <th class="n">${tip("Made %", "Share of their declared contracts that were made.")}</th>
                                 <th class="n">${tip("Missed games", "Boards where DD says this pair could make a game but the final contract was not theirs at game level.")}</th>
                                 <th class="n">${tip("Missed slams", "Boards where DD says this pair could make a slam but they did not bid to the six level.")}</th>
-                                <th class="n">${tip("Defence IMPs", "IMPs this pair's defence gained (+) or lost (\u2212) versus double-dummy, summed over the boards they defended.")}</th>
+                                <th class="n">${tip("Def IMPs /board", "Average defence IMPs per board defended: the pair's total defence IMPs versus double-dummy divided by the boards they defended (+ held declarer below DD, \u2212 let declarer beat DD).")}</th>
                             </tr></thead>
                             <tbody>${pairRows}</tbody>
                         </table></div>
