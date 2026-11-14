@@ -130,7 +130,7 @@ penalty_pull_max_len = 1
 1X; X>=H = 5+X openp
 1D = 3+D noLong5M openp
 1C = 3+C noLong5M openp
-2X = 5-7X p4-11.0 weak two @! @0.1
+2X = 5-7X p4-11.0 weak two @0.1
 ?X = weak preempt @0
 
 # ---- strong 2C responses -----------------------------------------------------
@@ -173,16 +173,16 @@ penalty_pull_max_len = 1
 
 # ---- 2/1 game force --------------------------------------------------------------
 
-1X-2C; X!=C, bids_by_them=0 = 2/1: 2+C p>11.5 GF
-1X-2D; X>=H = 5+D p>11.5 GF
-1X-(?Y)-2Z; Z<Y, first = 2/1 GF: 5+Z p>11.5 GF
-1X-(?Y)-3Z; Z<Y, first = 5+Z p>11.5 GF
+1X-2C; X!=C, !passed, bids_by_them=0 = 2/1: 2+C p>11.5 GF
+1X-2D; X>=H, !passed = 5+D p>11.5 GF
+1X-(?Y)-2Z; Z<Y, first, !passed = 2/1 GF: 5+Z p>11.5 GF
+1X-(?Y)-3Z; Z<Y, first, !passed = 5+Z p>11.5 GF
 
-1X-(?Y)-2Z; Z>Y, first = IJS: 6+Z p>10-12.5
-1X-(?Y)-3Z; Z>Y, first = IJS: 6+Z p10-12.5
+1X-(?Y)-2Z; Z>Y = IJS: 6+Z p10-12.5
+1X-(?Y)-3Z; Z>Y = IJS: 6+Z p10-12.5
 
-1X-2Y; Y>X, first = IJS: 6+Z p>10-12.5
-1X-3Y; Y>X, first = IJS: 6+Z p10-12.5
+1X-2Y; Y>X = IJS: 6+Y p10-12.5
+1X-3Y; Y>X = IJS: 6+Y p10-12.5
 
 1X-P = no hope of game p<6 @2.0
 
@@ -193,8 +193,8 @@ penalty_pull_max_len = 1
 (1C)-2NT = unusual 2NT: 5+D 5+H @! @2.0
 
 (1X)-2X; X<H = Micheal's cuebid: 5+H 5+S @! @2.0
-(1H)-2NT = Micheal's cuebid: 5+S 5+C OR 5+S 5+D @! @2.0
-(1S)-2NT = Micheal's cuebid: 5+H 5+C OR 5+H 5+D @! @2.0
+(1H)-2H = Micheal's cuebid: 5+S 5+C OR 5+S 5+D @! @2.0
+(1S)-2S = Micheal's cuebid: 5+H 5+C OR 5+H 5+D @! @2.0
 
 # ---- fourth suit -------------------------------------------------------------------
 
@@ -202,12 +202,12 @@ penalty_pull_max_len = 1
 
 # ---- reverse (opener's higher-ranking second suit at the 2 level) --------------------
 
-1X-1Y-2Z; X<Z = reverse: 5+X 4+Z p>16 F @2.0
+1X-1Y-2Z; Z>X, Z<Y = reverse: 5+X 4+Z p>16 F @2.0
 
 # ---- jump shifts ----------------------------------------------------------------------
 
-1X-1X-2Z; opener, Z>Y, newsuit, nostrong2c = GF jump shift: p>17.5 4+Z GF @1
-1X-1Y-3Z; opener, Z<Y, newsuit, nostrong2c = GF jump shift: p>17.5 4+Z GF @1
+1X-1Y-2Z; Z>Y = GF jump shift: p>17.5 5+X 4+Z GF @1
+1X-1Y-3Z; Z<X = GF jump shift: p>17.5 5+X 4+Z GF @1
 
 # ---- splinters -------------------------------------------------------------------------
 
@@ -228,8 +228,8 @@ penalty_pull_max_len = 1
 
 # ---- cuebid of their suit -------------------------------------------------------------------
 
-...-?Y; Y=L, partnerbid, P!=L, newsuit, P>=H = cuebid of {Y}: invitational or better, 3+P support, p>10 @!
-...-?Y; Y=L, partnerbid, P!=L, newsuit, P<H = cuebid of {Y}: invitational or better, 4+P support, p>10 @!
+...-?Y; jump=0, !opener, Y=L, partnerbid, P!=L, newsuit, P>=H = cuebid of {Y}: invitational or better, 3+P support, p>10 @!
+...-?Y; jump=0, !opener, Y=L, partnerbid, P!=L, newsuit, P<H = cuebid of {Y}: invitational or better, 4+P support, p>10 @!
 
 # ---- raises -----------------------------------------------------------------------------------
 
