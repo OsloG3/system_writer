@@ -775,10 +775,9 @@
                     const key = pidOf(board, seat);
                     let p = players.get(key);
                     if (!p) { p = { key, name: pnameOf(board, seat), named: !!seatName(board, seat),
-                        boards: 0, cards: 0, mistakes: 0, decl: 0, lead: 0, def: 0,
-                        declCrit: 0, leadCrit: 0, defCrit: 0,
-                        declCards: 0, leadCards: 0, defCards: 0,
-                        tricksLost: 0, critical: 0, declImps: 0, declBoards: 0 }; players.set(key, p); }
+                        boards: 0, declared: 0, defended: 0, cards: 0, mistakes: 0,
+                        decl: 0, lead: 0, def: 0, declCrit: 0, leadCrit: 0, defCrit: 0,
+                        tricksLost: 0, critical: 0, declImps: 0, declImpN: 0 }; players.set(key, p); }
                     return p;
                 };
                 const pair = (board, s1, s2) => {
@@ -801,6 +800,11 @@
                     // used to order the tables by how much each one played
                     declPair.boards++; defPair.boards++;
                     for (let s = 0; s < 4; s++) player(board, s).boards++;
+                    // hands this player actually declared / defended (the dummy
+                    // neither declares nor defends -- declarer plays both hands),
+                    // the denominators for the per-board mistake rates
+                    player(board, decl).declared++;
+                    player(board, d1).defended++; player(board, d2).defended++;
                     levelSum += c.level; levelCount++;
                     if (actual != null) {
                         const made = actual >= target;
@@ -817,7 +821,7 @@
                     if (fOpt.small_slam || fOpt.grand_slam) defPair.missedSlam++;
                     if (a.play_imps_decl != null) {
                         const dp = player(board, decl);
-                        dp.declImps += a.play_imps_decl; dp.declBoards++;
+                        dp.declImps += a.play_imps_decl; dp.declImpN++;
                         defPair.defImps += -a.play_imps_decl; defPair.defBoards++;
                     }
                     a.plays.forEach((p, i) => {
@@ -825,7 +829,6 @@
                         // its mistakes) to the declarer
                         const pl = player(board, p.seat === dummy ? decl : p.seat); pl.cards++;
                         const role = roleOfPlay(i, p.seat, decl);
-                        pl[role + "Cards"]++;   // cards played in each role, for the per-card rates
                         if (p.mistake) {
                             pl.mistakes++; pl.tricksLost += p.cost; pl[role]++;
                             totalMistakes++; totalTricksLost += p.cost;
@@ -1249,22 +1252,20 @@
                 const ag = bulk.agg;
                 const impColor = (v) => v > 0 ? "#8fd694" : v < 0 ? "#f1948a" : "#bababa";
                 const rate = (m, c) => c ? (m / c).toFixed(2) : "\u2013";
-                const playerRows = ag.players.map((p) => {
-                    const defCards = p.leadCards + p.defCards, defMk = p.lead + p.def;
-                    return `<tr>
+                const playerRows = ag.players.map((p) => `<tr>
                     <td><span style="font-weight:700;color:#e8e6e3">${escapeHtml(p.name)}</span></td>
                     <td class="n">${p.boards}</td>
                     <td class="n">${p.cards}</td>
                     <td class="n" style="color:${p.mistakes ? "#f6d9a8" : "#8fd694"}">${p.mistakes}</td>
-                    <td class="n">${rate(p.decl, p.declCards)}</td>
-                    <td class="n">${rate(defMk, defCards)}</td>
+                    <td class="n">${rate(p.decl, p.declared)}</td>
+                    <td class="n">${rate(p.lead + p.def, p.defended)}</td>
                     <td class="n">${mcCell(p.decl, p.declCrit)}</td>
                     <td class="n">${mcCell(p.lead, p.leadCrit)}</td>
                     <td class="n">${mcCell(p.def, p.defCrit)}</td>
                     <td class="n">${p.tricksLost}</td>
                     <td class="n" style="color:${p.critical ? "#ffd7d1" : "#bababa"}">${p.critical}</td>
-                    <td class="n" style="color:${impColor(p.declImps)}">${p.declBoards ? signed(p.declImps) : "\u2013"}</td>
-                </tr>`;}).join("");
+                    <td class="n" style="color:${impColor(p.declImps)}">${p.declImpN ? signed(p.declImps) : "\u2013"}</td>
+                </tr>`).join("");
 
                 const pairRows = ag.pairs.map((pr) => `<tr>
                     <td><span style="font-weight:700;color:#e8e6e3">${pr.name}</span></td>
@@ -1322,8 +1323,8 @@
                                 <th class="n">${tip("Boards", "Boards this player sat in \u2014 the table is ordered by this, most active first.")}</th>
                                 <th class="n">${tip("Cards", "Cards credited to this player across all boards (a dummy's cards count for the declarer).")}</th>
                                 <th class="n">${tip("Mistakes", "Cards that gave up at least one trick versus DD.")}</th>
-                                <th class="n">${tip("Decl /card", "Declarer-side mistakes per card played as declarer (who plays both hands): decl mistakes \u00f7 declarer-side cards.")}</th>
-                                <th class="n">${tip("Def /card", "Defensive mistakes per card played as a defender: (lead + follow mistakes) \u00f7 cards played defending.")}</th>
+                                <th class="n">${tip("Decl /board", "Declarer-side mistakes per board this player declared (declarer plays both hands): decl mistakes \u00f7 hands declared.")}</th>
+                                <th class="n">${tip("Def /board", "Defensive mistakes per board this player defended: (lead + follow mistakes) \u00f7 hands defended.")}</th>
                                 <th class="n">${tip("Decl", "On the declaring side: mistakes / contract-critical mistakes.")}</th>
                                 <th class="n">${tip("Lead", "On a defensive lead: mistakes / contract-critical mistakes.")}</th>
                                 <th class="n">${tip("Def", "Defending when following or discarding: mistakes / contract-critical mistakes.")}</th>
