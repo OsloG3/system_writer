@@ -238,6 +238,19 @@
             .an-table tr.an-browtr:hover td { background: rgba(255,255,255,0.04); }
             .an-table .seat-badge { display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; border-radius: 0.4rem; background: #3d3a36; font-family: Manrope, sans-serif; font-weight: 800; font-size: 0.72rem; color: #e8e6e3; }
 
+            /* bulk view: segmented filters + per-player role tabs */
+            .an-filters { display: flex; flex-wrap: wrap; gap: 0.55rem 1.3rem; align-items: center; }
+            .an-filtergroup { display: flex; align-items: center; gap: 0.5rem; }
+            .an-filterlabel { font-family: Inter, sans-serif; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; color: #787572; font-weight: 600; }
+            .an-seg { display: inline-flex; gap: 0.15rem; background: #1d1b19; padding: 0.2rem; border-radius: 0.55rem; }
+            .an-segbtn { padding: 0.28rem 0.7rem; border-radius: 0.4rem; border: 0; background: transparent; color: #908f8d; font-family: Inter, sans-serif; font-size: 0.76rem; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
+            .an-segbtn:hover { color: #e8e6e3; }
+            .an-segbtn.active { background: #3d3a36; color: #e8e6e3; }
+            .an-tabs { display: inline-flex; gap: 0.2rem; background: #1d1b19; padding: 0.22rem; border-radius: 0.6rem; }
+            .an-tab { padding: 0.34rem 0.95rem; border-radius: 0.45rem; border: 0; background: transparent; color: #908f8d; font-family: Inter, sans-serif; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
+            .an-tab:hover { color: #e8e6e3; }
+            .an-tab.active { background: #3d3a36; color: #e8e6e3; }
+
             .an-bignums { display: grid; grid-template-columns: repeat(auto-fit,minmax(7.5rem,1fr)); gap: 0.7rem; }
             .an-bignum { background: #302e2c; border-radius: 0.7rem; padding: 0.7rem 0.8rem; }
             .an-bignum .v { font-family: Manrope, sans-serif; font-weight: 800; font-size: 1.5rem; color: #e8e6e3; line-height: 1.1; }
@@ -307,6 +320,9 @@
             let showLog = true;        // the full play log stays open across steps
             let showPaste = false;     // the paste-PBN box is open
             let shareBusy = false;     // a share-link POST is in flight
+            let filterStrain = "all";  // bulk filter: all | nt | suit
+            let filterLevel = "all";   // bulk filter: all | part | game | slam
+            let bulkTab = "decl";      // bulk per-player sub-table: decl | lead | def
 
             // ---- small helpers ----
             function $(id) { return document.getElementById(id); }
@@ -768,6 +784,22 @@
                 busy = false; render();
             }
             function gameLevel(denom) { return DENOM_GAME_LEVEL[denom] || 4; }
+            // Whether a board passes the current bulk strain / level filters. The
+            // two filters combine with AND; "all" on either means no restriction.
+            //   strain: nt = NT only, suit = a suit contract (♠♥♦♣) only
+            //   level : part = below game, game = game but below slam, slam = 6+
+            function boardMatchesFilter(a) {
+                const c = a && a.contract; if (!c) return false;
+                if (filterStrain === "nt" && c.denom !== "N") return false;
+                if (filterStrain === "suit" && c.denom === "N") return false;
+                if (filterLevel !== "all") {
+                    const gl = gameLevel(c.denom);
+                    if (filterLevel === "part" && c.level >= gl) return false;
+                    if (filterLevel === "game" && (c.level < gl || c.level >= 6)) return false;
+                    if (filterLevel === "slam" && c.level < 6) return false;
+                }
+                return true;
+            }
             // Aggregate a set of boards. Players are keyed by NAME (so a set that
             // rotates seats still totals each person correctly); pairs by their two
             // names. Falls back to cardinal seats/pairs when a board has no names.
@@ -779,6 +811,7 @@
                     if (!p) { p = { key, name: pnameOf(board, seat), named: !!seatName(board, seat),
                         boards: 0, declared: 0, defended: 0, cards: 0, mistakes: 0,
                         decl: 0, lead: 0, def: 0, declCrit: 0, leadCrit: 0, defCrit: 0,
+                        leadBoards: 0, defBoards: 0,
                         tricksLost: 0, critical: 0, declImps: 0, declImpN: 0 }; players.set(key, p); }
                     return p;
                 };
@@ -826,17 +859,25 @@
                         dp.declImps += a.play_imps_decl; dp.declImpN++;
                         defPair.defImps += -a.play_imps_decl; defPair.defBoards++;
                     }
+                    const ledThisBoard = new Set(), defThisBoard = new Set();
                     a.plays.forEach((p, i) => {
                         // declarer plays both hands: credit every dummy card (and
                         // its mistakes) to the declarer
                         const pl = player(board, p.seat === dummy ? decl : p.seat); pl.cards++;
                         const role = roleOfPlay(i, p.seat, decl);
+                        // note which players filled the lead / defence roles on this
+                        // board, so each per-role table can count the boards a player
+                        // actually acted in that role (not just every board defended)
+                        if (role === "lead") ledThisBoard.add(pl.key);
+                        else if (role === "def") defThisBoard.add(pl.key);
                         if (p.mistake) {
                             pl.mistakes++; pl.tricksLost += p.cost; pl[role]++;
                             totalMistakes++; totalTricksLost += p.cost;
                         }
                         if (p.critical) { pl.critical++; pl[role + "Crit"]++; totalCritical++; }
                     });
+                    for (const key of ledThisBoard) players.get(key).leadBoards++;
+                    for (const key of defThisBoard) players.get(key).defBoards++;
                 }
                 const n = results.length || 1;
                 // order both tables by how many boards each player / partnership
@@ -1381,22 +1422,83 @@
                 </div>`;
                 if (busy || !bulk.agg) return `<div class="an-wrap">${top}${prog}</div>`;
 
-                const ag = bulk.agg;
+                // Apply the strain / level filters, then re-aggregate over the
+                // matching boards so every panel below reflects the selection.
+                const filtered = bulk.results.filter((r) => boardMatchesFilter(r.analysis));
+                const ag = aggregate(filtered);
                 const impColor = (v) => v > 0 ? "#8fd694" : v < 0 ? "#f1948a" : "#bababa";
-                const rate = (m, c) => c ? (m / c).toFixed(2) : "\u2013";
-                const playerRows = ag.players.map((p) => `<tr>
-                    <td><span style="font-weight:700;color:#e8e6e3">${escapeHtml(p.name)}</span></td>
-                    <td class="n">${p.boards}</td>
-                    <td class="n" style="color:${p.mistakes ? "#f6d9a8" : "#8fd694"}">${p.mistakes}</td>
-                    <td class="n">${rate(p.decl, p.declared)}</td>
-                    <td class="n">${rate(p.lead + p.def, p.defended)}</td>
-                    <td class="n">${mcCell(p.decl, p.declCrit)}</td>
-                    <td class="n">${mcCell(p.lead, p.leadCrit)}</td>
-                    <td class="n">${mcCell(p.def, p.defCrit)}</td>
-                    <td class="n">${p.tricksLost}</td>
-                    <td class="n" style="color:${p.critical ? "#ffd7d1" : "#bababa"}">${p.critical}</td>
-                    <td class="n" style="color:${impColor(p.declImps)}">${p.declImpN ? signed(p.declImps / p.declImpN, 2) : "\u2013"}</td>
-                </tr>`).join("");
+                const per = (x, d) => d > 0 ? (x / d).toFixed(2) : "\u2013";
+
+                // ---- filter bar (strain + level, combine with AND) ----
+                const segBtn = (group, val, label) => {
+                    const active = (group === "strain" ? filterStrain : filterLevel) === val;
+                    return `<button class="an-segbtn${active ? " active" : ""}" data-${group}="${val}">${label}</button>`;
+                };
+                const filterActive = filterStrain !== "all" || filterLevel !== "all";
+                const filterCard = `<div class="an-card tight">
+                    <div class="an-filters">
+                        <div class="an-filtergroup">
+                            <span class="an-filterlabel">Strain</span>
+                            <div class="an-seg">
+                                ${segBtn("strain", "all", "All")}${segBtn("strain", "nt", "NT")}${segBtn("strain", "suit", "Suit")}
+                            </div>
+                        </div>
+                        <div class="an-filtergroup">
+                            <span class="an-filterlabel">Level</span>
+                            <div class="an-seg">
+                                ${segBtn("level", "all", "All")}${segBtn("level", "part", "Part")}${segBtn("level", "game", "Game")}${segBtn("level", "slam", "Slam")}
+                            </div>
+                        </div>
+                        <span style="flex:1"></span>
+                        <span class="an-muted" style="font-size:.78rem" title="${filterActive ? "Filters narrow every panel below (overview, players, pairs, per-board)." : "No filter \u2014 showing the whole set."}">${filtered.length} of ${bulk.results.length} board(s)${filterActive ? " match" : ""}</span>
+                    </div>
+                </div>`;
+
+                // ---- per-player tables: split into Declarer / Lead / Defense tabs ----
+                const ROLE_TABS = [{ id: "decl", label: "Declarer" }, { id: "lead", label: "Lead" }, { id: "def", label: "Defense" }];
+                const tabBar = `<div class="an-tabs">${ROLE_TABS.map((t) =>
+                    `<button class="an-tab${bulkTab === t.id ? " active" : ""}" data-tab="${t.id}">${t.label}</button>`).join("")}</div>`;
+                // which aggregate fields each role-tab reads; "did" is the verb for
+                // the boards-column tooltip
+                const roleCfg = {
+                    decl: { boards: "declared", mistakes: "decl", crit: "declCrit", boardsTip: "Boards this player was the declarer (declarer plays both hands)." },
+                    lead: { boards: "leadBoards", mistakes: "lead", crit: "leadCrit", boardsTip: "Boards where this player made at least one defensive lead (first card of a trick)." },
+                    def: { boards: "defBoards", mistakes: "def", crit: "defCrit", boardsTip: "Boards where this player made at least one defensive follow or discard (leads excluded)." },
+                }[bulkTab] || { boards: "declared", mistakes: "decl", crit: "declCrit", boardsTip: "Boards this player was the declarer." };
+
+                const rolePlayers = ag.players.filter((p) => p[roleCfg.boards] > 0);
+                const roleTitle = { decl: "Declarer", lead: "Lead", def: "Defense (follows &amp; discards, leads excluded)" }[bulkTab] || "Declarer";
+                const impHead = bulkTab === "decl"
+                    ? `<th class="n">${tip("IMPs /board", "Average IMPs per board declared versus a double-dummy play of the same contracts: this player's declaring gained (+) or lost (\u2212) versus DD, totalled over the boards they declared and divided by that count.")}</th>`
+                    : "";
+                const roleRows = rolePlayers.map((p) => {
+                    const b = p[roleCfg.boards], m = p[roleCfg.mistakes], cr = p[roleCfg.crit];
+                    const impCell = bulkTab === "decl"
+                        ? `<td class="n" style="color:${impColor(p.declImps)}">${p.declImpN ? signed(p.declImps / p.declImpN, 2) : "\u2013"}</td>`
+                        : "";
+                    return `<tr>
+                        <td><span style="font-weight:700;color:#e8e6e3">${escapeHtml(p.name)}</span></td>
+                        <td class="n">${b}</td>
+                        <td class="n" style="color:${m ? "#f6d9a8" : "#8fd694"}">${m}</td>
+                        <td class="n" style="color:${cr ? "#ffd7d1" : "#bababa"}">${cr}</td>
+                        <td class="n">${per(m, b)}</td>
+                        <td class="n">${per(cr, b)}</td>
+                        ${impCell}
+                    </tr>`;
+                }).join("");
+                const playerTable = rolePlayers.length ? `<div class="an-tablewrap"><table class="an-table">
+                        <thead><tr>
+                            <th>${tip("Player", "Grouped by name, so a player's stats follow them even when the set rotates seats. Unnamed seats fall back to N/E/S/W. Rows are ordered by total boards played.")}</th>
+                            <th class="n">${tip("Boards", roleCfg.boardsTip)}</th>
+                            <th class="n">${tip("Mistakes", "Total cards in this role that gave up at least one trick versus DD.")}</th>
+                            <th class="n">${tip("Critical", "Mistakes in this role that flipped the contract between make and defeat.")}</th>
+                            <th class="n">${tip("Mistakes /board", "Total mistakes in this role \u00f7 boards played in this role.")}</th>
+                            <th class="n">${tip("Critical /board", "Total contract-critical mistakes in this role \u00f7 boards played in this role.")}</th>
+                            ${impHead}
+                        </tr></thead>
+                        <tbody>${roleRows}</tbody>
+                    </table></div>`
+                    : `<div class="an-muted" style="font-size:.85rem">No player filled this role in the selected boards.</div>`;
 
                 const pairRows = ag.pairs.map((pr) => `<tr>
                     <td><span style="font-weight:700;color:#e8e6e3">${pr.name}</span></td>
@@ -1408,7 +1510,7 @@
                     <td class="n" style="color:${impColor(pr.defImps)}">${pr.defBoards ? signed(pr.defImps / pr.defBoards, 2) : "\u2013"}</td>
                 </tr>`).join("");
 
-                const boardRows = bulk.results.map(({ i, board, analysis: a }) => {
+                const boardRows = filtered.map(({ i, board, analysis: a }) => {
                     const c = a.contract, actual = a.actual_tricks != null ? a.actual_tricks : board.resultTricks;
                     const made = actual != null ? actual >= a.target : null;
                     const mist = a.plays.filter((p) => p.mistake).length;
@@ -1432,42 +1534,31 @@
 
                 const bn = (v, k, t, color) => `<div class="an-bignum"><div class="v"${color ? ` style="color:${color}"` : ""}>${v}</div><div class="k">${tip(k, t)}</div></div>`;
                 return `<div class="an-wrap">
-                    ${top}${prog}${errNote}
+                    ${top}${prog}${errNote}${filterCard}
                     <div class="an-card">
                         <div class="an-h">Session overview \u2014 ${ag.boards} board(s)</div>
                         <div class="an-bignums">
-                            ${bn(ag.totalMistakes, "DD mistakes", "Total cards across all boards that gave up at least one trick versus double-dummy best play.")}
+                            ${bn(ag.totalMistakes, "DD mistakes", "Total cards across the selected boards that gave up at least one trick versus double-dummy best play.")}
                             ${bn(ag.avgMistakes.toFixed(2), "Mistakes / board", "Average double-dummy mistakes per board, all four hands combined.")}
                             ${bn(ag.totalTricksLost, "Tricks lost", "Total tricks given up versus double-dummy \u2014 the sum of every mistake's cost.")}
                             ${bn(ag.totalCritical, "Contract-critical", "Mistakes that flipped a contract between made and defeated.", ag.totalCritical ? "#ffd7d1" : null)}
-                            ${bn(ag.avgLevel != null ? ag.avgLevel.toFixed(1) : "\u2013", "Avg contract level", "Mean level of the final contract (1\u20137) across all boards.")}
+                            ${bn(ag.avgLevel != null ? ag.avgLevel.toFixed(1) : "\u2013", "Avg contract level", "Mean level of the final contract (1\u20137) across the selected boards.")}
                             ${bn(ag.avgDdDiff != null ? signed(ag.avgDdDiff, 2) : "\u2013", "Tricks vs DD (decl)", "Average of (tricks declarer took \u2212 double-dummy tricks). Positive: declarer took MORE than DD allows \u2014 the defence gave tricks away. Negative: declarer fell short of DD.", ag.avgDdDiff != null ? impColor(-ag.avgDdDiff) : null)}
                             ${bn(ag.unmakeableMade, "Unmakeable made", "Contracts double-dummy says should fail, but were made anyway because the defence erred.", ag.unmakeableMade ? "#f6d9a8" : null)}
-                            ${bn(pct(ag.madeAny, ag.declAny), "Contracts made", "Share of all declared contracts that were made.")}
+                            ${bn(pct(ag.madeAny, ag.declAny), "Contracts made", "Share of the declared contracts (in the selection) that were made.")}
                         </div>
                     </div>
                     <div class="an-card">
-                        <div class="an-h">By player \u2014 DD mistakes &amp; declaring IMPs</div>
-                        <div class="an-tablewrap"><table class="an-table">
-                            <thead><tr>
-                                <th>${tip("Player", "Grouped by name, so a player's stats follow them even when the set rotates seats. Unnamed seats fall back to N/E/S/W. The declarer plays both hands, so dummy cards and their mistakes are credited to that board's declarer. Rows are ordered by boards played.")}</th>
-                                <th class="n">${tip("Boards", "Boards this player sat in \u2014 the table is ordered by this, most active first.")}</th>
-                                <th class="n">${tip("Mistakes", "Cards that gave up at least one trick versus DD.")}</th>
-                                <th class="n">${tip("Decl /board", "Declarer-side mistakes per board this player declared (declarer plays both hands): decl mistakes \u00f7 hands declared.")}</th>
-                                <th class="n">${tip("Def /board", "Defensive mistakes per board this player defended: (lead + follow mistakes) \u00f7 hands defended.")}</th>
-                                <th class="n">${tip("Decl", "On the declaring side: mistakes / contract-critical mistakes.")}</th>
-                                <th class="n">${tip("Lead", "On a defensive lead: mistakes / contract-critical mistakes.")}</th>
-                                <th class="n">${tip("Def", "Defending when following or discarding: mistakes / contract-critical mistakes.")}</th>
-                                <th class="n">${tip("Tricks lost", "Total tricks given up versus DD.")}</th>
-                                <th class="n">${tip("Critical", "Mistakes that flipped make \u2194 defeat.")}</th>
-                                <th class="n">${tip("Decl IMPs /board", "Average IMPs per board declared: this player's declaring gained (+) or lost (\u2212) versus a double-dummy play of the same contracts, totalled over the boards they declared and divided by that count.")}</th>
-                            </tr></thead>
-                            <tbody>${playerRows}</tbody>
-                        </table></div>
+                        <div style="display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-bottom:.6rem">
+                            <div class="an-h" style="margin:0">By player \u2014 ${roleTitle}</div>
+                            <span style="flex:1"></span>
+                            ${tabBar}
+                        </div>
+                        ${playerTable}
                     </div>
                     <div class="an-card">
                         <div class="an-h">By pair \u2014 contracts, missed games/slabs &amp; defence IMPs</div>
-                        <div class="an-tablewrap"><table class="an-table">
+                        ${ag.pairs.length ? `<div class="an-tablewrap"><table class="an-table">
                             <thead><tr>
                                 <th>${tip("Pair", "The two partners, by name (or N-S / E-W when unnamed). Rows are ordered by boards played together.")}</th>
                                 <th class="n">${tip("Boards", "Boards this partnership played together (as the declaring or the defending side) \u2014 the table is ordered by this.")}</th>
@@ -1478,11 +1569,12 @@
                                 <th class="n">${tip("Def IMPs /board", "Average defence IMPs per board defended: the pair's total defence IMPs versus double-dummy divided by the boards they defended (+ held declarer below DD, \u2212 let declarer beat DD).")}</th>
                             </tr></thead>
                             <tbody>${pairRows}</tbody>
-                        </table></div>
+                        </table></div>`
+                        : `<div class="an-muted" style="font-size:.85rem">No pairs in the selected boards.</div>`}
                     </div>
                     <div class="an-card">
                         <div class="an-h">Per board</div>
-                        <div class="an-tablewrap"><table class="an-table">
+                        ${filtered.length ? `<div class="an-tablewrap"><table class="an-table">
                             <thead><tr>
                                 <th>Contract</th>
                                 <th class="n">Result</th>
@@ -1495,7 +1587,8 @@
                             </tr></thead>
                             <tbody>${boardRows}</tbody>
                         </table></div>
-                        <p class="an-note" style="margin-top:.5rem">Tap a row to step through that board card by card.</p>
+                        <p class="an-note" style="margin-top:.5rem">Tap a row to step through that board card by card.</p>`
+                        : `<div class="an-muted" style="font-size:.85rem">No boards match the current filter.</div>`}
                     </div>
                 </div>`;
             }
@@ -1522,6 +1615,15 @@
                 on("s-last", "click", () => { const a = curAnalysis(); if (a) stepTo(a.plays.length - 1); });
                 on("s-mistake", "click", nextMistake);
                 on("logToggle", "click", () => { showLog = !showLog; render(); });
+
+                // bulk filters (strain / level) and the per-player role tabs re-render
+                // the bulk view; state is module-level so the selection persists
+                document.querySelectorAll("[data-strain]").forEach((el) =>
+                    el.addEventListener("click", () => { filterStrain = el.dataset.strain; render(); }));
+                document.querySelectorAll("[data-level]").forEach((el) =>
+                    el.addEventListener("click", () => { filterLevel = el.dataset.level; render(); }));
+                document.querySelectorAll("[data-tab]").forEach((el) =>
+                    el.addEventListener("click", () => { bulkTab = el.dataset.tab; render(); }));
 
                 document.querySelectorAll("[data-open]").forEach((el) =>
                     el.addEventListener("click", () => openBoard(parseInt(el.dataset.open, 10))));

@@ -238,14 +238,14 @@ func TestRealSystemFile(t *testing.T) {
 		{nil, "2C", "game force", true},
 		{nil, "3S", "preempt", false},
 		{[]string{"1C", "P", "1H", "P"}, "2D", "reverse 5+ ♣ 4+ ♦ 16+ pts forcing", false},
-		{[]string{"1N", "P"}, "2C", "4+ ♥ or 4+ ♠ stayman ask", true},
+		{[]string{"1N", "P"}, "2C", "stayman ask", true},
 		{[]string{"2C", "P"}, "2D", "waiting", true},
 		{[]string{"1C", "P", "1D", "P", "1H", "P"}, "2C", "XYZ relay", true},
 		{[]string{"1S", "P", "2S", "P", "4N", "P"}, "5C", "1 or 4 keycards", true},
 		{[]string{"1S", "P", "2S", "P"}, "4N", "RKCB ask for ♠", true},
 		{[]string{"1S", "P"}, "4D", "splinter in ♦", true},
 		{[]string{"1H", "P"}, "2H", "raise 3+ ♥", false},
-		{[]string{"1H", "P"}, "2C", "2/1 2+ ♣", false},
+		{[]string{"1H", "P"}, "2C", "2/1 3+ ♣", false},
 		{[]string{"1C", "1S"}, "2D", "2/1 game force", false},
 		{[]string{"1H"}, "X", "takeout", false},
 		{[]string{"P", "4S"}, "X", "penalty", false},
@@ -274,8 +274,10 @@ func TestRealSystemFile(t *testing.T) {
 	if a := firstAlertText(spec, 0, []string{"P"}, "P"); a != nil {
 		t.Errorf("plain pass should have no alert: %+v", a)
 	}
-	if a := firstAlertText(spec, 0, []string{"1C", "P", "1H", "P"}, "2C"); a != nil {
-		t.Errorf("opener's own-suit rebid should have no alert: %+v", a)
+	// opener's own-suit rebid IS described now (the file is bid-complete)
+	if a := firstAlertText(spec, 0, []string{"1C", "P", "1H", "P"}, "2C"); a == nil ||
+		!strings.Contains(a.Text, "minimum rebid") {
+		t.Errorf("opener's own-suit rebid should be described: %+v", a)
 	}
 }
 

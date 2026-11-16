@@ -355,9 +355,9 @@ def test_partner_greedy_dev_partner_means():
     assert np.allclose(partner_greedy_dev(buf3), [0.0])
 
 
-def test_team_row_rewards_partner_dev_scales_negatives_only():
-    """Negative row rewards are scaled by exp(-partner_dev) in (0, 1];
-    positive rewards and partner_dev=None leave them untouched."""
+def test_team_row_rewards_partner_dev_scales_both_signs():
+    """Row rewards -- negative AND positive -- are scaled by
+    exp(-partner_dev) in (0, 1]; partner_dev=None leaves them untouched."""
     buf = _toy_buf(deal_idx=[0, 0], seat=[0, 1], call_idx=[0, 0])
     kw = dict(n_deals=1, team_imps=np.array([-8.0]), diverge=np.array([0]),
               par_imps_ns=np.zeros(2), reward_scale=1.0,
@@ -366,9 +366,10 @@ def test_team_row_rewards_partner_dev_scales_negatives_only():
     assert np.allclose(r0, [-8.0, 8.0])        # N: -8; E: sign-flipped +8
     pd = np.full(2, np.log(4.0))
     r = team_row_rewards(buf, partner_dev=pd, **kw)
-    # negative row scaled by exp(-ln 4) = 1/4 -> -2; positive row untouched
-    assert np.allclose(r, [-2.0, 8.0])
-    # dev 0 (greedy partner) -> full punishment
+    # both rows scaled by exp(-ln 4) = 1/4 -> [-2, +2]: symmetric, so a
+    # noisy partner attenuates wins and losses alike (no net-positive bias)
+    assert np.allclose(r, [-2.0, 2.0])
+    # dev 0 (greedy partner) -> full credit either way
     assert np.allclose(team_row_rewards(buf, partner_dev=np.zeros(2), **kw),
                        [-8.0, 8.0])
 
@@ -513,8 +514,7 @@ def test_play_team_deals_cpu_amp(tmp_path):
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
 def test_play_team_deals_partner_dev_discount(tmp_path):
     """Sampled team rollouts record per-call greedy deviations and discount
-    negative row rewards by exp(-partner mean dev) in (0, 1]; positives and
-    greedy rollouts are unchanged."""
+    row rewards of BOTH signs by exp(-partner mean dev) in (0, 1]."""
     from bidding_dt.dd.solver import TableCache
     rng = np.random.default_rng(43)
     deals = random_deals(rng, 8)
@@ -535,9 +535,8 @@ def test_play_team_deals_partner_dev_discount(tmp_path):
     raw = team_row_rewards(buf, roll.n_deals, roll.team_imps, roll.diverge,
                            roll.par_imps_ns, reward_scale=1.0)
     r = roll.row_rewards(reward_scale=1.0)
-    neg = raw < 0
-    assert neg.any() and pd[neg].max() > 0.0     # scaling is exercised
-    assert np.allclose(r[~neg], raw[~neg])       # positives untouched
-    assert np.allclose(r[neg], raw[neg] * np.exp(-pd[neg]))
-    assert (r[neg] <= 0.0).all() and (r[neg] >= raw[neg]).all()  # shrunk, sign kept
+    assert pd.max() > 0.0                        # scaling is exercised
+    assert np.allclose(r, raw * np.exp(-pd))     # both signs shrink
+    assert np.all(np.sign(r) == np.sign(raw))    # sign preserved
+    assert (np.abs(r) <= np.abs(raw) + 1e-12).all()
     cache.close()

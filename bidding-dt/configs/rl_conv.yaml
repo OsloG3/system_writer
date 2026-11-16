@@ -32,11 +32,11 @@
 model:
   dropout: 0.0
 rl:
-  iters: 400
-  deals_per_iter: 128
+  iters: 800
+  deals_per_iter: 256
   lr: 1.0e-4
   warmup_iters: 64
-  minibatch_size: 124
+  minibatch_size: 128
   ppo_epochs: 3
   reward_scale: 0.2
   team_weight: 1.0
@@ -57,22 +57,29 @@ rl:
   eval_deals: 128
   cache_path: cache/dd.sqlite
   # --- convention enforcement ------------------------------------------------
-  conv_weight: 1.0          # penalty units per rule weight (0 disables).
-                            # Typical row rewards are +-0.5..5 units, so 1.0
-                            # makes a single violation cost like losing ~5 IMPs;
-                            # lower it if conv_viol_rate stays high and IMPs
-                            # regress, raise it if the bot ignores the system.
+  conv_weight: 1.0          # multiplier on the file's per-call violation
+                            # weights. Penalties/bonuses are now scaled by
+                            # reward_scale (0.2) like the IMP reward, so a file
+                            # weight of W costs W IMP-equivalents (a weight-2.0
+                            # break ~ 2 IMPs). This keeps convention shaping
+                            # comparable to a board outcome instead of
+                            # overwhelming it. Raise if conv_viol_rate stays
+                            # high; lower if IMPs regress.
   # --- system teacher (positive half) ----------------------------------------
   # The penalty above only teaches "don't break the entry"; these make the
   # entry's bid the preferred call. On each decision where the system file has
   # a clean artificial convention, PPO also minimizes CE(target, policy).
-  sys_weight: 0.4           # auxiliary loss weight (0 disables)
-  sys_weight_end: 0.1       # anneal (a persistent floor keeps conventions)
+  sys_weight: 0.3           # auxiliary loss weight (0 disables). Kept moderate:
+                            # the teacher averages over targeted rows only, so
+                            # its per-row pull is ~sys_weight/sys_target_rate
+                            # times the policy loss -- too high distorts the
+                            # policy toward the conventions and away from IMPs.
+  sys_weight_end: 0.05      # anneal (a persistent floor keeps conventions)
   sys_target_floor: 0.02    # target mass left on all legal calls
-  sys_target_min_prob: 0.0  # only target a convention the policy already
-                            # gives >= this probability (0 = always target;
-                            # raise to ~0.02-0.05 to protect underspecified
-                            # entries from overriding confident natural bids)
+  sys_target_min_prob: 0.02 # safety valve ON: only target a convention the
+                            # policy already gives >= 2% probability, so an
+                            # underspecified entry can't override a confident
+                            # natural bid (protects against forcing garbage).
   sys_explore: 0.1          # force a clean convention into this fraction of
                             # eligible rollout decisions, so PPO sees it
   # conv_rules:             # per-rule weight overrides (0 disables a rule):

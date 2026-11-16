@@ -190,6 +190,14 @@ class Token:
     op: str = ""        # pts: > < >= <= range exact; kc: 0/3 1/4 2- 2+
     suit: str = ""      # len: var letter / literal / "any"
     text: str = ""
+    negated: bool = False   # "!stop" / "!balanced": invert a checkable token
+
+
+# token kinds a hand can actually satisfy/violate (negation applies to these)
+_CHECKABLE_KINDS = frozenset({
+    "len", "pts", "bal", "openp", "no4M", "noMajor", "noLong5M", "stop",
+    "2top", "kc",
+})
 
 
 @dataclass
@@ -290,6 +298,9 @@ def _parse_atoms(clause: str) -> tuple:
 
 def _parse_token(word: str) -> Token:
     word = word.strip(",:;.")
+    negated = False
+    if word.startswith("!"):
+        negated, word = True, word[1:].strip(",:;.")
     m = _LEN_RE.match(word)
     if m:
         n = int(m.group(1))
@@ -299,21 +310,57 @@ def _parse_token(word: str) -> Token:
             lo, hi = n, int(m.group(3))
         else:
             lo = hi = n
-        return Token("len", lo, hi, suit=m.group(4))
+        return Token("len", lo, hi, suit=m.group(4), negated=negated)
     m = _PTS_RE.match(word)
     if m:
         v = float(m.group(2))
         if m.group(3) is not None:
-            return Token("pts", v, float(m.group(3)), op="range")
-        return Token("pts", v, v, op=m.group(1) or "exact")
+            return Token("pts", v, float(m.group(3)), op="range",
+                         negated=negated)
+        return Token("pts", v, v, op=m.group(1) or "exact", negated=negated)
     m = _KC_RE.match(word)
     if m:
-        return Token("kc", op=m.group(1))
+        return Token("kc", op=m.group(1), negated=negated)
     if word in ("balanced", "bal"):
-        return Token("bal")
+        return Token("bal", negated=negated)
     if word in _KEYWORD_TOKENS:
-        return Token(word)
-    return Token("text", text=word)
+        return Token(word, negated=negated)
+    return Token("text", text=word, negated=negated)
+
+
+# A description word that LOOKS like an enforcement token but did not parse as
+# one is almost always an authoring bug (it silently becomes free text and is
+# never enforced). Flag the unambiguous cases so they cannot hide again.
+_SUSPICIOUS_RE = re.compile(
+    r"^(kc=.+|[CDHSNXYZWTPLO](>=|<=|>|<|!=|=)\d+|\d+(>=|<=|>|<)[CDHSN].*)$")
+
+
+def suspicious_token(word: str) -> str | None:
+    """Reason `word` looks like a misspelled enforcement token, or None."""
+    w = word.strip(",:;.")
+    if w.startswith("!"):
+        w = w[1:]
+    if _parse_token(w).kind != "text":
+        return None                     # parsed fine (negation handled above)
+    if w.startswith("kc="):
+        return (f"{word!r}: keycard steps are kc=0/3, kc=1/4, kc=2-, kc=2+ "
+                f"(write 0/3, not 3/0)")
+    if _SUSPICIOUS_RE.match(w):
+        return (f"{word!r}: looks like a shape/length token but is free text; "
+                f"use e.g. '4+S' (length) or a clause 'S>=4' before the '='")
+    return None
+
+
+def entry_warnings(entry) -> list:
+    """Authoring warnings for one entry's description (misspelled tokens)."""
+    out = []
+    for word in entry.desc.split():
+        if word.startswith("@") or word.strip(",:;.") == "OR":
+            continue
+        reason = suspicious_token(word)
+        if reason:
+            out.append(f"{entry.pat}: {reason}")
+    return out
 
 
 def parse_entry(line: str) -> Entry:
@@ -486,8 +533,12 @@ def _match_from(entry: Entry, dealer: int, seq: list, us: int, start: int,
                 return r
         return None
     i = pos
-    if not step.them and step.kind != "pass":
-        while i < len(seq):               # implicit opponent-pass skip
+    if not step.them:
+        # Implicit opponent-pass skip before any of OUR steps -- including a
+        # pass step. An opponent always acts between partner's bid and our
+        # pass, so without this a pattern ending in a bare "P" (1X-P, the XYZ
+        # diamond signoff ...-2C-2D-P) could never match a real auction.
+        while i < len(seq):
             seat = (dealer + i) % 4
             if seat % 2 != us and seq[i] == CALL_PASS:
                 i += 1
@@ -853,13 +904,20 @@ def _token_ok(t: Token, binds: dict, hi: HandInfo, ctx: _Ctx) -> bool:
     return True                              # keywords/text: not checkable
 
 
+def _token_result(t: Token, binds: dict, hi: HandInfo, ctx: _Ctx) -> bool:
+    r = _token_ok(t, binds, hi, ctx)
+    if t.negated and t.kind in _CHECKABLE_KINDS:
+        return not r
+    return r
+
+
 def _branch_ok(br, binds: dict, hi: HandInfo, ctx: _Ctx):
     """True/False = branch satisfied/violated; None = nothing checkable."""
     checks = [t for t in br
               if t.kind not in ("text", "F", "GF", "TO", "PENALTY")]
     if not checks:
         return None
-    return all(_token_ok(t, binds, hi, ctx) for t in checks)
+    return all(_token_result(t, binds, hi, ctx) for t in checks)
 
 
 def hand_violations(entry: Entry, binds: dict, hi: HandInfo,
@@ -1056,6 +1114,10 @@ class SystemEnforcer:
             return out
 
         if info.kind == "redouble":
+            # a file entry with weight>0 describes the redouble's strength and
+            # replaces the (empty) built-in redouble handling
+            if entry is not None and entry.weight > 0 and entry.checkable:
+                return out + hand_violations(entry, binds or {}, hi, ctx)
             return out + check_call(reader, hero, hi, action, self.cfg)
 
         if info.kind == "double":
@@ -1130,8 +1192,23 @@ def _suit_sym(ref: str, binds: dict) -> str:
     return SYM[d] if 0 <= d < DENOM_N else "any"
 
 
+_NEG_TEXT = {"stop": "no stopper in their suit", "balanced": "unbalanced",
+             "bal": "unbalanced", "openp": "sub-opening values",
+             "no4M": "a biddable 4-card major",
+             "noMajor": "a 4-card major",
+             "noLong5M": "a longer 5-card major"}
+
+
 def _pretty_token(word: str, binds: dict) -> str:
     word = word.strip(",:;.")
+    negated = False
+    if word.startswith("!"):
+        negated, word = True, word[1:].strip(",:;.")
+    if negated:
+        if word in _NEG_TEXT:
+            return _NEG_TEXT[word]
+        base = _pretty_token(word, binds)
+        return "not " + base
     m = _LEN_RE.match(word)
     if m:
         sym = _suit_sym(m.group(4), binds)

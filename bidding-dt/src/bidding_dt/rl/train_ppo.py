@@ -9,9 +9,10 @@ In league mode the learner team sits N-S at one table and E-W at the other
 against a frozen league opponent; otherwise both tables are pure self-play
 (sampling temperature supplies the auction variance). Both seats of a
 partnership sample at the rollout temperature and learn; since either can be
-punished for the other's exploration noise, a negative row reward is scaled
-by exp(-D) in (0, 1] with D the partner's mean per-call deviation from greedy
-play (see rl/rollout.py). A KL anchor to the frozen BC policy and an entropy
+credited for the other's exploration noise, a row's reward -- both signs --
+is scaled by exp(-D) in (0, 1] with D the partner's mean per-call deviation
+from greedy play (see rl/rollout.py). A KL anchor to the frozen BC policy and
+an entropy
 bonus are annealed to zero so the pair can diverge from human systems and
 form its own agreements.
 
@@ -465,8 +466,13 @@ def main():
             targeted = roll.sys_target.sum(1) > 0
             rec["sys_target_rate"] = round(float(targeted.mean()), 4)
             if targeted.any():
-                chosen_ok = roll.sys_target[
-                    np.arange(buf.n), np.asarray(buf.action)] > 0
+                # A call "agrees" when it is one of the convention calls the
+                # teacher put its mass on, not merely a legal call (the target
+                # spreads a small floor over ALL legal calls, so "> 0" would
+                # always be true). Convention calls carry (1-floor)/n_clean >>
+                # floor, so thresholding at the floor separates them.
+                mass = roll.sys_target[np.arange(buf.n), np.asarray(buf.action)]
+                chosen_ok = mass > rl.sys_target_floor
                 rec["sys_agree"] = round(float(chosen_ok[targeted].mean()), 4)
         log(rec)
 

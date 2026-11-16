@@ -108,7 +108,7 @@ class CallInfo:
     xyz_after_relay: bool = False  # responder's call after XYZ 2C-2D
     rkcb_ask: bool = False        # 4NT keycard ask in the side's last suit
     rkcb_response: bool = False   # step answer (5C..5S) to partner's RKCB ask
-    rkcb_step: int = 0            # 1..4 = 5C..5S (0/3, 1/4, 2 no Q, 2 with Q)
+    rkcb_step: int = 0            # 1..4 = 5C..5S (1430: 1/4, 0/3, 2 no Q, 2+Q)
     rkcb_trump: int = -1          # keycard suit of the ask / response
     # state snapshots at the moment of the call
     gf_active: bool = False       # hero's side is game-forced

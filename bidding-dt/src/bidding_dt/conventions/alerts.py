@@ -14,10 +14,11 @@ from .auction import DENOM_N, MAJORS, CallInfo
 
 _SYM = ("♣", "♦", "♥", "♠")        # project denom order C,D,H,S
 
-# step (1..4 = 5C..5S) -> what the RKCB response shows
+# step (1..4 = 5C..5S) -> what the RKCB response shows (1430, as played by
+# models/system.txt: 5C = 1/4, 5D = 0/3)
 RKCB_STEPS = {
-    1: "0 or 3 keycards",
-    2: "1 or 4 keycards",
+    1: "1 or 4 keycards",
+    2: "0 or 3 keycards",
     3: "2 keycards without the trump queen",
     4: "2 keycards with the trump queen",
 }
@@ -40,8 +41,8 @@ def convention_alert(info: CallInfo) -> str | None:
         return (f"Smolen: 4 {_suit(info.denom)} and 5+ {_suit(other)}, "
                 f"game force")
     if info.rkcb_ask:
-        return (f"RKCB for {_suit(info.rkcb_trump)}: keycard ask — 5♣ 0/3, "
-                f"5♦ 1/4, 5♥ 2 without / 5♠ 2 with the trump queen")
+        return (f"RKCB for {_suit(info.rkcb_trump)}: keycard ask — 5♣ 1/4, "
+                f"5♦ 0/3, 5♥ 2 without / 5♠ 2 with the trump queen")
     if info.rkcb_response:
         what = RKCB_STEPS.get(info.rkcb_step, "an unspecified keycard count")
         return f"RKCB response for {_suit(info.rkcb_trump)}: {what}"

@@ -29,9 +29,9 @@ with a configurable tolerance on every range):
     side has bid are penalty-oriented and unchecked
   * 4NT is RKCB in the last suit the partnership bid: the ask itself is not
     evaluated, but the asker's partner must answer with the step showing the
-    correct keycard count (5C = 0/3, 5D = 1/4, 5H = 2 without the trump
-    queen, 5S = 2 with it); with no suit bid 4NT stays quantitative
-    (unchecked)
+    correct keycard count (1430, matching models/system.txt: 5C = 1/4,
+    5D = 0/3, 5H = 2 without the trump queen, 5S = 2 with it); with no
+    suit bid 4NT stays quantitative (unchecked)
   * a cuebid of the opponents' suit shows invitational-or-better support
     for partner's last suit (with no suit bid by partner it is undefined
     and unchecked)
@@ -458,8 +458,8 @@ def _check_bid(reader: AuctionReader, hi: HandInfo, info: CallInfo,
         keys = sum(int(hi.has(d, 0)) for d in range(4)) + int(hi.has(trump, 1))
         has_q = hi.has(trump, 2)
         step = info.rkcb_step
-        ok = ((step == 1 and keys in (0, 3))
-              or (step == 2 and keys in (1, 4))
+        ok = ((step == 1 and keys in (1, 4))
+              or (step == 2 and keys in (0, 3))
               or (step == 3 and keys == 2 and not has_q)
               or (step == 4 and keys == 2 and has_q))
         if not ok:

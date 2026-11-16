@@ -9,10 +9,12 @@ fed calls is seat k % 4, so auctions are spelled out to the hero's decision.
 import os
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-from bidding_dt.conventions import (AuctionReader, ConventionConfig,
-                                    find_system_file, parse_system_file)
+from bidding_dt.conventions import (AuctionReader, ConventionConfig, HandInfo,
+                                    SystemEnforcer, find_system_file,
+                                    parse_system_file)
 from bidding_dt.data.vocab import call_to_id
 
 B = call_to_id
@@ -146,10 +148,13 @@ def test_shipped_file_uncovered_calls():
     spec = parse_system_file(SHIPPED)
     # a plain pass carries no alert
     assert spec.alert_for_call(feed_all([P]), B(P)) is None
-    # a redouble neither
-    assert spec.alert_for_call(feed_all(["1H", X]), B("XX")) is None
-    # opener's plain own-suit rebid is not described
-    assert spec.alert_for_call(feed_all(["1C", P, "1H", P]), B("2C")) is None
+    # a strength redouble IS described now (responding to a doubled opening)
+    got = spec.alert_for_call(feed_all(["1H", X]), B("XX"))
+    assert got and "redouble" in got
+    # opener's plain own-suit rebid IS described now (the file is bid-complete):
+    # a minimum 5+ card rebid in the opened suit
+    got = spec.alert_for_call(feed_all(["1C", P, "1H", P]), B("2C"))
+    assert got and "minimum rebid" in got
 
 
 # ---------------------------------------------------------------------------
@@ -175,3 +180,99 @@ def test_find_system_file(tmp_path, monkeypatch):
         assert Path(find_system_file()).resolve() == SHIPPED.resolve()
     finally:
         os.chdir(old)
+
+
+# ---------------------------------------------------------------------------
+# Regressions: the system file must be a bid-complete 2/1 GF system without
+# the bugs that made RL degrade (garbage Stayman, inverted Lebensohl, the
+# shadowed Jordan raise, the unenforced 0/3 RKCB step, the dead pass pattern).
+# ---------------------------------------------------------------------------
+
+def _enf():
+    spec = parse_system_file(SHIPPED)
+    return SystemEnforcer(spec, spec.config()), spec
+
+
+@pytest.mark.skipif(not SHIPPED.is_file(), reason="models/system.txt absent")
+def test_stayman_requires_strength():
+    """Garbage Stayman must not be a clean/targeted convention."""
+    enf, _ = _enf()
+    r = feed_all(["1N", P])
+    bust = HandInfo("743.8632.952.843")     # 4 hearts, ~-0.5 K&R
+    good = HandInfo("K74.Q863.A52.K84")     # 4 hearts, ~11 K&R
+    assert enf.clean_use(r, 2, bust, B("2C")) is None       # not rewarded
+    assert enf.target(r, 2, bust, np.ones(39, bool)) is None
+    assert enf.clean_use(r, 2, good, B("2C")) is not None   # real Stayman
+    # a bust Stayman is a violation, not a free bid
+    assert [v.code for v in enf.check(r, 2, bust, B("2C"))] == ["pat:1N-2C"]
+
+
+@pytest.mark.skipif(not SHIPPED.is_file(), reason="models/system.txt absent")
+def test_lebensohl_cuebid_wants_no_stopper():
+    """(2H)-X-3H shows 4 spades and DENIES a heart stopper (was inverted)."""
+    enf, _ = _enf()
+    r = feed_all(["2H", X, P], dealer=1)
+    no_stop = HandInfo("KQ74.863.A52.K84")   # 4 spades, no heart stopper
+    with_stop = HandInfo("KQ74.A63.A52.K84")  # 4 spades, heart ace = stopper
+    assert enf.check(r, 0, no_stop, B("3H")) == []
+    assert [v.code for v in enf.check(r, 0, with_stop, B("3H"))] == \
+        ["pat:(2H)-X-3H"]
+
+
+@pytest.mark.skipif(not SHIPPED.is_file(), reason="models/system.txt absent")
+def test_jordan_2nt_raise_reachable():
+    """1M-2NT is the artificial invitational raise, not a natural balanced
+    invite -- an unbalanced limit raise with support must be clean."""
+    enf, spec = _enf()
+    r = feed_all(["1H", P])
+    jordan = HandInfo("K74.QJ83.5.KQ964")   # 4 hearts, singleton, ~11.8 K&R
+    entry, _ = enf.match(0, list(r.calls), B("2N"))
+    assert entry is not None and entry.artificial
+    assert enf.check(r, 2, jordan, B("2N")) == []
+
+
+@pytest.mark.skipif(not SHIPPED.is_file(), reason="models/system.txt absent")
+def test_rkcb_zero_three_step_enforced():
+    """The 0/3 step (5D) is checkable -- `kc=0/3`, not the misspelled `3/0`."""
+    enf, _ = _enf()
+    r = feed_all(["1S", P, "2C", P, "2S", P, "4N", P])
+    zero = HandInfo("743.863.K952.K84")     # 0 keycards
+    one = HandInfo("A743.863.952.K84")      # 1 keycard (SA)
+    assert enf.check(r, 0, zero, B("5D")) == []          # 0/3 correct
+    assert [v.code for v in enf.check(r, 0, one, B("5D"))] == \
+        ["pat:...-4N-(P)-5D"]                            # 1 keycard wrong
+
+
+@pytest.mark.skipif(not SHIPPED.is_file(), reason="models/system.txt absent")
+def test_passing_opening_with_values_penalized():
+    """`1X-P` is no longer a dead pattern: passing an opening with values is
+    a violation; a weak pass is clean."""
+    enf, _ = _enf()
+    r = feed_all(["1S", P])
+    strong = HandInfo("K74.K863.952.K84")   # ~8.5 K&R
+    weak = HandInfo("743.8632.952.843")     # ~4 K&R
+    assert [v.code for v in enf.check(r, 2, strong, B("P"))] == ["pat:1X-P"]
+    assert enf.check(r, 2, weak, B("P")) == []
+
+
+@pytest.mark.skipif(not SHIPPED.is_file(), reason="models/system.txt absent")
+def test_penalty_double_after_our_notrump():
+    """A double after our 1NT opening is penalty, so partner may pass it."""
+    enf, spec = _enf()
+    r = feed_all(["1N", "2H"])
+    entry, _ = enf.match(0, list(r.calls), B("X"))
+    assert entry is not None and "PENALTY" in entry.flags
+    # partner of the doubler passing with a trump stack is fine (no to_pass)
+    r2 = feed_all(["1N", "2H", X, P])
+    assert enf.check(r2, 0, HandInfo("QJ63.K5.874.AJ63"), B("P")) == []
+
+
+@pytest.mark.skipif(not SHIPPED.is_file(), reason="models/system.txt absent")
+def test_notrump_transfers_present():
+    """The file describes Jacoby transfers over 1NT (5-card major)."""
+    enf, spec = _enf()
+    r = feed_all(["1N", P])
+    entry, _ = enf.match(0, list(r.calls), B("2D"))
+    assert entry is not None and entry.artificial
+    hearts = HandInfo("74.KQ863.952.K84")   # 5 hearts
+    assert enf.check(r, 2, hearts, B("2D")) == []

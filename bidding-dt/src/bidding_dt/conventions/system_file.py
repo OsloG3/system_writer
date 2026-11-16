@@ -29,8 +29,8 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .patterns import (SPEC_PARAMS, MatchState, _desc_sep, fold_state,
-                       match_first, parse_entry, render_desc)
+from .patterns import (SPEC_PARAMS, MatchState, _desc_sep, entry_warnings,
+                       fold_state, match_first, parse_entry, render_desc)
 from .rules import ConventionConfig
 
 DEFAULT_CANDIDATES = ("models/system.txt", "../models/system.txt")
@@ -103,6 +103,7 @@ class SystemSpec:
     path: str | None = None
     settings: dict = field(default_factory=dict)   # key = value lines
     entries: list = field(default_factory=list)    # pattern entries
+    warnings: list = field(default_factory=list)   # token authoring warnings
     _states: dict = field(default_factory=dict)    # replay-state memo
 
     # -- config for training -------------------------------------------------
@@ -195,11 +196,16 @@ def parse_system_file(path: str | Path) -> SystemSpec:
             continue
         # a sequence-pattern entry (patterns.py)
         try:
-            spec.entries.append(parse_entry(line))
+            entry = parse_entry(line)
         except ValueError as e:
             raise ValueError(f"{where}: {e}") from None
+        spec.entries.append(entry)
+        for w in entry_warnings(entry):
+            spec.warnings.append(f"{where}: {w}")
     if not spec.entries and not spec.settings:
         raise ValueError(f"{path}: no entries found")
+    for w in spec.warnings:
+        print(f"system file warning: {w}")
     return spec
 
 

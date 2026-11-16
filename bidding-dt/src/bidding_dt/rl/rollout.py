@@ -24,18 +24,20 @@ E-W negative; the team term is additionally flipped at table 1, so in
 league mode every learner row gets +team_imps when the learner team wins
 the comparison).
 
-Because both partners sample, a row can also be punished for its *partner's*
-exploration noise, so negative rewards are discounted by how far the partner
+Because both partners sample, a row can also be credited for its *partner's*
+exploration noise, so row rewards are discounted by how far the partner
 deviated from greedy play: every recorded call stores
 
     dev = logp(greedy call) - logp(call taken)    (untempered policy, >= 0)
 
-and a row whose reward is negative has it scaled by exp(-D) with D the mean
-dev over the partner's calls in the same auction (partner_greedy_dev /
-team_row_rewards). exp(-D) lies in (0, 1]: a partner that bid exactly as the
-greedy policy would (D = 0) passes the full punishment on, while very unlikely
-sampled calls shrink it toward zero. Positive rewards are never scaled, and
-averaging dev per call keeps the discount independent of auction length.
+and each row's reward -- positive or negative -- is scaled by exp(-D) with D
+the mean dev over the partner's calls in the same auction (partner_greedy_dev
+/ team_row_rewards). exp(-D) lies in (0, 1]: a partner that bid exactly as the
+greedy policy would (D = 0) passes the outcome on undiluted, while very
+unlikely sampled calls shrink it toward zero. Scaling both signs keeps the
+discount symmetric (the old negatives-only form taught losses more weakly
+than wins and biased the policy toward entropy), and averaging dev per call
+keeps the discount independent of auction length.
 
 When a ConventionConfig is given (rl.conv_weight > 0), every recorded call is
 also checked against the enforced bidding system (conventions/: 5-card majors,
@@ -335,19 +337,27 @@ def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
                     the team term only reaches calls at/after that index.
     par_imps_ns   = (2B,) par-diff IMPs of each table's auction, N-S view.
     partner_dev   = (n,) optional mean greedy deviation of each row's partner
-                    (partner_greedy_dev): negative rewards are scaled by
-                    exp(-partner_dev) in (0, 1], so a row only eats the full
-                    punishment when its partner bid (near-)greedily and the
-                    bad outcome is discounted toward zero as the partner's
-                    sampled calls get less likely. Positive rewards are never
-                    scaled, so the discount cannot manufacture a win.
+                    (partner_greedy_dev): row rewards -- BOTH signs -- are
+                    scaled by exp(-partner_dev) in (0, 1], so an outcome is
+                    credited in full only when the partner bid (near-)greedily
+                    and attenuates toward zero as the partner's sampled calls
+                    get less likely. Symmetric scaling matters: discounting
+                    only negatives taught losses ~25-50% more weakly than
+                    wins, which made self-play row rewards net-positive and
+                    fed an entropy-increasing drift (measured on a BC policy:
+                    mean row reward +0.017 -> +0.083 with the asymmetric
+                    form). Averaging dev per call keeps the discount
+                    independent of auction length.
     conv_pen      = (n,) optional weighted system-convention penalties per
-                    row (convention_penalties); conv_weight * conv_pen is
-                    subtracted after the partner-dev scaling so the row owns
-                    its own system breaks in full.
+                    row (convention_penalties); reward_scale * conv_weight *
+                    conv_pen is subtracted after the partner-dev scaling so the
+                    row owns its own system breaks in full. Both shaping terms
+                    are scaled by reward_scale, so a file weight of W costs W
+                    IMP-equivalents (see the note in the body).
     conv_bonus    = (n,) optional small per-row rewards for correctly used
-                    artificial conventions (convention_penalties); added
-                    unscaled (the magnitude lives in cfg.conv_bonus).
+                    artificial conventions (convention_penalties); added as
+                    reward_scale * conv_bonus (the magnitude lives in
+                    cfg.conv_bonus, in IMP-equivalents).
     """
     deal_idx = np.asarray(buf.deal_idx)          # env row in [0, 2B)
     seat = np.asarray(buf.seat)
@@ -363,11 +373,18 @@ def team_row_rewards(buf: RolloutBuffer, n_deals: int, team_imps: np.ndarray,
     if partner_dev is not None:
         scale = np.exp(-np.clip(np.asarray(partner_dev, dtype=np.float64),
                                 0.0, None))
-        r = np.where(r < 0.0, r * scale, r)
+        r = r * scale
+    # Convention shaping is expressed in the SAME units as the IMP reward: the
+    # penalty/bonus are scaled by reward_scale too, so a file weight of W costs
+    # (or earns) W * reward_scale reward units == W IMP-equivalents. Without
+    # this the raw penalty dwarfed the scaled IMP signal (a weight-1 violation
+    # cost 5 IMPs while the bonus earned 0.25), which made the policy avoid
+    # every convention. Keep penalty and bonus comparable.
     if conv_pen is not None and conv_weight:
-        r = r - conv_weight * np.asarray(conv_pen, dtype=np.float64)
+        r = r - reward_scale * conv_weight * np.asarray(conv_pen,
+                                                        dtype=np.float64)
     if conv_bonus is not None:
-        r = r + np.asarray(conv_bonus, dtype=np.float64)
+        r = r + reward_scale * np.asarray(conv_bonus, dtype=np.float64)
     return r
 
 
@@ -404,13 +421,15 @@ class TeamRollout:
 def _act(mdl, tokens, hand, vuln_cls, row_len, masks, device, greedy,
          temp: float = 1.0, amp: bool = False):
     """One batched decision step for `mdl` (numpy inputs); returns torch
-    (actions, logprobs, values, greedy_dev, probs). temp > 1 flattens the
+    (actions, logprobs, values, greedy_dev, probs, lp0). temp > 1 flattens the
     sampling distribution (logprobs are from the tempered distribution,
     matching PPO recompute). greedy_dev = logp(argmax) - logp(action) under
     the UNTEMPERED masked policy: 0 iff the action is the greedy one, growing
-    with how unlikely the sampled action was (used to discount negative
-    rewards by a partner's exploration noise). `probs` is the tempered masked
-    distribution (used by the system teacher's applicability filter).
+    with how unlikely the sampled action was (used to discount row rewards by
+    a partner's exploration noise). `probs` is the tempered masked
+    distribution (used by the system teacher's applicability filter); `lp0`
+    is the full untempered masked log-prob vector (used to score the greedy
+    deviation of sys_explore-forced calls).
     amp=True runs the forward under bf16 autocast (CPU speedup knob)."""
     with torch.autocast(getattr(device, "type", device),
                         dtype=torch.bfloat16, enabled=amp):
@@ -433,7 +452,7 @@ def _act(mdl, tokens, hand, vuln_cls, row_len, masks, device, greedy,
         actions = dist.sample()
     dev = (lp0.max(-1).values
            - lp0.gather(-1, actions[:, None]).squeeze(-1)).clamp_min(0.0)
-    return actions, dist.log_prob(actions), values, dev, dist.probs
+    return actions, dist.log_prob(actions), values, dev, dist.probs, lp0
 
 
 @torch.no_grad()
@@ -447,9 +466,10 @@ def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
     Every learner-side seat samples at `temp` and is recorded -- in team mode
     both partners of the learner partnership play hot at their table, and in
     self-play all four seats do at both tables. Each recorded call also stores
-    its greedy deviation (buf.dev, see `_act`) so negative rewards can be
+    its greedy deviation (buf.dev, see `_act`) so row rewards can be
     discounted by the partner's exploration noise (partner_greedy_dev).
-    Opponent seats play their own frozen policy at temp=1 and are dropped.
+    Opponent seats play their own frozen policy AT THE SAME `temp` and are
+    dropped.
 
     conv_spec/conv_cfg + sys_target: when a parsed system file is given, each
     learner decision also gets a (VOCAB_SIZE,) target distribution over the
@@ -459,9 +479,11 @@ def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
     policy's preferred action instead of merely an unpenalized alternative.
     sys_explore: with this probability, a learner decision that has a clean
     system convention available is overridden with one of those calls (the
-    stored logprob is the policy's own logprob for it). This manufactures
-    on-policy samples of convention auctions even when the policy would
-    almost never draw the bid; rng seeds the choice.
+    stored logprob is the policy's own logprob for it, and the stored dev is
+    the forced call's true greedy deviation, so a failed experiment discounts
+    the partner's punishment instead of being charged as greedy play). This
+    manufactures on-policy samples of convention auctions even when the
+    policy would almost never draw the bid; rng seeds the choice.
     """
     use_opp = opponent is not None and learner_ns is not None
     rng = rng or np.random.default_rng()
@@ -483,13 +505,14 @@ def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
 
         learn_rows = np.flatnonzero(is_learn)
         if len(learn_rows):
-            a, lp, v, dev, probs = _act(
+            a, lp, v, dev, probs, lp0 = _act(
                 model, tokens[learn_rows], hand[learn_rows],
                 vuln_cls[learn_rows], row_len[learn_rows],
                 masks[learn_rows], device, greedy, temp, amp)
             a_np = a.cpu().numpy()
             lp_np = lp.cpu().numpy()
             dev_np = dev.cpu().numpy()
+            lp0_np = lp0.cpu().numpy()
             targets = None
             if buf is not None:
                 if teacher is not None:
@@ -516,7 +539,11 @@ def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
                             targets[k] = tgt
                 # System-guided exploration: force a clean convention into
                 # the rollout so PPO sees its outcome. The stored logprob is
-                # the policy's own, keeping the PPO ratio consistent.
+                # the policy's own, keeping the PPO ratio consistent. The
+                # stored dev is the forced call's TRUE greedy deviation under
+                # the untempered policy, so a forced experiment that goes
+                # badly discounts the partner's punishment like any other
+                # exploration noise instead of masquerading as greedy play.
                 if targets is not None and sys_explore > 0.0:
                     for k, row in enumerate(learn_rows):
                         if targets[k].sum() <= 0.0:
@@ -536,7 +563,10 @@ def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
                             continue
                         a_np[k] = a_new
                         lp_np[k] = float(np.log(p))
-                        dev_np[k] = 0.0
+                        lp0_row = lp0_np[k]
+                        finite = lp0_row[np.isfinite(lp0_row)]
+                        dev_np[k] = max(0.0, float(finite.max()
+                                                   - lp0_row[a_new]))
             actions[learn_rows] = a_np
             if buf is not None:
                 buf.add_rows(idx[learn_rows], hero[learn_rows],
@@ -548,13 +578,15 @@ def _run(env: AuctionBatch, model, device, opponent, learner_ns, greedy,
                              dev_np, sys_target=targets)
         opp_rows = np.flatnonzero(~is_learn)
         if len(opp_rows):
-            # frozen opponent plays its true policy (temp=1); only the learner's
-            # own sampling is tempered, so the team swing measures skill, not
-            # opponent noise, and stays consistent with the PPO logprob recompute
-            a, _, _, _, _ = _act(opponent, tokens[opp_rows],
-                                 hand[opp_rows], vuln_cls[opp_rows],
-                                 row_len[opp_rows], masks[opp_rows],
-                                 device, greedy, 1.0, amp)
+            # the frozen opponent samples at the SAME rollout temp as the
+            # learner: a temp handicap (learner hot, opponent cold) made
+            # identical policies lose ~0.65 IMPs/board with a 12% winrate, so
+            # the team swing measured the handicap instead of skill and every
+            # league iteration trained on an unfixable negative signal.
+            a, _, _, _, _, _ = _act(opponent, tokens[opp_rows],
+                                    hand[opp_rows], vuln_cls[opp_rows],
+                                    row_len[opp_rows], masks[opp_rows],
+                                    device, greedy, temp, amp)
             actions[opp_rows] = a.cpu().numpy()
 
         env.step(idx, actions)
@@ -567,10 +599,15 @@ def play_seat_policies(env: AuctionBatch, policies, seat_policy: np.ndarray,
     """Step `env` to completion with a policy per (row, seat).
 
     `seat_policy[row, seat]` indexes `policies`, so a table can mix systems
-    (BC N-S against RL E-W, self-play, a random seat...). Nothing is recorded
-    and no rewards are computed, so this needs no DD solver: it is the rollout
+    (BC N-S against RL E-W, self-play, a random seat...). A policy may also be
+    a conventions.bidder.SystemBidder (the rule-based `system:` policy), which
+    reads the raw auction instead of the token frame. Nothing is recorded and
+    no rewards are computed, so this needs no DD solver: it is the rollout
     used to manufacture training data (hand/gen.py), not an RL iteration.
     """
+    from ..conventions.bidder import SystemBidder
+    from ..conventions.auction import AuctionReader
+    from ..conventions.rules import HandInfo
     while env.any_active():
         idx = env.active_idx()
         tokens, hand, vuln_cls, hero, row_len = env.build_inputs(idx)
@@ -579,10 +616,20 @@ def play_seat_policies(env: AuctionBatch, policies, seat_policy: np.ndarray,
         which = seat_policy[idx, hero]
         for pid in np.unique(which):
             rows = np.flatnonzero(which == pid)
-            a, _, _, _, _ = _act(policies[pid], tokens[rows],
-                                 hand[rows], vuln_cls[rows], row_len[rows],
-                                 masks[rows], device, greedy, temp, amp)
-            actions[rows] = a.cpu().numpy()
+            pol = policies[pid]
+            if isinstance(pol, SystemBidder):
+                for k in rows:
+                    i = int(idx[k]); seat = int(hero[k])
+                    r = AuctionReader(int(env.dealer[i]), int(env.vuln[i]))
+                    for c in env.calls[i, : env.n_calls[i]]:
+                        r.feed(int(c))
+                    hi = HandInfo(env.deals[i].hands[seat])
+                    actions[k] = pol.choose(r, seat, hi, masks[k])
+            else:
+                a, _, _, _, _, _ = _act(pol, tokens[rows], hand[rows],
+                                        vuln_cls[rows], row_len[rows],
+                                        masks[rows], device, greedy, temp, amp)
+                actions[rows] = a.cpu().numpy()
         env.step(idx, actions)
     return env
 
@@ -652,9 +699,10 @@ def play_team_deals(model, deals: list[Deal], dealer: np.ndarray,
     at both tables -- sampling (temp >= 1) is what makes the two auctions
     diverge; a greedy policy would play identical auctions and get zero
     team signal. Every learner-side seat samples at `temp` and is recorded
-    (both partners learn); roll.partner_dev holds each recorded row's mean
-    partner greedy deviation, which row_rewards() uses to discount negative
-    rewards (see team_row_rewards).
+    (both partners learn); the frozen opponent samples at the same `temp`,
+    so identical policies compare even. roll.partner_dev holds each recorded
+    row's mean partner greedy deviation, which row_rewards() uses to
+    discount row rewards, both signs (see team_row_rewards).
     amp: bf16 autocast for the rollout forwards (CPU speed knob).
     presolve: optional warm_cache future to join before scoring.
     conv_cfg: optional ConventionConfig -- when given (and rows are

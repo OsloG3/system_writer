@@ -638,3 +638,55 @@ def test_new_conditions():
     assert match_first([e], 0, ids(["1C", P]), B("2D"))[0] is e
     assert match_first([e], 0, ids(["1C", X]), B("2D"))[0] is e   # X is no bid
     assert match_first([e], 0, ids(["1C", "1H"]), B("2D"))[0] is None
+
+
+# ---------------------------------------------------------------------------
+# Regressions for the pattern-engine bugs fixed alongside the system rewrite
+# ---------------------------------------------------------------------------
+
+def test_pass_step_skips_opponent_pass():
+    """A pattern ending in a bare P must skip the opponent's intervening pass.
+
+    An opponent always acts between partner's bid and our pass, so without the
+    skip `1X-P` (passing an opening) and `...-2C-2D-P` (the XYZ diamond
+    signoff) could never match a real auction.
+    """
+    e = parse_entry("1X-P = pass of the opening @2.0")
+    # 1S(N) - P(E, opponent) - P(S, the described pass): must match
+    assert match_first([e], 0, ids(["1S", P]), B("P"))[0] is e
+    # an intervening opponent BID (not a pass) breaks it
+    assert match_first([e], 0, ids(["1S", "1N"]), B("P"))[0] is None
+    # the XYZ signoff: ...-2C-2D-P with the opponent's pass skipped
+    s = parse_entry("1X-1Y-1Z-2C-2D-P = diamond signoff @2.5")
+    pre = ["1C", P, "1D", P, "1H", P, "2C", P, "2D", P]
+    assert match_first([s], 0, ids(pre), B("P"))[0] is s
+
+
+def test_negated_description_token():
+    """`!stop` / `!balanced` invert a checkable token (the file's Lebensohl
+    cuebid wants NO stopper); a negated token must not silently become text."""
+    enf, _ = make_enforcer(["(2H)-X-3H = 4+S p>11 !stop @2.0"])
+    r = feed_all(["2H", X, P], dealer=1)
+    # 4 spades, NO heart stopper, 11+ K&R -> clean
+    assert enf.check(r, 0, HandInfo("KQ74.863.A52.K84"), B("3H")) == []
+    # same shape but WITH a heart stopper -> violates !stop
+    vs = enf.check(r, 0, HandInfo("KQ74.A63.A52.K84"), B("3H"))
+    assert codes(vs) == ["pat:(2H)-X-3H"]
+    # the token is parsed as a negated stopper, not free text
+    e = parse_entry("X = !stop !balanced")
+    assert [t.kind for t in e.branches[0]] == ["stop", "bal"]
+    assert all(t.negated for t in e.branches[0])
+
+
+def test_suspicious_token_lint():
+    """Misspelled enforcement tokens are flagged, not silently ignored."""
+    from bidding_dt.conventions.patterns import suspicious_token
+    assert suspicious_token("kc=3/0") is not None      # should be kc=0/3
+    assert suspicious_token("kc=0/3") is None          # valid
+    assert suspicious_token("S>=4") is not None        # belongs in a clause
+    assert suspicious_token("4+S") is None             # valid length token
+    assert suspicious_token("p>11") is None            # valid points token
+    assert suspicious_token("slam") is None            # ordinary free text
+    # parse_system_file collects the warnings on the spec
+    spec = spec_of("1X = RKCB response kc=3/0 @!")
+    assert spec.warnings and "kc=" in spec.warnings[0]

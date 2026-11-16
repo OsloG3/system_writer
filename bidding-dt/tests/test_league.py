@@ -117,6 +117,19 @@ def test_league_pfsp_prioritizes_hard_opponents(tmp_path):
     assert easy.iters == 10
 
 
+def test_league_winrate_counts_ties_as_half():
+    """A zero team swing is a tie, not a loss: 1 win + 3 ties reports 0.625
+    (the old >0 mean reported 0.25, understating even matchups)."""
+    lg = League(DEV)
+    m = lg.add_spec("random")
+    for _ in range(50):
+        lg.update_result(m, np.array([5.0, 0.0, 0.0, 0.0]))
+    assert abs(m.winrate - 0.625) < 0.01
+    before = m.winrate
+    lg.update_result(m, np.array([]))              # empty input is a no-op
+    assert m.winrate == before and m.iters == 50
+
+
 def test_league_snapshot_materialize_and_evict(tmp_path):
     torch.manual_seed(0)
     model = RLModel(TINY)

@@ -26,8 +26,10 @@ class RLConfig:
     rollout_temp: float = 1.0      # >1 flattens rollout sampling so self-play
                                    # tables diverge (PPO recomputes logprobs
                                    # at the same temperature); every learner
-                                   # seat samples -- negative rewards are
-                                   # discounted by the partner's sampled
+                                   # seat samples, and league opponents
+                                   # sample at the SAME temp (no structural
+                                   # handicap) -- row rewards, both signs,
+                                   # are discounted by the partner's sampled
                                    # deviation from greedy play (rollout.py)
     # system-convention enforcement (conventions/): every learner call is
     # checked against the enforced system (5-card majors, 15-17 1NT, strong

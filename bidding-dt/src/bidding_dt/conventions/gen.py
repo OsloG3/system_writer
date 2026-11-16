@@ -40,6 +40,7 @@ from ..hand.gen import policy_pool, save_store
 from ..rl.rollout import _act
 from ..train import pick_device
 from .auction import AuctionReader
+from .bidder import SystemBidder, load_bidder
 from .patterns import SystemEnforcer
 from .rules import HandInfo
 from .system_file import find_system_file, parse_system_file
@@ -93,19 +94,32 @@ def generate(out_dir, n_deals: int, specs, device, system_path: str,
 
             # fallback policy action for every active seat
             which = seat_policy[idx, hero]
+            system_rows = set()
             for pid in np.unique(which):
                 rows = np.flatnonzero(which == pid)
-                a, _, _, _, pr = _act(
-                    policies[pid], tokens[rows], hand[rows], vuln_cls[rows],
-                    row_len[rows], masks[rows], device, greedy, temp)
-                actions[rows] = a.cpu().numpy()
-                row_probs[rows] = pr.cpu().numpy()
+                pol = policies[pid]
+                if isinstance(pol, SystemBidder):
+                    # the rule-based bidder already follows the file
+                    for k in rows:
+                        i = int(idx[k]); seat = int(hero[k])
+                        r = AuctionReader(int(env.dealer[i]), int(env.vuln[i]))
+                        for c in env.calls[i, : env.n_calls[i]]:
+                            r.feed(int(c))
+                        hi = HandInfo(env.deals[i].hands[seat])
+                        actions[k] = pol.choose(r, seat, hi, masks[k])
+                        system_rows.add(int(k))
+                else:
+                    a, _, _, _, pr, _ = _act(
+                        pol, tokens[rows], hand[rows], vuln_cls[rows],
+                        row_len[rows], masks[rows], device, greedy, temp)
+                    actions[rows] = a.cpu().numpy()
+                    row_probs[rows] = pr.cpu().numpy()
 
-            # substitute a clean system call, so the convention actually
-            # happens and its follow-ups enter the data. The fallback policy's
-            # probability keeps a wildcard/underspecified entry from forcing a
-            # call the model considers essentially impossible.
+            # substitute a clean system call into the neural fallback rows, so
+            # the convention actually happens and its follow-ups enter the data
             for k, i in enumerate(idx):
+                if k in system_rows:
+                    continue
                 if conv_prob <= 0.0 or rng.random() >= conv_prob:
                     continue
                 seat = int(hero[k])
@@ -184,9 +198,8 @@ def main():
         ap.error("no system file found (models/system.txt or --system)")
     specs = list(args.policy)
     if not specs:
-        default = "bc:runs/bc_small/best.pt"
-        specs = [default if Path("runs/bc_small/best.pt").is_file()
-                 else "random"]
+        # default: deal the auctions straight from the system file
+        specs = ["system"]
     device = pick_device(args.device)
     generate(args.out, args.deals, specs, device, system_path,
              chunk=args.chunk, conv_prob=args.conv_prob, temp=args.temp,

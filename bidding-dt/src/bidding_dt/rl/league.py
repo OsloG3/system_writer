@@ -201,8 +201,13 @@ class League:
 
     def update_result(self, member: LeagueMember, team_imps):
         """Track the learner's per-deal winrate vs `member` (team_imps in
-        learner-team view, as produced by play_team_deals league mode)."""
-        wr = float((np.asarray(team_imps) > 0).mean())
+        learner-team view, as produced by play_team_deals league mode).
+        Ties (a zero swing -- common with gated team rewards) count as half
+        a win, so an even matchup reports ~0.5 instead of 0."""
+        x = np.asarray(team_imps, dtype=np.float64)
+        if x.size == 0:
+            return
+        wr = float(((x > 0).sum() + 0.5 * (x == 0).sum()) / x.size)
         member.iters += 1
         member.winrate += self.ema * (wr - member.winrate)
 

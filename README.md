@@ -282,13 +282,17 @@ partnership rather than the N-S/E-W direction.
   shows the whole hand at a glance. A per-player table breaks each seat's DD
   mistakes into declarer / lead / defence, with tricks lost and critical counts.
 - **Bulk** — analyze a whole set of boards (all of your history, or a multi-board
-  PBN) one request per board with a progress bar, then read the aggregate: DD
-  mistakes **by each player** (count, per-board, split declarer/lead/defence,
-  tricks lost, contract-critical) plus **declaring IMPs per player**; **by pair**
-  the contracts declared, **% made**, **missed games and slams** and **defence
-  IMPs**; and session totals for **unmakeable contracts made** (DD says it should
-  fail, poor defence let it through), average contract level and average tricks
-  over/under DD. Every statistic has a hover explanation.
+  PBN) one request per board with a progress bar, then read the aggregate. A
+  **filter bar** narrows every panel below it to **NT or suit** contracts and/or
+  **part-score / game / slam** contracts (the two filters combine). The **by-player**
+  stats are split into three tabs — **Declarer**, **Lead** and **Defense**
+  (follows/discards, leads excluded) — each showing the boards acted in that role,
+  total and contract-critical DD mistakes, and their per-board averages; the
+  Declarer tab also keeps that player's **average declaring IMPs versus DD**.
+  **By pair** the contracts declared, **% made**, **missed games and slams** and
+  **defence IMPs**; and session totals for **unmakeable contracts made** (DD says
+  it should fail, poor defence let it through), average contract level and average
+  tricks over/under DD. Every statistic has a hover explanation.
 
 `/api/analyze/board` needs no login (anyone may analyze a submitted PBN); the
 play **history** it can pull from is itself login-gated (`GET /api/play/stats`).

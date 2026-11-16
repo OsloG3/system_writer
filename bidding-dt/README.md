@@ -329,6 +329,18 @@ The system the bots are trained to follow is written in one **text file** --
 `models/system.txt` in the website repo (the deployed server reads it from
 there; `BIDDING_SYSTEM_FILE` / `--system` / `rl.system_file` override, and
 the default search also tries `../models/system.txt` from a nested checkout).
+The file describes a **complete 2/1 Game Force system** (~250 entries), not
+just the alertable conventions: openings (incl. weak twos and preempts), 1NT
+responses with Stayman / Jacoby transfers / Smolen and their continuations
+(invite, choice-of-games, quantitative 4NT, Gerber), strong-2C sequences,
+major/minor responses with Jordan 2NT limit raises and splinters, 2/1 game
+forces, opener and responder rebids (reverses, jump shifts, game tries after
+a simple raise), XYZ, RKCB 1430 with follow-ups, weak-two feature asks, the
+full competitive toolbox (overcalls, negative / takeout / penalty doubles,
+advancer bids and raises, cuebid raises, Michaels, unusual 2NT, Lebensohl)
+and slam-bidding glue. Every entry carries the hand requirements its call
+promises, so the file drives training enforcement, the demonstration
+generator, the rule-based bidder AND the website alerts from one source.
 The whole file is a **sequence-pattern script**: one entry per line, checked
 in file order, first match wins:
 
@@ -336,10 +348,10 @@ in file order, first match wins:
 PATTERN[; CLAUSES] = DESCRIPTION [@weight] [@!]
 
 1X-1Y-2Z; X<Z = reverse: 5+X 4+Z p>16 F @2.0
-1X-(1Y)-2Z; Z<Y, first = 2/1 over their bid: 4+Z p>11.5 GF
-1NT-2C = 4+H OR 4+S stayman ask @!
+1X-(1Y)-2Z; Z<Y, first = 2/1 over their bid: 5+Z p>11.5 GF
+1NT-2C = p>7.5 4+H OR p>7.5 4+S stayman ask @!
 1X-1Y-1Z-2C = p<9.5 5+D weak diamond signoff OR p9.5-12.5 any invite @!
-...-4N-(P)-5C; we_bid = RKCB response for {T}: kc=0/3 @!
+...-4N-(P)-5C; we_bid = RKCB response for {T}: kc=1/4 @!
 1X-...-2X; first, X>=H = raise: 3+X p5-12.5
 ...-X; we_xx OR dbls_by_us>=2 OR gf OR their_bid>=4S = PENALTY
 ...-X = TO
@@ -371,8 +383,12 @@ PATTERN[; CLAUSES] = DESCRIPTION [@weight] [@!]
   +- kr_tolerance): lengths `5+X` / `4-6H` / `8+any` (`any` binds the
   longest suit for `2top`), points `p>16` / `p15-17` / `p<10`, `balanced`,
   `openp` (opening values incl. the rule of 20, lighter in 3rd/4th seat),
-  `no4M` (no biddable 4-card major), `noLong5M`, `stop` (stopper in their
-  suit), and RKCB `kc=0/3` / `kc=1/4` / `kc=2-` / `kc=2+` (keycards in {T}).
+  `no4M` (no biddable 4-card major), `noMajor` (no 4-card major at all),
+  `noLong5M`, `stop` (stopper in their suit), and RKCB `kc=0/3` / `kc=1/4` /
+  `kc=2-` / `kc=2+` (keycards in {T}). Any checkable token may be negated with
+  a leading `!` (`!stop` = no stopper, `!balanced` = unbalanced). A token that
+  looks like enforcement but is misspelled (`kc=3/0`, `S>=4`) is reported as a
+  parse warning rather than silently ignored.
   Entry keywords: `F` (one-round force -- PARTNER passing it is penalized,
   an intervening opponent bid releases it), `GF` (game force -- passing
   below game is penalized), and for doubles `TO` / `PENALTY`: the doubler's
@@ -390,7 +406,7 @@ Top-level `key = value` **config lines** tune the rest: `kr_tolerance`,
 `to_pass_weight`, `penalty_pull_weight`, `to_pass_min_len`,
 `penalty_pull_max_len`).
 
-Two consumers, one file:
+Three consumers, one file:
 
 - **Training interprets it at startup** (`rl/train_ppo.py`, when
   `rl.conv_weight > 0` or `rl.sys_weight > 0`): the config lines fold into a
@@ -407,6 +423,16 @@ Two consumers, one file:
   positive teacher described below (`clean_use` / `target`). The init log
   line records which file was read; a missing explicit `--system` path is a
   hard error, a missing default falls back to the built-in values.
+  `parse_system_file` also lints each description for misspelled enforcement
+  tokens (e.g. `kc=3/0`, `S>=4`) and prints a warning, so a token that would
+  silently degrade to free text is caught at load time.
+- **The rule-based bidder plays it directly** (`conventions/bidder.py`,
+  `SystemBidder`): bridge logic proposes the ideal call for each position and
+  the `SystemEnforcer` validates it, falling back to the best *consistent*
+  legal call. This is the literal "bot following the rules" -- no neural net --
+  used to deal system-consistent auctions for `conventions/gen.py` /
+  `hand/gen.py` (the `system:` policy) and as the check that the file is
+  detailed enough to bid on its own (its auctions score ~par double-dummy).
 - **The website generates its bid alerts from it** (system_writer's
   `system_file.go` + `patterns.go` + `auction.go`): the Go server replays
   the live auction through ports of the Python auction reader and pattern
@@ -468,14 +494,28 @@ appear there are the ones the file may describe too narrowly (or that the
 bot never reaches).
 
 **Demonstrations for the rest.** If a convention is still never reached,
-`conventions/gen.py` rolls random deals with a fallback bidding model and
-substitutes a clean system call with probability `--conv-prob`, producing a
-`data/parse.py`-compatible cache of *convention auctions*:
+`conventions/gen.py` deals auctions that actually use the file's system. The
+default `--policy system` plays every seat with the **rule-based
+`conventions/bidder.py`** -- a bot that reads the same entries and bids them
+directly, with no neural net -- so the demonstrations are exactly the system
+the file describes (and a good way to sanity-check the file: if it is detailed
+enough, these auctions are sensible bridge). A neural fallback policy with
+convention substitution is still available for variety:
 
 ```
+# file-driven (default): the rule-based bidder plays the system
+uv run python -m bidding_dt.conventions.gen \
+    --system ../models/system.txt --deals 50000 --out cache/system
+
+# or: roll a BC model and substitute clean system calls into it
 uv run python -m bidding_dt.conventions.gen \
     --system ../models/system.txt --deals 50000 --conv-prob 0.85 \
     --policy bc:runs/bc_small/best.pt --out cache/system
+
+# ask the rule-based bidder directly (one hand, or self-play auctions):
+uv run python -m bidding_dt.conventions.bidder \
+    --hand "AT7.KT943.A42.K8" --dealer N --auction "P 1D" --hero N
+uv run python -m bidding_dt.conventions.bidder --selfplay --deals 20
 ```
 
 Mix it into BC with `data.system_cache` / `data.system_repeat` (or
@@ -485,9 +525,15 @@ built-in RKCB fit/values gate for wildcard entries, so they teach the system
 the bot is supposed to play. A good loop is: generate demonstrations, BC on
 the mixture, then RL with `conv_weight` + `sys_weight` + `sys_explore`.
 
-`configs/rl_conv.yaml` carries the starting values (`sys_weight: 0.4` down to
-`0.1`, `sys_explore: 0.1`); lower `sys_weight` or raise `sys_target_min_prob`
-if IMPs regress, raise them if `conv_used_rate` stays near zero.
+`configs/rl_conv.yaml` carries the starting values (`sys_weight: 0.3` down to
+`0.05`, `sys_explore: 0.1`, `sys_target_min_prob: 0.02`); lower `sys_weight`
+or raise `sys_target_min_prob` if IMPs regress, raise them if `conv_used_rate`
+stays near zero. Note the convention penalty/bonus are scaled by
+`reward_scale` like the IMP reward, so a file weight of `W` costs `W`
+IMP-equivalents (a weight-2.0 break ~ 2 IMPs) and `conv_bonus` earns that many
+IMPs -- keep the two comparable so using a convention is not 20x riskier than
+skipping it (the old unscaled penalty was, which is why the policy avoided
+every convention).
 
 ## Hand inference (VQ encoder-decoder)
 
@@ -723,6 +769,8 @@ src/bidding_dt/
   conventions/alerts.py # built-in alert texts (for tooling without a file)
   conventions/patterns.py # the system-file pattern language: parse, match,
                        # replay state, SystemEnforcer, alert rendering
+  conventions/bidder.py  # rule-based bidder that plays the system file
+                       # directly (a `system:` policy for the generators)
   conventions/system_file.py # models/system.txt: config lines + entries,
                        # ConventionConfig builder, alert_for_call
   rl/config.py         # RLConfig / RLTrainConfig (YAML)

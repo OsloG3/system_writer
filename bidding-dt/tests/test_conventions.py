@@ -324,18 +324,18 @@ def test_rkcb_ask_and_responses():
     # no suit bid by us -> quantitative, unchecked (hero = S over 1NT)
     assert codes("AK74.QJ6.AQ7.654", ["1N", P], "4N") == []
     # hero = N answers the ask: the step must show the right keycard count
-    # (5C 0/3, 5D 1/4, 5H 2 without the trump Q, 5S 2 with it)
+    # (1430: 5C 1/4, 5D 0/3, 5H 2 without the trump Q, 5S 2 with it)
     resp = auc + ["4N", P]
-    assert codes("AK74.QJ6.AQ7.654", resp, "5C") == []            # 3 keys
-    assert codes("AK74.QJ6.AQ7.654", resp, "5D") == ["rkcb_response"]
-    assert codes("AJ74.KJ6.KJ7.KJ4", resp, "5D") == []            # 1 key
-    assert codes("AJ74.KJ6.KJ7.KJ4", resp, "5C") == ["rkcb_response"]
+    assert codes("AK74.QJ6.AQ7.654", resp, "5D") == []            # 3 keys
+    assert codes("AK74.QJ6.AQ7.654", resp, "5C") == ["rkcb_response"]
+    assert codes("AJ74.KJ6.KJ7.KJ4", resp, "5C") == []            # 1 key
+    assert codes("AJ74.KJ6.KJ7.KJ4", resp, "5D") == ["rkcb_response"]
     assert codes("KQJ4.A753.T985.4", resp, "5S") == []            # 2 + Q
     assert codes("KQJ4.A753.T985.4", resp, "5H") == ["rkcb_response"]
     assert codes("43.AKJ5.AJT52.43", resp, "5H") == []            # 2, no Q
     assert codes("43.AKJ5.AJT52.43", resp, "5S") == ["rkcb_response"]
-    assert codes("QJ74.KJ6.QJ7.QJ4", resp, "5C") == []            # 0 keys
-    assert codes("QJ74.KJ6.QJ7.QJ4", resp, "5D") == ["rkcb_response"]
+    assert codes("QJ74.KJ6.QJ7.QJ4", resp, "5D") == []            # 0 keys
+    assert codes("QJ74.KJ6.QJ7.QJ4", resp, "5C") == ["rkcb_response"]
 
 
 def test_reader_rkcb_state():
@@ -478,9 +478,9 @@ def test_convention_bonus():
     # ... and the step response earns it only when the count is right
     resp = auc + ["4N", P]
     r = feed_all(resp)
-    assert call_bonus(r, 0, "AK74.QJ6.AQ7.654", B("5C"), CFG) \
+    assert call_bonus(r, 0, "AK74.QJ6.AQ7.654", B("5D"), CFG) \
         == pytest.approx(small)
-    assert call_bonus(r, 0, "AK74.QJ6.AQ7.654", B("5D"), CFG) == 0.0
+    assert call_bonus(r, 0, "AK74.QJ6.AQ7.654", B("5C"), CFG) == 0.0
     # XYZ 2C / 2D, fourth suit, smolen, support cuebid
     xyz = ["1C", P, "1H", P, "1S", P]
     assert bonus("KQJ4.A753.T985.4", xyz, "2C") == pytest.approx(small)
@@ -510,7 +510,7 @@ def test_convention_alerts():
         feed_all(["1C", P, "1H", P, "1S", P]).classify(B("2D"), seat=2))
     assert "RKCB for ♠" in convention_alert(
         feed_all(auc).classify(B("4N"), seat=2))
-    assert "1 or 4 keycards" in convention_alert(
+    assert "0 or 3 keycards" in convention_alert(
         feed_all(resp).classify(B("5D"), seat=0))
     assert "2 keycards with the trump queen" in convention_alert(
         feed_all(resp).classify(B("5S"), seat=0))
@@ -596,11 +596,12 @@ def test_team_row_rewards_convention_penalty():
     assert np.allclose(r0, [-8.0, 8.0])
     r = team_row_rewards(buf, conv_pen=conv, conv_weight=0.5, **kw)
     assert np.allclose(r, [-9.0, 7.5])
-    # penalty applies after the partner-dev discount (row owns its own break)
+    # penalty applies after the partner-dev discount (row owns its own break);
+    # the discount itself is symmetric -- both signs shrink by exp(-dev)
     pd = np.full(2, np.log(4.0))
     r = team_row_rewards(buf, partner_dev=pd, conv_pen=conv, conv_weight=0.5,
                          **kw)
-    assert np.allclose(r, [-8.0 / 4 - 1.0, 8.0 - 0.5])
+    assert np.allclose(r, [-8.0 / 4 - 1.0, 8.0 / 4 - 0.5])
     # the convention bonus is added unscaled on top
     bon = np.array([0.05, 0.0])
     r = team_row_rewards(buf, conv_pen=conv, conv_weight=0.5, conv_bonus=bon,
@@ -712,4 +713,79 @@ def test_play_team_deals_conv_pen_flows_into_rewards(tmp_path):
                           cache=cache, greedy=True)
     assert ref.conv_pen is None
     assert ref.conv_bonus is None
+    cache.close()
+
+
+@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
+def test_sys_explore_forced_call_records_true_dev(tmp_path):
+    """A sys_explore-forced convention call keeps the policy's own logprob
+    and its TRUE untempered greedy deviation (it used to be pinned to 0, so a
+    failed forced experiment charged the partner's punishment in full instead
+    of discounting it as exploration noise)."""
+    import torch
+    from bidding_dt.config import ModelConfig
+    from bidding_dt.conventions.system_file import parse_system_file
+    from bidding_dt.data.hands import HAND_DIM
+    from bidding_dt.dd.solver import TableCache
+    from bidding_dt.env.deals import random_deals
+    from bidding_dt.rl.model import RLModel
+    from bidding_dt.rl.rollout import play_team_deals
+
+    f = pathlib.Path(tempfile.mkdtemp()) / "system.txt"
+    f.write_text("2D = 5+H OR 5+S artificial multi-style opening @!\n")
+    spec = parse_system_file(f)
+    cfg = spec.config()
+    rng = np.random.default_rng(17)
+    two_d = B("2D")
+    # 6 deals whose dealer (N) holds a 5-card major: every opening decision
+    # has a clean artificial 2D target, which sys_explore=1.0 always forces
+    deals = []
+    for d in random_deals(rng, 400):
+        s, h = d.hands[0].split(".")[0], d.hands[0].split(".")[1]
+        if len(h) >= 5 or len(s) >= 5:
+            deals.append(d)
+        if len(deals) == 6:
+            break
+    assert len(deals) == 6
+    dealer = np.zeros(6, dtype=np.int64)
+    vuln = rng.integers(0, 4, 6)
+    torch.manual_seed(19)
+    model = RLModel(ModelConfig.from_preset("tiny")).eval()
+    cache = TableCache(tmp_path / "dd.sqlite")
+    roll = play_team_deals(model, deals, dealer, vuln, torch.device("cpu"),
+                           rng=rng, cache=cache, greedy=False, temp=1.3,
+                           conv_cfg=cfg, conv_spec=spec, sys_target=True,
+                           sys_explore=1.0)
+    buf = roll.buf
+    forced = [i for i in range(buf.n)
+              if buf.call_idx[i] == 0 and roll.sys_target[i, two_d] > 0.5]
+    assert len(forced) == 12   # pure self-play: both tables open every deal
+    assert all(buf.action[i] == two_d for i in forced)
+
+    # the stored dev equals the recomputed untempered greedy deviation
+    L = max(int(buf.row_len[i]) for i in forced)
+    tok = np.zeros((len(forced), L), dtype=np.int64)
+    hand = np.zeros((len(forced), HAND_DIM), dtype=np.float32)
+    vul = np.zeros(len(forced), dtype=np.int64)
+    rlen = np.zeros(len(forced), dtype=np.int64)
+    mask = np.zeros((len(forced), buf.mask[0].shape[0]), dtype=bool)
+    for k, i in enumerate(forced):
+        li = int(buf.row_len[i])
+        tok[k, :li] = buf.tokens[i]
+        hand[k] = buf.hand[i]
+        vul[k] = buf.vuln[i]
+        rlen[k] = li
+        mask[k] = buf.mask[i]
+    with torch.no_grad():
+        logits, _ = model.forward_last(
+            torch.as_tensor(tok), torch.as_tensor(hand),
+            torch.as_tensor(vul), torch.as_tensor(rlen))
+    lp0 = logits.float().masked_fill(~torch.as_tensor(mask),
+                                     float("-inf")).log_softmax(-1).numpy()
+    expected = np.maximum(0.0, lp0.max(axis=1) - lp0[:, two_d])
+    got = np.asarray([buf.dev[i] for i in forced])
+    assert np.allclose(got, expected, atol=1e-5)
+    # a tiny random policy hardly ever argmaxes 2D, so the forced calls are
+    # real deviations -- the old code would have recorded all zeros here
+    assert (got > 0).any()
     cache.close()

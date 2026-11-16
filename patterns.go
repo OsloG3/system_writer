@@ -470,8 +470,12 @@ func matchFrom(e *patEntry, dealer int, seq []int, us, stepI, pos int,
 		return nil
 	}
 	i := pos
-	if !step.them && step.kind != stepPass {
-		for i < len(seq) { // implicit opponent-pass skip
+	if !step.them {
+		// Implicit opponent-pass skip before any of OUR steps -- including a
+		// pass step (mirrors patterns.py): an opponent always acts between
+		// partner's bid and our pass, so a pattern ending in a bare "P"
+		// (1X-P, ...-2C-2D-P) must skip it to match a real auction.
+		for i < len(seq) {
 			seat := (dealer + i) % 4
 			if seat%2 != us && seq[i] == int(callPass) {
 				i++
@@ -792,8 +796,22 @@ func suitSym(ref byte, binds map[byte]int) string {
 	return "any"
 }
 
+var negText = map[string]string{
+	"stop": "no stopper in their suit", "balanced": "unbalanced",
+	"bal": "unbalanced", "openp": "sub-opening values",
+	"no4M": "a biddable 4-card major", "noMajor": "a 4-card major",
+	"noLong5M": "a longer 5-card major",
+}
+
 func prettyToken(w string, binds map[byte]int) string {
 	word := strings.Trim(w, ",:;.")
+	if strings.HasPrefix(word, "!") {
+		base := strings.Trim(word[1:], ",:;.")
+		if t, ok := negText[base]; ok {
+			return t
+		}
+		return "not " + prettyToken(base, binds)
+	}
 	if m := reLen.FindStringSubmatch(word); m != nil {
 		var sym string
 		if m[4] == "any" {
