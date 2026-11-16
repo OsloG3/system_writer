@@ -330,6 +330,7 @@
             let bulkTab = "decl";      // bulk per-player sub-table: decl | lead | def
             let drill = null;          // { title (html), idxs:Set } — boards behind a clicked stat
             let drillRegistry = [];    // drill targets of the current render, indexed by data-drill
+            let singleFromBulk = false; // the single view was opened from the bulk Per-board table
 
             // ---- small helpers ----
             function $(id) { return document.getElementById(id); }
@@ -694,7 +695,7 @@
             }
             async function pickHistory() {
                 if (!window.currentUser) { showAuthDialog("login"); return; }
-                sourceError = null; busy = true; view = "list"; boards = []; boardResults = {}; sourceKind = "history"; clearShareUrl(); render();
+                sourceError = null; busy = true; view = "list"; boards = []; boardResults = {}; bulk = null; drill = null; singleFromBulk = false; sourceKind = "history"; clearShareUrl(); render();
                 try {
                     boards = await loadHistoryBoards();
                     if (!boards.length) sourceError = "No played-out hands in your history yet. Play a few hands in \u201cPlay bridge\u201d first.";
@@ -710,7 +711,7 @@
                     view = "source"; sourceError = "Log in to open that hand from your history.";
                     render(); showAuthDialog("login"); return;
                 }
-                sourceError = null; busy = true; view = "list"; boards = []; boardResults = {}; sourceKind = "history"; clearShareUrl(); render();
+                sourceError = null; busy = true; view = "list"; boards = []; boardResults = {}; bulk = null; drill = null; singleFromBulk = false; sourceKind = "history"; clearShareUrl(); render();
                 try {
                     boards = await loadHistoryBoards();
                     const idx = boards.findIndex((b) => b.ts === ts);
@@ -751,7 +752,7 @@
                     plays: p.plays, resultTricks: p.resultTricks, idxLabel: p.boardNo || k + 1,
                     names: p.names, contractStr: contractTextNamed(p.contract, p.names),
                 }));
-                boardResults = {}; sourceKind = "pbn";
+                boardResults = {}; bulk = null; drill = null; singleFromBulk = false; sourceKind = "pbn";
                 if (boards.length === 1 && !errors.length) { openBoard(0); }
                 else { view = "list"; render(); }
             }
@@ -759,7 +760,19 @@
             // ---- navigation ----
             function goSource() { view = "source"; sourceError = null; showPaste = false; clearShareUrl(); render(); }
             function goList() { view = "list"; clearShareUrl(); render(); }
+            // Back from a board opened in the bulk Per-board table: restore the
+            // finished bulk analysis (filters, role tab and drill selection intact).
+            function goBulk() {
+                if (bulk && bulk.agg) { view = "bulk"; clearShareUrl(); render(); }
+                else goList();
+            }
             async function openBoard(i) {
+                // remember where we came from so Back returns there: a board opened
+                // from the bulk Per-board table goes back to the bulk analysis, one
+                // opened from the list/source goes back to the list. Re-opening the
+                // same board (Retry) keeps the flag.
+                if (view === "bulk") singleFromBulk = !!(bulk && bulk.agg);
+                else if (view !== "single") singleFromBulk = false;
                 curIdx = i; step = 0; view = "single"; busy = true; clearShareUrl(); render();
                 if (!boardResults[i]) { await ensureAnalysis(i); }
                 busy = false; render();
@@ -1035,7 +1048,7 @@
             // single-hand view (kind "single") or the finished bulk view with the
             // aggregate recomputed from the stored results (kind "bulk").
             async function openSharedAnalysis(id) {
-                busy = true; view = "list"; boards = []; boardResults = {}; bulk = null; drill = null; render();
+                busy = true; view = "list"; boards = []; boardResults = {}; bulk = null; drill = null; singleFromBulk = false; render();
                 try {
                     const res = await fetch("/api/analyze/share/" + encodeURIComponent(id));
                     const data = await res.json().catch(() => null);
@@ -1156,8 +1169,11 @@
                 const board = boards[curIdx];
                 const a = boardResults[curIdx];
                 const canShare = !busy && a && !a.error;
+                // Back returns to the bulk analysis when this board was opened from
+                // its Per-board table; otherwise to the board list / source picker
+                const backBulk = singleFromBulk && bulk && bulk.agg;
                 const top = `<div class="an-topbar">
-                    <button class="an-btn sm" id="backList"><span class="material-symbols-outlined">arrow_back</span>${boards.length > 1 ? "Boards" : "Back"}</button>
+                    <button class="an-btn sm" id="backList" title="${backBulk ? "Back to the bulk analysis" : "Back to the boards"}"><span class="material-symbols-outlined">${backBulk ? "bar_chart" : "arrow_back"}</span>${backBulk ? "Bulk analysis" : boards.length > 1 ? "Boards" : "Back"}</button>
                     <span class="spacer"></span>
                     ${canShare ? `<button class="an-btn sm" id="shareBtn" ${shareBusy ? "disabled" : ""} title="Copy a link that opens this exact analysis for anyone"><span class="material-symbols-outlined">share</span>${shareBusy ? "Sharing\u2026" : "Share"}</button>` : ""}
                     <button class="an-btn sm" id="prevBoard" ${curIdx === 0 ? "disabled" : ""}><span class="material-symbols-outlined">chevron_left</span></button>
@@ -1501,16 +1517,18 @@
                     `<button class="an-tab${bulkTab === t.id ? " active" : ""}" data-tab="${t.id}">${t.label}</button>`).join("")}</div>`;
                 // which aggregate fields each role-tab reads, plus the phrasing for
                 // the drill-down banner ("Boards where <name> ...")
+                // NB: the *Txt phrase keys must not collide with the aggregate
+                // field-name keys (boards/mistakes/crit), or the field lookup breaks
                 const ROLE_CFGS = {
                     decl: { boards: "declared", boardsIdx: "declaredIdx", mistakes: "decl", mistIdx: "declMistIdx", crit: "declCrit", critIdx: "declCritIdx",
                         boardsTip: "Boards this player was the declarer (declarer plays both hands).",
-                        acted: "declared", mist: "made a declarer-play mistake", crit: "made a contract-critical mistake as declarer" },
+                        actedTxt: "declared", mistTxt: "made a declarer-play mistake", critTxt: "made a contract-critical mistake as declarer" },
                     lead: { boards: "leadBoards", boardsIdx: "leadBoardsIdx", mistakes: "lead", mistIdx: "leadMistIdx", crit: "leadCrit", critIdx: "leadCritIdx",
                         boardsTip: "Boards where this player was the opening leader (led the first card, to declarer's left). Mistake counts cover every defensive lead they made, opening or later.",
-                        acted: "was the opening leader", mist: "made a lead mistake", crit: "made a contract-critical lead mistake" },
+                        actedTxt: "was the opening leader", mistTxt: "made a lead mistake", critTxt: "made a contract-critical lead mistake" },
                     def: { boards: "defended", boardsIdx: "defendedIdx", mistakes: "def", mistIdx: "defMistIdx", crit: "defCrit", critIdx: "defCritIdx",
                         boardsTip: "Boards this player defended; the mistake counts cover follows and discards only (leads excluded).",
-                        acted: "defended", mist: "made a defence mistake", crit: "made a contract-critical defence mistake" },
+                        actedTxt: "defended", mistTxt: "made a defence mistake", critTxt: "made a contract-critical defence mistake" },
                 };
                 const roleCfg = ROLE_CFGS[bulkTab] || ROLE_CFGS.decl;
 
@@ -1529,9 +1547,9 @@
                         : "";
                     return `<tr>
                         <td><span style="font-weight:700;color:#e8e6e3">${escapeHtml(p.name)}</span></td>
-                        <td class="n">${drillNum(b, `${nm} ${roleCfg.acted}`, p[roleCfg.boardsIdx])}</td>
-                        <td class="n" style="color:${m ? "#f6d9a8" : "#8fd694"}">${drillNum(m, `${nm} ${roleCfg.mist}`, p[roleCfg.mistIdx])}</td>
-                        <td class="n" style="color:${cr ? "#ffd7d1" : "#bababa"}">${drillNum(cr, `${nm} ${roleCfg.crit}`, p[roleCfg.critIdx])}</td>
+                        <td class="n">${drillNum(b, `${nm} ${roleCfg.actedTxt}`, p[roleCfg.boardsIdx])}</td>
+                        <td class="n" style="color:${m ? "#f6d9a8" : "#8fd694"}">${drillNum(m, `${nm} ${roleCfg.mistTxt}`, p[roleCfg.mistIdx])}</td>
+                        <td class="n" style="color:${cr ? "#ffd7d1" : "#bababa"}">${drillNum(cr, `${nm} ${roleCfg.critTxt}`, p[roleCfg.critIdx])}</td>
                         <td class="n">${per(m, b)}</td>
                         <td class="n">${per(cr, b)}</td>
                         ${impCell}
@@ -1668,7 +1686,14 @@
                 on("pasteHide", "click", () => { showPaste = false; render(); });
                 on("pasteGo", "click", () => { const t = $("pasteBox"); if (t && t.value.trim()) loadPBNText(t.value); else showToast("Paste some PBN text first", true); });
                 on("backSrc", "click", goSource);
-                on("backList", "click", () => { if (boards.length > 1) goList(); else goSource(); });
+                on("backList", "click", () => {
+                    // in the single view, a board opened from the bulk Per-board
+                    // table goes back to the bulk analysis; the bulk view's own
+                    // "Boards" button (same id) always returns to the list
+                    if (view === "single" && singleFromBulk && bulk && bulk.agg) goBulk();
+                    else if (boards.length > 1) goList();
+                    else goSource();
+                });
                 on("shareBtn", "click", shareAnalysis);
                 on("bulkGo", "click", runBulk);
                 on("prevBoard", "click", prevBoard);

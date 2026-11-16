@@ -294,7 +294,10 @@ partnership rather than the N-S/E-W direction.
   Those counts (boards / mistakes / critical) and the pairs' **missed games /
   slams** are **clickable drill-downs**: they select exactly the boards behind
   the stat — e.g. every hand where a player made a critical mistake on the lead,
-  or a pair missed a makeable slam — in the per-board list. **By pair** also the
+  or a pair missed a makeable slam — in the per-board list. Opening a board from
+  there swaps the single-hand view's back button to **Bulk analysis**, which
+  restores the finished aggregate with its filters, role tab and drill selection
+  intact. **By pair** also the
   contracts declared, **% made** and **defence IMPs**; and session totals for
   **unmakeable contracts made** (DD says it should fail, poor defence let it
   through), average contract level and average tricks over/under DD. Every
