@@ -284,15 +284,21 @@ partnership rather than the N-S/E-W direction.
 - **Bulk** — analyze a whole set of boards (all of your history, or a multi-board
   PBN) one request per board with a progress bar, then read the aggregate. A
   **filter bar** narrows every panel below it to **NT or suit** contracts and/or
-  **part-score / game / slam** contracts (the two filters combine). The **by-player**
-  stats are split into three tabs — **Declarer**, **Lead** and **Defense**
-  (follows/discards, leads excluded) — each showing the boards acted in that role,
-  total and contract-critical DD mistakes, and their per-board averages; the
-  Declarer tab also keeps that player's **average declaring IMPs versus DD**.
-  **By pair** the contracts declared, **% made**, **missed games and slams** and
-  **defence IMPs**; and session totals for **unmakeable contracts made** (DD says
-  it should fail, poor defence let it through), average contract level and average
-  tricks over/under DD. Every statistic has a hover explanation.
+  **part-score / game / slam** contracts (the two filters combine), and the
+  session overview splits the **contract-critical** mistakes by role (declarer /
+  lead / defence). The **by-player** stats are split into three tabs —
+  **Declarer**, **Lead** (boards as the *opening* leader) and **Defense**
+  (follows/discards, leads excluded) — each showing the boards in that role,
+  total mistakes and contract-critical mistakes, and their per-board averages;
+  the Declarer tab also keeps that player's **average declaring IMPs versus DD**.
+  Those counts (boards / mistakes / critical) and the pairs' **missed games /
+  slams** are **clickable drill-downs**: they select exactly the boards behind
+  the stat — e.g. every hand where a player made a critical mistake on the lead,
+  or a pair missed a makeable slam — in the per-board list. **By pair** also the
+  contracts declared, **% made** and **defence IMPs**; and session totals for
+  **unmakeable contracts made** (DD says it should fail, poor defence let it
+  through), average contract level and average tricks over/under DD. Every
+  statistic has a hover explanation.
 
 `/api/analyze/board` needs no login (anyone may analyze a submitted PBN); the
 play **history** it can pull from is itself login-gated (`GET /api/play/stats`).

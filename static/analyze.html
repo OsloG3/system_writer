@@ -246,6 +246,11 @@
             .an-segbtn { padding: 0.28rem 0.7rem; border-radius: 0.4rem; border: 0; background: transparent; color: #908f8d; font-family: Inter, sans-serif; font-size: 0.76rem; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
             .an-segbtn:hover { color: #e8e6e3; }
             .an-segbtn.active { background: #3d3a36; color: #e8e6e3; }
+            .an-drillbtn { background: none; border: 0; border-bottom: 1px dotted currentColor; padding: 0 2px; margin: 0; font: inherit; color: inherit; cursor: pointer; border-radius: 3px; }
+            .an-drillbtn:hover { background: rgba(255,255,255,0.1); }
+            .an-drillbar { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; background: #302e2c; border: 1px solid rgba(255,255,255,0.09); border-radius: 0.6rem; padding: 0.4rem 0.55rem 0.4rem 0.7rem; margin-bottom: 0.6rem; font-size: 0.82rem; color: #bababa; }
+            .an-drillbar .material-symbols-outlined { font-size: 1.05rem; color: #908f8d; }
+            .an-drillbar b { color: #e8e6e3; }
             .an-tabs { display: inline-flex; gap: 0.2rem; background: #1d1b19; padding: 0.22rem; border-radius: 0.6rem; }
             .an-tab { padding: 0.34rem 0.95rem; border-radius: 0.45rem; border: 0; background: transparent; color: #908f8d; font-family: Inter, sans-serif; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
             .an-tab:hover { color: #e8e6e3; }
@@ -323,6 +328,8 @@
             let filterStrain = "all";  // bulk filter: all | nt | suit
             let filterLevel = "all";   // bulk filter: all | part | game | slam
             let bulkTab = "decl";      // bulk per-player sub-table: decl | lead | def
+            let drill = null;          // { title (html), idxs:Set } — boards behind a clicked stat
+            let drillRegistry = [];    // drill targets of the current render, indexed by data-drill
 
             // ---- small helpers ----
             function $(id) { return document.getElementById(id); }
@@ -388,6 +395,14 @@
             function mcCell(m, c) {
                 if (!m && !c) return "\u00b7";
                 return `${m} <span style="opacity:.5">/</span> <span style="color:${c ? "#ffd7d1" : "#908f8d"}">${c}</span>`;
+            }
+            // A stat number that doubles as a drill-down button: clicking it selects
+            // the boards behind that stat in the Per-board list below. A zero count
+            // has nothing to select and renders as plain text.
+            function drillNum(count, titleHtml, idxs) {
+                if (!count || !idxs || !idxs.length) return String(count);
+                drillRegistry.push({ title: titleHtml, idxs });
+                return `<button class="an-drillbtn" data-drill="${drillRegistry.length - 1}" title="Select these boards in the Per-board list below">${count}</button>`;
             }
             function resultText(c, tricks) {
                 if (!c || tricks == null) return "";
@@ -770,7 +785,7 @@
 
             // ---- bulk ----
             async function runBulk() {
-                view = "bulk"; busy = true;
+                view = "bulk"; busy = true; drill = null;
                 bulk = { done: 0, total: boards.length, results: [], errors: [], agg: null };
                 render();
                 for (let i = 0; i < boards.length; i++) {
@@ -811,20 +826,25 @@
                     if (!p) { p = { key, name: pnameOf(board, seat), named: !!seatName(board, seat),
                         boards: 0, declared: 0, defended: 0, cards: 0, mistakes: 0,
                         decl: 0, lead: 0, def: 0, declCrit: 0, leadCrit: 0, defCrit: 0,
-                        leadBoards: 0, defBoards: 0,
-                        tricksLost: 0, critical: 0, declImps: 0, declImpN: 0 }; players.set(key, p); }
+                        leadBoards: 0,
+                        tricksLost: 0, critical: 0, declImps: 0, declImpN: 0,
+                        // board indices behind each clickable stat (drill-down lists)
+                        declaredIdx: [], leadBoardsIdx: [], defendedIdx: [],
+                        declMistIdx: [], leadMistIdx: [], defMistIdx: [],
+                        declCritIdx: [], leadCritIdx: [], defCritIdx: [] }; players.set(key, p); }
                     return p;
                 };
                 const pair = (board, s1, s2) => {
                     const key = pairKeyOf(board, s1, s2);
                     let pr = pairs.get(key);
                     if (!pr) { pr = { key, name: pairNameOf(board, s1, s2), boards: 0, declared: 0, made: 0,
-                        missedGame: 0, missedSlam: 0, defImps: 0, defBoards: 0 }; pairs.set(key, pr); }
+                        missedGame: 0, missedSlam: 0, defImps: 0, defBoards: 0,
+                        missedGameIdx: [], missedSlamIdx: [] }; pairs.set(key, pr); }
                     return pr;
                 };
                 let unmakeableMade = 0, levelSum = 0, levelCount = 0, ddDiffSum = 0, ddDiffCount = 0;
                 let totalMistakes = 0, totalTricksLost = 0, totalCritical = 0, madeAny = 0, declAny = 0;
-                for (const { board, analysis: a } of results) {
+                for (const { i: bi, board, analysis: a } of results) {
                     const c = a.contract, target = a.target, decl = c.declarer, dummy = (decl + 2) % 4;
                     const d1 = (decl + 1) % 4, d2 = (decl + 3) % 4;
                     const actual = a.actual_tricks != null ? a.actual_tricks : board.resultTricks;
@@ -837,9 +857,16 @@
                     for (let s = 0; s < 4; s++) player(board, s).boards++;
                     // hands this player actually declared / defended (the dummy
                     // neither declares nor defends -- declarer plays both hands),
-                    // the denominators for the per-board mistake rates
-                    player(board, decl).declared++;
-                    player(board, d1).defended++; player(board, d2).defended++;
+                    // the denominators for the per-board mistake rates. d1 (to the
+                    // declarer's left) is the OPENING leader: exactly one per board,
+                    // so the Lead table counts boards led off, not every board the
+                    // player happened to lead a trick on.
+                    const declPl = player(board, decl);
+                    declPl.declared++; declPl.declaredIdx.push(bi);
+                    const d1Pl = player(board, d1), d2Pl = player(board, d2);
+                    d1Pl.defended++; d1Pl.defendedIdx.push(bi);
+                    d2Pl.defended++; d2Pl.defendedIdx.push(bi);
+                    d1Pl.leadBoards++; d1Pl.leadBoardsIdx.push(bi);
                     levelSum += c.level; levelCount++;
                     if (actual != null) {
                         const made = actual >= target;
@@ -850,35 +877,47 @@
                     }
                     const reachedGame = c.level >= gameLevel(c.denom), reachedSlam = c.level >= 6;
                     const dOpt = a.optimal[declPos], fOpt = a.optimal[defPos];
-                    if (dOpt.game && !reachedGame) declPair.missedGame++;
-                    if ((dOpt.small_slam || dOpt.grand_slam) && !reachedSlam) declPair.missedSlam++;
-                    if (fOpt.game) defPair.missedGame++;                 // defending: never reached their own game
-                    if (fOpt.small_slam || fOpt.grand_slam) defPair.missedSlam++;
+                    if (dOpt.game && !reachedGame) { declPair.missedGame++; declPair.missedGameIdx.push(bi); }
+                    if ((dOpt.small_slam || dOpt.grand_slam) && !reachedSlam) { declPair.missedSlam++; declPair.missedSlamIdx.push(bi); }
+                    if (fOpt.game) { defPair.missedGame++; defPair.missedGameIdx.push(bi); }   // defending: never reached their own game
+                    if (fOpt.small_slam || fOpt.grand_slam) { defPair.missedSlam++; defPair.missedSlamIdx.push(bi); }
                     if (a.play_imps_decl != null) {
                         const dp = player(board, decl);
                         dp.declImps += a.play_imps_decl; dp.declImpN++;
                         defPair.defImps += -a.play_imps_decl; defPair.defBoards++;
                     }
-                    const ledThisBoard = new Set(), defThisBoard = new Set();
+                    // per-board de-dup, so each drill-down list holds a board once
+                    // even when a player erred several times in the same role
+                    const mistThisBoard = new Set(), critThisBoard = new Set();
                     a.plays.forEach((p, i) => {
                         // declarer plays both hands: credit every dummy card (and
                         // its mistakes) to the declarer
                         const pl = player(board, p.seat === dummy ? decl : p.seat); pl.cards++;
                         const role = roleOfPlay(i, p.seat, decl);
-                        // note which players filled the lead / defence roles on this
-                        // board, so each per-role table can count the boards a player
-                        // actually acted in that role (not just every board defended)
-                        if (role === "lead") ledThisBoard.add(pl.key);
-                        else if (role === "def") defThisBoard.add(pl.key);
                         if (p.mistake) {
                             pl.mistakes++; pl.tricksLost += p.cost; pl[role]++;
                             totalMistakes++; totalTricksLost += p.cost;
+                            mistThisBoard.add(pl.key + "\u0000" + role);
                         }
-                        if (p.critical) { pl.critical++; pl[role + "Crit"]++; totalCritical++; }
+                        if (p.critical) {
+                            pl.critical++; pl[role + "Crit"]++; totalCritical++;
+                            critThisBoard.add(pl.key + "\u0000" + role);
+                        }
                     });
-                    for (const key of ledThisBoard) players.get(key).leadBoards++;
-                    for (const key of defThisBoard) players.get(key).defBoards++;
+                    for (const tag of mistThisBoard) {
+                        const s = tag.lastIndexOf("\u0000");
+                        players.get(tag.slice(0, s))[tag.slice(s + 1) + "MistIdx"].push(bi);
+                    }
+                    for (const tag of critThisBoard) {
+                        const s = tag.lastIndexOf("\u0000");
+                        players.get(tag.slice(0, s))[tag.slice(s + 1) + "CritIdx"].push(bi);
+                    }
                 }
+                // session-wide contract-critical mistakes split by role; the three
+                // per-player buckets partition every graded card, so they sum to
+                // totalCritical
+                let critDecl = 0, critLead = 0, critDef = 0;
+                for (const p of players.values()) { critDecl += p.declCrit; critLead += p.leadCrit; critDef += p.defCrit; }
                 const n = results.length || 1;
                 // order both tables by how many boards each player / partnership
                 // actually played (most active first), name as the tie-break
@@ -889,6 +928,7 @@
                     boards: results.length, players: playersArr, pairs: pairsArr,
                     unmakeableMade, levelSum, levelCount, ddDiffSum, ddDiffCount,
                     totalMistakes, totalTricksLost, totalCritical, madeAny, declAny,
+                    critDecl, critLead, critDef,
                     avgMistakes: totalMistakes / n, avgTricksLost: totalTricksLost / n,
                     avgLevel: levelCount ? levelSum / levelCount : null,
                     avgDdDiff: ddDiffCount ? ddDiffSum / ddDiffCount : null,
@@ -995,7 +1035,7 @@
             // single-hand view (kind "single") or the finished bulk view with the
             // aggregate recomputed from the stored results (kind "bulk").
             async function openSharedAnalysis(id) {
-                busy = true; view = "list"; boards = []; boardResults = {}; bulk = null; render();
+                busy = true; view = "list"; boards = []; boardResults = {}; bulk = null; drill = null; render();
                 try {
                     const res = await fetch("/api/analyze/share/" + encodeURIComponent(id));
                     const data = await res.json().catch(() => null);
@@ -1426,6 +1466,7 @@
                 // matching boards so every panel below reflects the selection.
                 const filtered = bulk.results.filter((r) => boardMatchesFilter(r.analysis));
                 const ag = aggregate(filtered);
+                drillRegistry.length = 0;   // rebuilt below; ids match the fresh DOM
                 const impColor = (v) => v > 0 ? "#8fd694" : v < 0 ? "#f1948a" : "#bababa";
                 const per = (x, d) => d > 0 ? (x / d).toFixed(2) : "\u2013";
 
@@ -1458,29 +1499,39 @@
                 const ROLE_TABS = [{ id: "decl", label: "Declarer" }, { id: "lead", label: "Lead" }, { id: "def", label: "Defense" }];
                 const tabBar = `<div class="an-tabs">${ROLE_TABS.map((t) =>
                     `<button class="an-tab${bulkTab === t.id ? " active" : ""}" data-tab="${t.id}">${t.label}</button>`).join("")}</div>`;
-                // which aggregate fields each role-tab reads; "did" is the verb for
-                // the boards-column tooltip
-                const roleCfg = {
-                    decl: { boards: "declared", mistakes: "decl", crit: "declCrit", boardsTip: "Boards this player was the declarer (declarer plays both hands)." },
-                    lead: { boards: "leadBoards", mistakes: "lead", crit: "leadCrit", boardsTip: "Boards where this player made at least one defensive lead (first card of a trick)." },
-                    def: { boards: "defBoards", mistakes: "def", crit: "defCrit", boardsTip: "Boards where this player made at least one defensive follow or discard (leads excluded)." },
-                }[bulkTab] || { boards: "declared", mistakes: "decl", crit: "declCrit", boardsTip: "Boards this player was the declarer." };
+                // which aggregate fields each role-tab reads, plus the phrasing for
+                // the drill-down banner ("Boards where <name> ...")
+                const ROLE_CFGS = {
+                    decl: { boards: "declared", boardsIdx: "declaredIdx", mistakes: "decl", mistIdx: "declMistIdx", crit: "declCrit", critIdx: "declCritIdx",
+                        boardsTip: "Boards this player was the declarer (declarer plays both hands).",
+                        acted: "declared", mist: "made a declarer-play mistake", crit: "made a contract-critical mistake as declarer" },
+                    lead: { boards: "leadBoards", boardsIdx: "leadBoardsIdx", mistakes: "lead", mistIdx: "leadMistIdx", crit: "leadCrit", critIdx: "leadCritIdx",
+                        boardsTip: "Boards where this player was the opening leader (led the first card, to declarer's left). Mistake counts cover every defensive lead they made, opening or later.",
+                        acted: "was the opening leader", mist: "made a lead mistake", crit: "made a contract-critical lead mistake" },
+                    def: { boards: "defended", boardsIdx: "defendedIdx", mistakes: "def", mistIdx: "defMistIdx", crit: "defCrit", critIdx: "defCritIdx",
+                        boardsTip: "Boards this player defended; the mistake counts cover follows and discards only (leads excluded).",
+                        acted: "defended", mist: "made a defence mistake", crit: "made a contract-critical defence mistake" },
+                };
+                const roleCfg = ROLE_CFGS[bulkTab] || ROLE_CFGS.decl;
 
-                const rolePlayers = ag.players.filter((p) => p[roleCfg.boards] > 0);
+                // a player with lead mistakes but no opening lead (they only led
+                // later tricks) still belongs in the Lead table
+                const rolePlayers = ag.players.filter((p) => p[roleCfg.boards] > 0 || p[roleCfg.mistakes] > 0 || p[roleCfg.crit] > 0);
                 const roleTitle = { decl: "Declarer", lead: "Lead", def: "Defense (follows &amp; discards, leads excluded)" }[bulkTab] || "Declarer";
                 const impHead = bulkTab === "decl"
                     ? `<th class="n">${tip("IMPs /board", "Average IMPs per board declared versus a double-dummy play of the same contracts: this player's declaring gained (+) or lost (\u2212) versus DD, totalled over the boards they declared and divided by that count.")}</th>`
                     : "";
                 const roleRows = rolePlayers.map((p) => {
                     const b = p[roleCfg.boards], m = p[roleCfg.mistakes], cr = p[roleCfg.crit];
+                    const nm = `<b>${escapeHtml(p.name)}</b>`;
                     const impCell = bulkTab === "decl"
                         ? `<td class="n" style="color:${impColor(p.declImps)}">${p.declImpN ? signed(p.declImps / p.declImpN, 2) : "\u2013"}</td>`
                         : "";
                     return `<tr>
                         <td><span style="font-weight:700;color:#e8e6e3">${escapeHtml(p.name)}</span></td>
-                        <td class="n">${b}</td>
-                        <td class="n" style="color:${m ? "#f6d9a8" : "#8fd694"}">${m}</td>
-                        <td class="n" style="color:${cr ? "#ffd7d1" : "#bababa"}">${cr}</td>
+                        <td class="n">${drillNum(b, `${nm} ${roleCfg.acted}`, p[roleCfg.boardsIdx])}</td>
+                        <td class="n" style="color:${m ? "#f6d9a8" : "#8fd694"}">${drillNum(m, `${nm} ${roleCfg.mist}`, p[roleCfg.mistIdx])}</td>
+                        <td class="n" style="color:${cr ? "#ffd7d1" : "#bababa"}">${drillNum(cr, `${nm} ${roleCfg.crit}`, p[roleCfg.critIdx])}</td>
                         <td class="n">${per(m, b)}</td>
                         <td class="n">${per(cr, b)}</td>
                         ${impCell}
@@ -1505,12 +1556,21 @@
                     <td class="n">${pr.boards}</td>
                     <td class="n">${pr.declared}</td>
                     <td class="n">${pct(pr.made, pr.declared)}</td>
-                    <td class="n" style="color:${pr.missedGame ? "#f6d9a8" : "#bababa"}">${pr.missedGame}</td>
-                    <td class="n" style="color:${pr.missedSlam ? "#f6d9a8" : "#bababa"}">${pr.missedSlam}</td>
+                    <td class="n" style="color:${pr.missedGame ? "#f6d9a8" : "#bababa"}">${drillNum(pr.missedGame, `<b>${pr.name}</b> missed a makeable game`, pr.missedGameIdx)}</td>
+                    <td class="n" style="color:${pr.missedSlam ? "#f6d9a8" : "#bababa"}">${drillNum(pr.missedSlam, `<b>${pr.name}</b> missed a makeable slam`, pr.missedSlamIdx)}</td>
                     <td class="n" style="color:${impColor(pr.defImps)}">${pr.defBoards ? signed(pr.defImps / pr.defBoards, 2) : "\u2013"}</td>
                 </tr>`).join("");
 
-                const boardRows = filtered.map(({ i, board, analysis: a }) => {
+                // a stat drill-down narrows the Per-board list to exactly the boards
+                // behind the clicked number
+                const drilled = drill ? filtered.filter((r) => drill.idxs.has(r.i)) : filtered;
+                const drillBar = drill ? `<div class="an-drillbar">
+                        <span class="material-symbols-outlined">filter_alt</span>
+                        <span>Boards where ${drill.title} \u2014 ${drilled.length} shown</span>
+                        <span style="flex:1"></span>
+                        <button class="an-btn sm" id="drillClear"><span class="material-symbols-outlined">close</span>Show all</button>
+                    </div>` : "";
+                const boardRows = drilled.map(({ i, board, analysis: a }) => {
                     const c = a.contract, actual = a.actual_tricks != null ? a.actual_tricks : board.resultTricks;
                     const made = actual != null ? actual >= a.target : null;
                     const mist = a.plays.filter((p) => p.mistake).length;
@@ -1541,7 +1601,9 @@
                             ${bn(ag.totalMistakes, "DD mistakes", "Total cards across the selected boards that gave up at least one trick versus double-dummy best play.")}
                             ${bn(ag.avgMistakes.toFixed(2), "Mistakes / board", "Average double-dummy mistakes per board, all four hands combined.")}
                             ${bn(ag.totalTricksLost, "Tricks lost", "Total tricks given up versus double-dummy \u2014 the sum of every mistake's cost.")}
-                            ${bn(ag.totalCritical, "Contract-critical", "Mistakes that flipped a contract between made and defeated.", ag.totalCritical ? "#ffd7d1" : null)}
+                            ${bn(ag.critDecl, "Critical \u00b7 declarer", "Contract-critical mistakes on the declaring side (declarer's and dummy's cards) \u2014 errors that flipped the contract between make and defeat.", ag.critDecl ? "#ffd7d1" : null)}
+                            ${bn(ag.critLead, "Critical \u00b7 lead", "Contract-critical mistakes on a defensive lead (first card of a trick).", ag.critLead ? "#ffd7d1" : null)}
+                            ${bn(ag.critDef, "Critical \u00b7 defence", "Contract-critical mistakes defending when following or discarding (leads excluded).", ag.critDef ? "#ffd7d1" : null)}
                             ${bn(ag.avgLevel != null ? ag.avgLevel.toFixed(1) : "\u2013", "Avg contract level", "Mean level of the final contract (1\u20137) across the selected boards.")}
                             ${bn(ag.avgDdDiff != null ? signed(ag.avgDdDiff, 2) : "\u2013", "Tricks vs DD (decl)", "Average of (tricks declarer took \u2212 double-dummy tricks). Positive: declarer took MORE than DD allows \u2014 the defence gave tricks away. Negative: declarer fell short of DD.", ag.avgDdDiff != null ? impColor(-ag.avgDdDiff) : null)}
                             ${bn(ag.unmakeableMade, "Unmakeable made", "Contracts double-dummy says should fail, but were made anyway because the defence erred.", ag.unmakeableMade ? "#f6d9a8" : null)}
@@ -1555,6 +1617,7 @@
                             ${tabBar}
                         </div>
                         ${playerTable}
+                        ${rolePlayers.length ? `<p class="an-note" style="margin-top:.5rem">Tap a boards / mistakes / critical count to select just those boards in the Per-board list below.</p>` : ""}
                     </div>
                     <div class="an-card">
                         <div class="an-h">By pair \u2014 contracts, missed games/slabs &amp; defence IMPs</div>
@@ -1564,17 +1627,19 @@
                                 <th class="n">${tip("Boards", "Boards this partnership played together (as the declaring or the defending side) \u2014 the table is ordered by this.")}</th>
                                 <th class="n">${tip("Declared", "Boards where this pair were the declaring side.")}</th>
                                 <th class="n">${tip("Made %", "Share of their declared contracts that were made.")}</th>
-                                <th class="n">${tip("Missed games", "Boards where DD says this pair could make a game but the final contract was not theirs at game level.")}</th>
-                                <th class="n">${tip("Missed slams", "Boards where DD says this pair could make a slam but they did not bid to the six level.")}</th>
+                                <th class="n">${tip("Missed games", "Boards where DD says this pair could make a game but the final contract was not theirs at game level. Tap the count to select those boards.")}</th>
+                                <th class="n">${tip("Missed slams", "Boards where DD says this pair could make a slam but they did not bid to the six level. Tap the count to select those boards.")}</th>
                                 <th class="n">${tip("Def IMPs /board", "Average defence IMPs per board defended: the pair's total defence IMPs versus double-dummy divided by the boards they defended (+ held declarer below DD, \u2212 let declarer beat DD).")}</th>
                             </tr></thead>
                             <tbody>${pairRows}</tbody>
-                        </table></div>`
+                        </table></div>
+                        <p class="an-note" style="margin-top:.5rem">Tap a missed games / missed slams count to select just those boards in the Per-board list below.</p>`
                         : `<div class="an-muted" style="font-size:.85rem">No pairs in the selected boards.</div>`}
                     </div>
-                    <div class="an-card">
-                        <div class="an-h">Per board</div>
-                        ${filtered.length ? `<div class="an-tablewrap"><table class="an-table">
+                    <div class="an-card" id="an-perboard">
+                        <div class="an-h">Per board${drill ? ` \u2014 ${drilled.length} selected` : ""}</div>
+                        ${drillBar}
+                        ${drilled.length ? `<div class="an-tablewrap"><table class="an-table">
                             <thead><tr>
                                 <th>Contract</th>
                                 <th class="n">Result</th>
@@ -1588,7 +1653,7 @@
                             <tbody>${boardRows}</tbody>
                         </table></div>
                         <p class="an-note" style="margin-top:.5rem">Tap a row to step through that board card by card.</p>`
-                        : `<div class="an-muted" style="font-size:.85rem">No boards match the current filter.</div>`}
+                        : `<div class="an-muted" style="font-size:.85rem">${drill ? "None of the selected boards match the current filter." : "No boards match the current filter."}</div>`}
                     </div>
                 </div>`;
             }
@@ -1617,13 +1682,26 @@
                 on("logToggle", "click", () => { showLog = !showLog; render(); });
 
                 // bulk filters (strain / level) and the per-player role tabs re-render
-                // the bulk view; state is module-level so the selection persists
+                // the bulk view; state is module-level so the selection persists.
+                // Changing a filter invalidates any stat drill-down.
                 document.querySelectorAll("[data-strain]").forEach((el) =>
-                    el.addEventListener("click", () => { filterStrain = el.dataset.strain; render(); }));
+                    el.addEventListener("click", () => { filterStrain = el.dataset.strain; drill = null; render(); }));
                 document.querySelectorAll("[data-level]").forEach((el) =>
-                    el.addEventListener("click", () => { filterLevel = el.dataset.level; render(); }));
+                    el.addEventListener("click", () => { filterLevel = el.dataset.level; drill = null; render(); }));
                 document.querySelectorAll("[data-tab]").forEach((el) =>
                     el.addEventListener("click", () => { bulkTab = el.dataset.tab; render(); }));
+                // clicking a stat number selects the boards behind it in the
+                // Per-board table and scrolls it into view
+                document.querySelectorAll("[data-drill]").forEach((el) =>
+                    el.addEventListener("click", () => {
+                        const d = drillRegistry[parseInt(el.dataset.drill, 10)];
+                        if (!d) return;
+                        drill = { title: d.title, idxs: new Set(d.idxs) };
+                        render();
+                        const card = $("an-perboard");
+                        if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }));
+                on("drillClear", "click", () => { drill = null; render(); });
 
                 document.querySelectorAll("[data-open]").forEach((el) =>
                     el.addEventListener("click", () => openBoard(parseInt(el.dataset.open, 10))));
