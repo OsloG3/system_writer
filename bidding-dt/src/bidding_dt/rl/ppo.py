@@ -25,15 +25,14 @@ def _masked_dist(logits, mask):
 def ppo_update(model, ref_model, buf_tensors: dict, opt, device,
                cfg: RLConfig, kl_beta: float, ent_coef: float,
                rng: np.random.Generator, use_amp: bool = False,
-               temp: float = 1.0, sys_weight: float = 0.0) -> dict:
+               temp: float = 1.0) -> dict:
     model.train()
     n = buf_tensors["action"].shape[0]
     adv = buf_tensors["adv"]
     if n > 1:
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
     stats = {k: 0.0 for k in ("policy_loss", "value_loss", "entropy", "kl",
-                              "clipfrac", "approx_kl", "sys_ce",
-                              "sys_rows")}
+                              "clipfrac", "approx_kl")}
     n_updates = 0
     mb = cfg.minibatch_size
     lens = buf_tensors["row_len"].cpu().numpy()
@@ -79,27 +78,6 @@ def ppo_update(model, ref_model, buf_tensors: dict, opt, device,
             loss = (policy_loss + cfg.vf_coef * value_loss
                     - ent_coef * entropy)
 
-            # System-teacher auxiliary loss: cross-entropy toward the system
-            # file's applicable artificial conventions (rollout.py builds the
-            # target only for decisions where one is cleanly available). This
-            # is what turns "not penalized" into "the preferred call": a
-            # penalty alone leaves pass/natural bids as the safe optimum.
-            sys_ce_val = 0.0
-            sys_rows_val = 0.0
-            if sys_weight > 0 and "sys_target" in b:
-                tgt = b["sys_target"]
-                has = tgt.sum(-1) > 0
-                if bool(has.any()):
-                    logp_all = dist.logits.log_softmax(-1)
-                    # illegal actions have -inf logprob and zero target; the
-                    # product is NaN, not 0, so select only target support
-                    ce = -(tgt * torch.where(tgt > 0, logp_all,
-                                             torch.zeros_like(logp_all))
-                           ).sum(-1)
-                    sys_ce_val = float(ce[has].mean().detach())
-                    sys_rows_val = float(has.float().mean())
-                    loss = loss + sys_weight * ce[has].mean()
-
             kl_val = 0.0
             if ref_model is not None:
                 with torch.no_grad():
@@ -135,8 +113,6 @@ def ppo_update(model, ref_model, buf_tensors: dict, opt, device,
             stats["kl"] += kl_val
             stats["clipfrac"] += clipfrac
             stats["approx_kl"] += approx_kl
-            stats["sys_ce"] += sys_ce_val
-            stats["sys_rows"] += sys_rows_val
             n_updates += 1
 
     model.eval()

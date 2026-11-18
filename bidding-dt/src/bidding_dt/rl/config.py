@@ -32,17 +32,20 @@ class RLConfig:
                                    # are discounted by the partner's sampled
                                    # deviation from greedy play (rollout.py)
     # system-convention enforcement (conventions/): every learner call is
-    # checked against the enforced system (5-card majors, 15-17 1NT, strong
-    # 2C, 20-21 2NT, GF 2/1, invitational jump shifts, standard overcalls
-    # with a 12-15 balancing 1NT, splinters below 4H, smolen after 1/2NT
-    # stayman, RKCB step responses, support cuebids, XYZ, takeout doubles
-    # with shape-free power doubles, fourth-suit GF, standard natural
-    # structure) with hands evaluated in Kaplan-Rubens points; each
-    # violation's weight is summed and conv_weight * penalty is subtracted
-    # from that decision's row reward (after the partner-dev discount, so a
-    # partner's noise never excuses a system break). Correctly using an
-    # artificial convention (XYZ, RKCB, splinter, smolen, fourth suit,
-    # cuebid raise) adds the small flat conv_params.conv_bonus reward.
+    # checked against the enforced bidding system -- the system file's
+    # sequence-pattern entries (5-card majors, 15-17 1NT, strong 2C, 2/1 GF,
+    # reverses, transfers, RKCB steps, ...) with the built-in rule checks as
+    # the fallback for calls no entry matches; hands evaluated in
+    # Kaplan-Rubens points. Each violation's weight is summed and
+    # conv_weight * penalty is subtracted from that decision's row reward
+    # (after the partner-dev discount, so a partner's noise never excuses a
+    # system break). The file is a PURE CONSTRAINT -- it only penalizes
+    # infringements, there is no positive convention shaping (no usage
+    # bonus, no auxiliary system-teacher loss, no exploration overrides).
+    # Force discipline: F (the partner's pass of a forcing bid is charged,
+    # bid-(pass)-pass) and GF (terminal: the GF side's last pass is charged
+    # when the auction ends in an undoubled partscore it declares or an
+    # undoubled contract it defends) plus TO/PENALTY double discipline.
     conv_weight: float = 0.0       # 0 disables the convention penalty
     system_file: str = ""          # the conventions text file (alert texts +
                                    # rule weights + thresholds) interpreted at
@@ -54,21 +57,6 @@ class RLConfig:
                                    # override (0 disables one rule)
     conv_params: dict = field(default_factory=dict)  # ConventionConfig
                                    # threshold overrides (e.g. kr_tolerance)
-    # System-teacher auxiliary objective: on every learner decision where the
-    # system file has a clean artificial convention available, the PPO loss
-    # gets sys_weight * CE(target, pi) in addition to the reward. The target
-    # is the system's applicable convention(s), so the policy learns to make
-    # them the preferred call rather than only avoiding violations. Without
-    # this, a penalty-only system has a safe optimum at pass/natural bids.
-    sys_weight: float = 0.0        # 0 disables the auxiliary system loss
-    sys_weight_end: float = 0.0    # anneal target (e.g. 0.5 -> 0.1)
-    sys_target_floor: float = 0.02 # target mass spread over all legal calls
-    sys_target_min_prob: float = 0.0  # only target a clean convention the
-                                   # current policy already gives at least
-                                   # this probability (0 = always target);
-                                   # guards underspecified file entries
-    sys_explore: float = 0.0       # phase-2: probability of overriding a
-                                   # learner sample with a clean system call
     # ppo
     lr: float = 1e-4
     weight_decay: float = 0.01

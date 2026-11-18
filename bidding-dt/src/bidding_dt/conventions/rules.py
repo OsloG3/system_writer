@@ -1,4 +1,4 @@
-"""System-convention consistency checks and convention-usage rewards.
+"""System-convention consistency checks.
 
 The enforced system (all strength numbers are Kaplan-Rubens points, kr.py,
 with a configurable tolerance on every range):
@@ -8,9 +8,11 @@ with a configurable tolerance on every range):
   * 1NT = 15-17 balanced; 2NT = 20-21 balanced
   * 2C = strong artificial (game force until opener rebids 2NT);
     2D/2H/2S = weak two (6 cards, ~5-10)
-  * 2/1 responses are game forcing (~12+ and a real suit); passing below
-    game after any GF bid (2/1, strong 2C, fourth suit, XYZ 2D) is a
-    violation
+  * 2/1 responses are game forcing (~12+ and a real suit); the game force is
+    judged over the COMPLETED auction (terminal_gf_violations), never per
+    pass: only the GF side's LAST pass is penalized, and only when the final
+    contract is an undoubled partscore it declares or an undoubled contract
+    (any level) it defends
   * invitational jump shift: a single jump to a new suit at the 2 or 3
     level shows exactly 6+ cards and 10-11 -- in competition too (jump
     overcalls included); opener's jump-shift rebid stays the standard
@@ -29,9 +31,10 @@ with a configurable tolerance on every range):
     side has bid are penalty-oriented and unchecked
   * 4NT is RKCB in the last suit the partnership bid: the ask itself is not
     evaluated, but the asker's partner must answer with the step showing the
-    correct keycard count (1430, matching models/system.txt: 5C = 1/4,
-    5D = 0/3, 5H = 2 without the trump queen, 5S = 2 with it); with no
-    suit bid 4NT stays quantitative (unchecked)
+    correct keycard count (1430 in this built-in fallback: 5C = 1/4,
+    5D = 0/3, 5H = 2 without the trump queen, 5S = 2 with it; a system
+    file's `kc=` entries override these steps -- the shipped file plays
+    3014); with no suit bid 4NT stays quantitative (unchecked)
   * a cuebid of the opponents' suit shows invitational-or-better support
     for partner's last suit (with no suit bid by partner it is undefined
     and unchecked)
@@ -45,9 +48,8 @@ with a configurable tolerance on every range):
 Each violated rule emits a `Violation` whose weight (DEFAULT_WEIGHTS,
 overridable per rule) is summed into the call's penalty; the RL loop
 multiplies that by `rl.conv_weight` and subtracts it from the row reward
-(see rl/rollout.py). Correctly using one of the artificial conventions
-(XYZ 2C/2D, RKCB ask/response, splinter, smolen, fourth-suit GF, cuebid
-raise) instead earns the small flat `conv_bonus` reward (convention_bonus).
+(see rl/rollout.py). The system file is a pure constraint: it only ever
+PENALIZES infringements, there is no positive convention shaping.
 Rules that a hand cannot violate (pass in a non-GF auction, redouble, game-
 level natural bids, passed-hand jumps) deliberately emit nothing -- the
 checker is lenient by design so it punishes system breaks, not style.
@@ -58,6 +60,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..data.hands import HAND_DIM, HCP_WEIGHTS, NUM_RANKS, encode_hand
+from ..data.vocab import CALL_PASS
 from .auction import (DENOM_N, MAJORS, MINORS, AuctionReader, CallInfo,
                       bid_id, is_game_or_above)
 from .kr import kr_from_matrix
@@ -84,7 +87,11 @@ DEFAULT_WEIGHTS = {
     "xyz_2c": 1.0,              # XYZ 2C = relay (invite or diamond signoff)
     "xyz_2d": 1.0,              # XYZ 2D = artificial GF
     "fourth_suit": 1.0,         # fourth suit is artificial and GF
-    "gf_pass": 2.0,             # never pass below game once GF
+    "gf_pass": 2.0,             # GF discipline, judged over the COMPLETED
+                                # auction: charged to the GF side's LAST pass
+                                # when it declares an undoubled partscore or
+                                # defends an undoubled contract
+                                # (terminal_gf_violations)
     # --- standard natural glue (softer, weight 0.5) ---
     "open_values": 0.5,
     "open_minor_length": 0.5,
@@ -187,8 +194,8 @@ class ConventionConfig:
     takeout_power_kr: float = 18.0   # power double: no shape requirement
     negative_min_kr: float = 5.5
     negative_values_kr: float = 8.5      # no unbid 4-card major -> need values
-    # slam conventions (rkcb_min_kr/rkcb_min_fit now gate the ask's bonus;
-    # the ask itself is not penalized -- only wrong step responses are)
+    # legacy slam-convention knobs (still accepted as system-file config
+    # lines; unused since the positive convention bonus was removed)
     rkcb_min_kr: float = 11.0
     rkcb_min_fit: int = 3
     # XYZ
@@ -197,9 +204,9 @@ class ConventionConfig:
     xyz_inv_min_kr: float = 9.5          # below this: diamond signoff only
     xyz_signoff_min_d: int = 5
     xyz_relay_break_kr: float = 15.5     # opener may bypass 2D with extras
-    # small flat reward for correctly using an artificial convention
-    # (XYZ 2C/2D, RKCB ask/response, splinter, smolen, fourth suit, cuebid
-    # raise); 0 disables the bonus
+    # legacy knob (still accepted as a system-file config line; unused since
+    # the positive convention-usage bonus was removed -- the file only
+    # penalizes infringements)
     conv_bonus: float = 0.05
     # per-rule weights (0 disables a rule)
     weights: dict = field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
@@ -379,9 +386,9 @@ def check_call(reader: AuctionReader, hero: int, hand, action: int,
         return out
 
     if info.kind == "pass":
-        if (info.gf_active
-                and not is_game_or_above(reader.high_level, reader.high_denom)):
-            v("gf_pass", "passed below game with a game force")
+        # NB: no per-pass game-force check -- the GF discipline is judged
+        # over the COMPLETED auction by terminal_gf_violations below, so an
+        # intermediate (forcing) pass mid-auction is never penalized.
         if info.xyz_after_relay:
             # passing the forced 2D is the diamond signoff: only legal
             # without invitational values (a weak hand without diamonds was
@@ -655,66 +662,65 @@ def call_penalty(hand, dealer: int, vuln: int, calls, action: int,
 
 
 # ---------------------------------------------------------------------------
-# Convention-usage rewards
+# Game-force discipline (judged over the completed auction)
 # ---------------------------------------------------------------------------
 
-def convention_kind(info: CallInfo) -> str | None:
-    """The rewarded convention a classified call uses (None for plain bids).
+def terminal_gf_violations(reader: AuctionReader,
+                           cfg: ConventionConfig | None = None,
+                           ) -> list[tuple[int, int, Violation]]:
+    """GF discipline for a COMPLETED auction: [(seat, call_idx, Violation)].
 
-    The cuebid only counts as the convention when partner has bid a suit --
-    that is the case the system defines (invitational+ support); with a
-    silent partner the call is a two-suited/strong cuebid and earns nothing.
+    A game force (set structurally -- 2/1, fourth suit, smolen, XYZ 2D,
+    strong 2C -- and/or by a system-file GF entry via patterns.fold_state,
+    both tracked in `reader.gf_outstanding`) obliges the partnership to keep
+    bidding until the auction ends in an accepted outcome:
+
+      * the GF side declares a game-or-above contract (any doubling),
+      * the GF side declares a DOUBLED/REDOUBLED partscore (the opponents'
+        double released the obligation), or
+      * the GF side defends a DOUBLED/REDOUBLED contract.
+
+    Anything else violates the force: declaring an undoubled partscore, or
+    defending an undoubled contract at ANY level. Reaching game earlier does
+    NOT expire the force -- passing out the opponents' undoubled overbid is
+    still a violation. Only the system dissolving its own force (the
+    strong-2C 2NT rebid) clears it.
+
+    The single call charged is the GF side's LAST pass (dealer-order index
+    `call_idx` in `reader.calls`): the pass that let the auction die is the
+    partnership's responsibility, and earlier passes (mid-auction forcing
+    passes, or the partner's pass that the caller could still repair) are
+    deliberately not penalized. At most one violation per side; hands are
+    irrelevant here, so no HandInfo is needed.
     """
-    if info.xyz_2c:
-        return "xyz_2c"
-    if info.xyz_2d:
-        return "xyz_2d"
-    if info.smolen:
-        return "smolen"
-    if info.rkcb_ask:
-        return "rkcb_ask"
-    if info.rkcb_response:
-        return "rkcb_response"
-    if info.splinter:
-        return "splinter"
-    if info.fourth_suit:
-        return "fourth_suit"
-    if info.cuebid and info.partner_last_suit >= 0:
-        return "cuebid_support"
-    return None
-
-
-def convention_bonus(info: CallInfo, hi: HandInfo, violations,
-                     cfg: ConventionConfig) -> float:
-    """Small reward for one clean use of an artificial convention.
-
-    `info` is the classified call, `hi` the bidder's hand and `violations`
-    the check_call result for the same call: any violation on it forfeits
-    the bonus (a broken convention is punished, not rewarded). The RKCB ask
-    itself is no longer rule-checked -- only its step responses are -- so
-    its bonus instead requires the trump fit and slam values of a proper
-    ask (rkcb_min_fit / rkcb_min_kr).
-    """
-    if cfg.conv_bonus <= 0 or violations:
-        return 0.0
-    kind = convention_kind(info)
-    if kind is None:
-        return 0.0
-    if kind == "rkcb_ask" and (
-            hi.length(info.rkcb_trump) < cfg.rkcb_min_fit
-            or hi.kr < cfg.rkcb_min_kr - cfg.kr_tolerance):
-        return 0.0
-    return cfg.conv_bonus
-
-
-def call_bonus(reader: AuctionReader, hero: int, hand, action: int,
-               cfg: ConventionConfig | None = None) -> float:
-    """Convenience wrapper: the convention bonus of `action` in `reader`'s
-    auction (0.0 when it is not a correctly used convention)."""
     cfg = cfg or ConventionConfig()
-    if cfg.conv_bonus <= 0:
-        return 0.0
-    info = reader.classify(action, seat=hero)
-    hi = HandInfo(hand)
-    return convention_bonus(info, hi,
-                            check_call(reader, hero, hi, action, cfg), cfg)
+    w = cfg.weight("gf_pass")
+    out: list[tuple[int, int, Violation]] = []
+    if w <= 0 or reader.highest == 0:
+        return out                       # disabled, or passout: no contract
+    contract_side = reader.high_seat % 2
+    game = is_game_or_above(reader.high_level, reader.high_denom)
+    doubled = reader.doubled or reader.redoubled
+    contract = f"{reader.high_level}{_DENOMS[reader.high_denom]}"
+    calls = [int(c) for c in reader.calls]
+    for side in (0, 1):
+        if not reader.gf_outstanding[side]:
+            continue
+        if contract_side == side:
+            if game or doubled:
+                continue                 # game declared, or a forced double
+            detail = (f"GF declared an undoubled partscore ({contract}); "
+                      f"the side's last pass let the auction die")
+        else:
+            if doubled:
+                continue                 # penalized the opponents: accepted
+            detail = (f"GF defended an undoubled contract ({contract}); "
+                      f"the side's last pass let the auction die")
+        last_pass = max((i for i, c in enumerate(calls)
+                         if c == CALL_PASS
+                         and (reader.dealer + i) % 4 % 2 == side), default=-1)
+        if last_pass < 0:                # unreachable in a completed auction
+            continue
+        seat = (reader.dealer + last_pass) % 4
+        out.append((seat, last_pass, Violation("gf_pass", w, detail)))
+    return out

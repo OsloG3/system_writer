@@ -17,9 +17,10 @@ import numpy as np
 import pytest
 
 from bidding_dt.conventions import (AuctionReader, ConventionConfig,
-                                    HandInfo, call_bonus, call_penalty,
+                                    HandInfo, call_penalty,
                                     call_violations, check_call,
-                                    convention_alert, kr_points)
+                                    convention_alert, kr_points,
+                                    terminal_gf_violations)
 from bidding_dt.conventions.auction import bid_id
 from bidding_dt.data.hands import encode_hand
 from bidding_dt.data.vocab import call_to_id
@@ -162,23 +163,32 @@ def test_reader_gf_tracking():
     assert r.classify(B(P), seat=2).gf_active
     r.feed(B("4S"))                    # S (index 6) bids game -> GF cleared
     assert not r.gf[0]
+    # ... but the STICKY gf_outstanding survives the fulfillment: the
+    # terminal GF check judges the final contract, and defending an
+    # undoubled contract violates the force even after reaching game
+    assert r.gf_outstanding[0]
     # strong 2C is GF; opener's 2NT rebid after 2D waiting is invitational
     r = feed_all(["2C"])
     assert r.gf[r.opener % 2]
+    assert r.gf_outstanding[r.opener % 2]
     r = feed_all(["2C", P, "2D", P, "2N", P])
     assert not r.gf[0]
+    assert not r.gf_outstanding[0]     # the system dissolved its own force
     assert not r.classify(B(P), seat=2).gf_active
     r = feed_all(["2C", P, "2S", P, "2N", P])            # positive, GF stays
     assert r.gf[0]
+    assert r.gf_outstanding[0]
     # fourth suit sets GF
     r = feed_all(["1C", P, "1H", P, "2D", P])
     assert r.classify(B("2S"), seat=2).fourth_suit
     r.feed(B("2S"))
     assert r.gf[0]
+    assert r.gf_outstanding[0]
     # XYZ 2D sets GF
     r = feed_all(["1C", P, "1H", P, "1S", P])
     r.feed(B("2D"))
     assert r.gf[0]
+    assert r.gf_outstanding[0]
 
 
 def test_reader_double_contexts():
@@ -261,7 +271,10 @@ def test_strong_2c_responses_and_gf():
     assert codes("QJT98.7.AQJ98.75", ["2C", P], "2S") == []     # positive
     assert codes("94.752.T9854.T98", ["2C", P], "2S") == ["resp_2c_positive"]
     assert codes("94.752.T9854.T98", ["2C", P], "2D") == []     # waiting
-    assert codes("94.752.T9854.T98", ["2C", P], "P") == ["gf_pass"]
+    # the GF discipline is terminal now: no per-call gf_pass, even passing
+    # the strong 2C directly (that auction is judged when it ENDS -- see
+    # test_terminal_gf_violations)
+    assert codes("94.752.T9854.T98", ["2C", P], "P") == []
     assert codes("94.752.T9854.T98", ["2C", P, "2D", P, "2N", P], "P") == []
 
 
@@ -302,17 +315,61 @@ def test_double_checks():
     assert codes("752.752.752.T985", ["1N"], "X") == []
 
 
-def test_gf_pass_and_fourth_suit():
-    # hero = S: 2/1 established GF, passing below game violates it
+def test_gf_is_never_per_pass():
+    # hero = S: a 2/1 established the GF, but a pass below game mid-auction
+    # is a forcing/waiting pass and is NOT penalized per call -- the GF
+    # discipline is judged over the completed auction instead
     gf = ["1S", P, "2C", P, "2D", P]
-    assert codes("Q73.K95.A74.KJT5", gf, "P") == ["gf_pass"]
+    assert codes("Q73.K95.A74.KJT5", gf, "P") == []
     assert codes("Q73.K95.A74.KJT5", gf, "3S") == []
-    # game reached -> GF cleared
-    assert codes("Q73.K95.A74.KJT5", ["1S", P, "2C", P, "4S", P], "P") == []
     # hero = S: fourth suit after 1C-1H-2D (opener reverse, no XYZ)
     fs = ["1C", P, "1H", P, "2D", P]
     assert codes("9854.74.KJ73.T95", fs, "2S") == ["fourth_suit"]
     assert codes("KQJ4.AKJ3.T98.54", fs, "2S") == []
+
+
+def gf_term(calls, dealer=0, cfg=CFG):
+    """Terminal GF violations of a COMPLETED auction -> [(seat, call_idx)]."""
+    r = feed_all(calls, dealer=dealer)
+    return [(s, i) for s, i, _ in terminal_gf_violations(r, cfg)]
+
+
+def test_terminal_gf_violations():
+    # (a) GF side declares an UNDOUBLED PARTSCORE -> its LAST pass is the
+    #     single penalized call: 1S-P-2C(GF)-P-2D-P-P-P, N declared 2D, the
+    #     closing N-S pass is S's at index 6
+    assert gf_term(["1S", P, "2C", P, "2D", P, P, P]) == [(2, 6)]
+    # (b) reaching game fulfills the force
+    assert gf_term(["1S", P, "2C", P, "4S", P, P, P]) == []
+    # (c) GF side DEFENDS an undoubled contract (any level) -> violation;
+    #     1S-P-2C(GF)-2D(W)-P-P-P: N-S's last pass is S at index 6
+    assert gf_term(["1S", P, "2C", "2D", P, P, P]) == [(2, 6)]
+    # (d) defending a DOUBLED contract is an accepted end -> no violation
+    assert gf_term(["1S", P, "2C", "2D", X, P, P, P]) == []
+    # (e) declaring a doubled/redoubled partscore is also accepted
+    assert gf_term(["1S", P, "2C", P, "2D", X, P, P, P]) == []
+    assert gf_term(["1S", P, "2C", P, "2D", X, XX, P, P, P]) == []
+    # (f) literal spec: even after bidding game ourselves, passing out the
+    #     opponents' UNDOUBLED overbid violates the force
+    #     1H-P-2C(GF)-2D-4H-4S(E)-P-P-P: N-S passes at idx 6 (S) and 8 (N)
+    assert gf_term(["1H", P, "2C", "2D", "4H", "4S", P, P, P]) == [(0, 8)]
+    # ... unless we double them
+    assert gf_term(["1H", P, "2C", "2D", "4H", "4S", X, P, P, P]) == []
+    # (g) strong 2C: the 2NT rebid dissolves the force -> a passed-out 2NT
+    #     partscore is NOT a violation ...
+    assert gf_term(["2C", P, "2D", P, "2N", P, P, P]) == []
+    # ... but a positive response keeps it: 2C-P-2H-P-P-P declares 2H
+    #     undoubled -> N's pass at index 4
+    assert gf_term(["2C", P, "2H", P, P, P]) == [(0, 4)]
+    # (h) the E-W side is judged independently (dealer N; E opened, W's 2H
+    #     is their GF 2/1): P-1D-P-2H-P-P-P ends in an undoubled 2H partscore
+    #     -> E-W's last pass is E's at index 5
+    assert gf_term([P, "1D", P, "2H", P, P, P]) == [(1, 5)]
+    # (i) a passout has no contract: nothing to judge
+    assert gf_term([P, P, P, P]) == []
+    # (j) weight 0 disables the terminal check
+    cfg0 = ConventionConfig.from_overrides({"gf_pass": 0.0})
+    assert gf_term(["1S", P, "2C", P, "2D", P, P, P], cfg=cfg0) == []
 
 
 def test_rkcb_ask_and_responses():
@@ -388,8 +445,11 @@ def test_smolen_checks():
     assert codes("KQJ.AKJ73.T98.54", sm, "3S") == ["smolen"]    # only 3 spades
     # 3H shows 4 hearts + 5 spades
     assert codes("KQJ4.A7532.T54.4", sm, "3H") == ["smolen"]
-    # smolen sets the game force: passing below game violates it
-    assert codes("AK74.QJ6.AQ7.654", sm + ["3S", P], "P") == ["gf_pass"]
+    # smolen sets the game force; it is judged terminally, so the pass
+    # itself is free, but ending below game charges the side's LAST pass:
+    # 1N-P-2C-P-2D-P-3S-P-P-P declares an undoubled 3S partscore -> N (idx 8)
+    assert codes("AK74.QJ6.AQ7.654", sm + ["3S", P], "P") == []
+    assert gf_term(sm + ["3S", P, P, P]) == [(0, 8)]
 
 
 def test_cuebid_support_checks():
@@ -420,9 +480,12 @@ def test_xyz_checks():
     after = base + ["2C", P, "2D", P]
     assert codes("84.752.T98543.94", after, "P") == []
     assert codes("KQJ4.A753.T985.4", after, "P") == ["xyz_pass"]
-    # opener passing responder's GF 2D
+    # opener passing responder's GF 2D is free per-call; the GF is judged
+    # terminally: 1C-P-1H-P-1S-P-2D-P-P-P ends in an undoubled 2D partscore
+    # -> N-S's last pass (N, idx 8) is charged
     assert codes("AK74.QJ6.AQ7.654", ["1C", P, "1H", P, "1S", P, "2D", P],
-                 "P") == ["gf_pass"]
+                 "P") == []
+    assert gf_term(["1C", P, "1H", P, "1S", P, "2D", P, P, P]) == [(0, 8)]
 
 
 def test_raise_and_nt_response_checks():
@@ -456,50 +519,8 @@ def test_pass_and_redouble_neutral():
 
 
 # ---------------------------------------------------------------------------
-# Convention-usage rewards and alert texts
+# Alert texts
 # ---------------------------------------------------------------------------
-
-def bonus(hand, calls, action, dealer=0):
-    r = feed_all(calls, dealer=dealer)
-    return call_bonus(r, (dealer + len(calls)) % 4, hand, B(action), CFG)
-
-
-def test_convention_bonus():
-    small = CFG.conv_bonus
-    assert small > 0
-    # splinter: correct use earns the bonus, a broken one does not
-    assert bonus("KQJ4.A753.AJT5.4", ["1S", P], "4C") == pytest.approx(small)
-    assert bonus("43.AKJ5.AJT52.43", ["1S", P], "4C") == 0.0
-    # RKCB: the ask earns the bonus with fit + slam values only
-    auc = ["1S", P, "2C", P, "2S", P]
-    assert bonus("KQJ.A753.AJT5.43", auc, "4N") == pytest.approx(small)
-    assert bonus("KQJ.752.T9854.T9", auc, "4N") == 0.0
-    assert bonus("43.AKJ5.AJT52.43", auc, "4N") == 0.0     # 2-card fit
-    # ... and the step response earns it only when the count is right
-    resp = auc + ["4N", P]
-    r = feed_all(resp)
-    assert call_bonus(r, 0, "AK74.QJ6.AQ7.654", B("5D"), CFG) \
-        == pytest.approx(small)
-    assert call_bonus(r, 0, "AK74.QJ6.AQ7.654", B("5C"), CFG) == 0.0
-    # XYZ 2C / 2D, fourth suit, smolen, support cuebid
-    xyz = ["1C", P, "1H", P, "1S", P]
-    assert bonus("KQJ4.A753.T985.4", xyz, "2C") == pytest.approx(small)
-    assert bonus("KQJ4.AKJ3.T98.54", xyz, "2D") == pytest.approx(small)
-    assert bonus("KQJ4.A753.T985.4", xyz, "2S") == 0.0     # natural, no conv
-    assert bonus("KQJ4.AKJ3.T98.54", ["1C", P, "1H", P, "2D", P], "2S") \
-        == pytest.approx(small)
-    assert bonus("KQJ4.A7532.T54.4", ["1N", P, "2C", P, "2D", P], "3S") \
-        == pytest.approx(small)
-    assert bonus("KQJ4.A753.T54.43", ["1D", "1S", P], "2D") \
-        == pytest.approx(small)
-    # plain natural bids earn nothing
-    assert bonus("AK74.QJ6.AQ7.654", [], "1N") == 0.0
-    assert bonus("KQJ4.A753.T985.4", ["1S", P], "2S") == 0.0
-    # conv_bonus = 0 disables the reward
-    cfg0 = ConventionConfig.from_overrides(None, {"conv_bonus": 0.0})
-    r = feed_all(["1S", P])
-    assert call_bonus(r, 2, "KQJ4.A753.AJT5.4", B("4C"), cfg0) == 0.0
-
 
 def test_convention_alerts():
     auc = ["1S", P, "2C", P, "2S", P]
@@ -602,46 +623,12 @@ def test_team_row_rewards_convention_penalty():
     r = team_row_rewards(buf, partner_dev=pd, conv_pen=conv, conv_weight=0.5,
                          **kw)
     assert np.allclose(r, [-8.0 / 4 - 1.0, 8.0 / 4 - 0.5])
-    # the convention bonus is added unscaled on top
-    bon = np.array([0.05, 0.0])
-    r = team_row_rewards(buf, conv_pen=conv, conv_weight=0.5, conv_bonus=bon,
-                         **kw)
-    assert np.allclose(r, [-9.0 + 0.05, 7.5])
-
-
-def test_convention_penalties_file_driven_bonus():
-    """A clean artificial entry from the system file earns the positive
-    reward and reports its pattern, not just the hard-coded rule kinds."""
-    from bidding_dt.conventions.system_file import parse_system_file
-    from bidding_dt.env.auction_env import AuctionBatch
-    from bidding_dt.env.deals import random_deals
-    from bidding_dt.rl.rollout import RolloutBuffer, convention_penalties
-    f = pathlib.Path(tempfile.mkdtemp()) / "system.txt"
-    f.write_text("1N = 15-17 balanced\n"
-                 "1N-2C = 4+H OR 4+S stayman ask @!\n")
-    spec = parse_system_file(f)
-    cfg = spec.config()
-    rng = np.random.default_rng(0)
-    deal = next(d for d in random_deals(rng, 200)
-                if len(d.hands[2].split(".")[1]) >= 4)
-    env = AuctionBatch([deal], np.array([0]), np.array([0]))
-    env.step(np.array([0]), np.array([B("1N")]))
-    env.step(np.array([0]), np.array([B(P)]))
-    buf = RolloutBuffer()
-    buf.deal_idx = [0]
-    buf.seat = [2]
-    buf.call_idx = [2]
-    buf.action = [B("2C")]
-    pens, codes, bonuses, used = convention_penalties(
-        buf, env, cfg, spec, return_used=True)
-    assert pens[0] == 0.0 and codes[0] == []
-    assert bonuses[0] == pytest.approx(cfg.conv_bonus)
-    assert used[0] == "1N-2C"
 
 
 def test_convention_penalties_matches_manual():
     """convention_penalties() over a randomly-played batch env equals the
-    per-row call_violations recomputation (no DD solver needed)."""
+    per-row call_violations recomputation plus the terminal GF attribution
+    (no DD solver needed)."""
     from bidding_dt.env.auction_env import AuctionBatch, sample_from_masks
     from bidding_dt.env.deals import random_deals
     from bidding_dt.rl.rollout import RolloutBuffer, convention_penalties
@@ -660,23 +647,106 @@ def test_convention_penalties_matches_manual():
                      actions, np.zeros(len(idx)), np.zeros(len(idx)),
                      env.n_calls[idx], np.zeros(len(idx)))
         env.step(idx, actions)
-    pens, pen_codes, bonuses = convention_penalties(buf, env, CFG)
-    assert pens.shape == (buf.n,) == bonuses.shape
+    pens, pen_codes = convention_penalties(buf, env, CFG)
+    assert pens.shape == (buf.n,)
     assert (pens >= 0).all() and np.isfinite(pens).all()
+    # the terminal GF attribution recomputed by hand (same rule the rollout
+    # applies): one gf_pass on the GF side's last pass of a bad ending
+    term = {}
+    for di in range(len(deals)):
+        r = AuctionReader(int(dealer[di]), int(vuln[di]))
+        for c in env.calls[di, : int(env.n_calls[di])]:
+            r.feed(int(c))
+        for seat, ci, v in terminal_gf_violations(r, CFG):
+            term[(di, seat, ci)] = v
     for i in range(buf.n):
         di, ci = buf.deal_idx[i], buf.call_idx[i]
         prefix = env.calls[di, :ci].tolist()
         vs = call_violations(deals[di].hands[buf.seat[i]], int(dealer[di]),
                              int(vuln[di]), prefix, buf.action[i], CFG)
-        assert pens[i] == pytest.approx(sum(v.weight for v in vs))
-        assert pen_codes[i] == [v.code for v in vs]
-        # the bonus is either 0 or exactly cfg.conv_bonus, and a penalized
-        # call never earns one
-        assert bonuses[i] == 0.0 or bonuses[i] == pytest.approx(CFG.conv_bonus)
-        if pens[i] > 0:
-            assert bonuses[i] == 0.0
+        want_pen = sum(v.weight for v in vs)
+        want_codes = [v.code for v in vs]
+        tv = term.get((di, buf.seat[i], ci))
+        if tv is not None:
+            want_pen += tv.weight
+            want_codes.append(tv.code)
+        assert pens[i] == pytest.approx(want_pen)
+        assert pen_codes[i] == want_codes
     # random legal play breaks the system somewhere in 6 full auctions
     assert (pens > 0).any()
+
+
+def test_convention_penalties_f_pass_hits_partner_pass():
+    """F discipline: bid-(pass)-pass -- the PARTNER's pass is the single
+    penalized call, never the forcing bid itself or any other pass."""
+    from bidding_dt.conventions import SystemEnforcer, parse_system_file
+    from bidding_dt.env.auction_env import AuctionBatch
+    from bidding_dt.env.deals import random_deals
+    from bidding_dt.rl.rollout import RolloutBuffer, convention_penalties
+    f = pathlib.Path(tempfile.mkdtemp()) / "system.txt"
+    f.write_text("1X-1Y-2Z; Z>X, Z<Y = reverse: 5+X 4+Z p>16 F @2.0\n")
+    spec = parse_system_file(f)
+    cfg = spec.config()
+    rng = np.random.default_rng(3)
+    deal = random_deals(rng, 1)[0]
+    # N's 2D is the F reverse; S (partner) passes it: bid-(pass)-pass
+    calls = ["1C", P, "1H", P, "2D", P, P, P]
+    env = AuctionBatch([deal], np.array([0]), np.array([0]))
+    buf = RolloutBuffer()
+    for c in calls:
+        idx = np.array([0])
+        tokens, hand, vuln_cls, hero, row_len = env.build_inputs(idx)
+        masks = env.legal_masks(idx)
+        a = np.array([B(c)])
+        buf.add_rows(idx, hero, tokens, hand, vuln_cls, row_len, masks, a,
+                     np.zeros(1), np.zeros(1), env.n_calls[idx], np.zeros(1))
+        env.step(idx, a)
+    pens, codes = convention_penalties(buf, env, cfg, spec)
+    f_rows = [i for i in range(buf.n) if "f_pass" in codes[i]]
+    # exactly one f_pass: S's pass at call index 6 (the partner of the F
+    # bidder); the F bid itself may carry a pat: hand violation, but never
+    # f_pass, and neither does any other pass
+    assert f_rows == [6]
+    assert buf.seat[6] == 2 and buf.call_idx[6] == 6
+    # SPEC_PARAMS f_pass_weight default (the file sets no f_pass_weight)
+    assert pens[6] == pytest.approx(2.0)
+    assert all("f_pass" not in codes[i] for i in range(buf.n) if i != 6)
+
+
+def test_convention_penalties_gf_is_terminal_last_pass():
+    """GF discipline: no pass below game is charged while the auction is
+    alive; when the completed auction ends in an undoubled partscore, the
+    gf_pass lands on the GF side's LAST pass only."""
+    from bidding_dt.conventions import parse_system_file
+    from bidding_dt.env.auction_env import AuctionBatch
+    from bidding_dt.env.deals import random_deals
+    from bidding_dt.rl.rollout import RolloutBuffer, convention_penalties
+    f = pathlib.Path(tempfile.mkdtemp()) / "system.txt"
+    f.write_text("1X-2C; X!=C, first, !passed, bids_by_them=0 "
+                 "= 2/1: 3+C p>11.5 GF\n")
+    spec = parse_system_file(f)
+    cfg = spec.config()
+    rng = np.random.default_rng(0)
+    deal = random_deals(rng, 1)[0]
+    # 1S-P-2C(GF)-P-2D-P-P-P: N-S declare an undoubled 2D partscore. The
+    # earlier N-S pass (none here besides the closer) and every intermediate
+    # call stay uncharged; S's closing pass at index 6 takes the gf_pass.
+    calls = ["1S", P, "2C", P, "2D", P, P, P]
+    env = AuctionBatch([deal], np.array([0]), np.array([0]))
+    buf = RolloutBuffer()
+    for c in calls:
+        idx = np.array([0])
+        tokens, hand, vuln_cls, hero, row_len = env.build_inputs(idx)
+        masks = env.legal_masks(idx)
+        a = np.array([B(c)])
+        buf.add_rows(idx, hero, tokens, hand, vuln_cls, row_len, masks, a,
+                     np.zeros(1), np.zeros(1), env.n_calls[idx], np.zeros(1))
+        env.step(idx, a)
+    pens, codes = convention_penalties(buf, env, cfg, spec)
+    gf_rows = [i for i in range(buf.n) if "gf_pass" in codes[i]]
+    assert gf_rows == [6]
+    assert buf.seat[6] == 2 and buf.call_idx[6] == 6
+    assert pens[6] == pytest.approx(cfg.weight("gf_pass"))
 
 
 @pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
@@ -701,91 +771,12 @@ def test_play_team_deals_conv_pen_flows_into_rewards(tmp_path):
     assert roll.conv_pen.shape == (roll.buf.n,)
     assert (roll.conv_pen >= 0).all()
     assert len(roll.conv_codes) == roll.buf.n
-    assert roll.conv_bonus is not None
-    assert roll.conv_bonus.shape == (roll.buf.n,)
-    assert (roll.conv_bonus >= 0).all()
     r0 = roll.row_rewards(1.0, conv_weight=0.0)
     r1 = roll.row_rewards(1.0, conv_weight=0.5)
-    # the bonus flows into both (unscaled), so only the penalty differs
+    # the penalty is the ONLY convention term in the reward
     assert np.allclose(r0 - r1, 0.5 * roll.conv_pen)
     # without conv_cfg nothing is computed and rewards are unchanged
     ref = play_team_deals(model, deals, dealer, vuln, torch.device("cpu"),
                           cache=cache, greedy=True)
     assert ref.conv_pen is None
-    assert ref.conv_bonus is None
-    cache.close()
-
-
-@pytest.mark.skipif(not HAS_ENDPLAY, reason="endplay not installed")
-def test_sys_explore_forced_call_records_true_dev(tmp_path):
-    """A sys_explore-forced convention call keeps the policy's own logprob
-    and its TRUE untempered greedy deviation (it used to be pinned to 0, so a
-    failed forced experiment charged the partner's punishment in full instead
-    of discounting it as exploration noise)."""
-    import torch
-    from bidding_dt.config import ModelConfig
-    from bidding_dt.conventions.system_file import parse_system_file
-    from bidding_dt.data.hands import HAND_DIM
-    from bidding_dt.dd.solver import TableCache
-    from bidding_dt.env.deals import random_deals
-    from bidding_dt.rl.model import RLModel
-    from bidding_dt.rl.rollout import play_team_deals
-
-    f = pathlib.Path(tempfile.mkdtemp()) / "system.txt"
-    f.write_text("2D = 5+H OR 5+S artificial multi-style opening @!\n")
-    spec = parse_system_file(f)
-    cfg = spec.config()
-    rng = np.random.default_rng(17)
-    two_d = B("2D")
-    # 6 deals whose dealer (N) holds a 5-card major: every opening decision
-    # has a clean artificial 2D target, which sys_explore=1.0 always forces
-    deals = []
-    for d in random_deals(rng, 400):
-        s, h = d.hands[0].split(".")[0], d.hands[0].split(".")[1]
-        if len(h) >= 5 or len(s) >= 5:
-            deals.append(d)
-        if len(deals) == 6:
-            break
-    assert len(deals) == 6
-    dealer = np.zeros(6, dtype=np.int64)
-    vuln = rng.integers(0, 4, 6)
-    torch.manual_seed(19)
-    model = RLModel(ModelConfig.from_preset("tiny")).eval()
-    cache = TableCache(tmp_path / "dd.sqlite")
-    roll = play_team_deals(model, deals, dealer, vuln, torch.device("cpu"),
-                           rng=rng, cache=cache, greedy=False, temp=1.3,
-                           conv_cfg=cfg, conv_spec=spec, sys_target=True,
-                           sys_explore=1.0)
-    buf = roll.buf
-    forced = [i for i in range(buf.n)
-              if buf.call_idx[i] == 0 and roll.sys_target[i, two_d] > 0.5]
-    assert len(forced) == 12   # pure self-play: both tables open every deal
-    assert all(buf.action[i] == two_d for i in forced)
-
-    # the stored dev equals the recomputed untempered greedy deviation
-    L = max(int(buf.row_len[i]) for i in forced)
-    tok = np.zeros((len(forced), L), dtype=np.int64)
-    hand = np.zeros((len(forced), HAND_DIM), dtype=np.float32)
-    vul = np.zeros(len(forced), dtype=np.int64)
-    rlen = np.zeros(len(forced), dtype=np.int64)
-    mask = np.zeros((len(forced), buf.mask[0].shape[0]), dtype=bool)
-    for k, i in enumerate(forced):
-        li = int(buf.row_len[i])
-        tok[k, :li] = buf.tokens[i]
-        hand[k] = buf.hand[i]
-        vul[k] = buf.vuln[i]
-        rlen[k] = li
-        mask[k] = buf.mask[i]
-    with torch.no_grad():
-        logits, _ = model.forward_last(
-            torch.as_tensor(tok), torch.as_tensor(hand),
-            torch.as_tensor(vul), torch.as_tensor(rlen))
-    lp0 = logits.float().masked_fill(~torch.as_tensor(mask),
-                                     float("-inf")).log_softmax(-1).numpy()
-    expected = np.maximum(0.0, lp0.max(axis=1) - lp0[:, two_d])
-    got = np.asarray([buf.dev[i] for i in forced])
-    assert np.allclose(got, expected, atol=1e-5)
-    # a tiny random policy hardly ever argmaxes 2D, so the forced calls are
-    # real deviations -- the old code would have recorded all zeros here
-    assert (got > 0).any()
     cache.close()

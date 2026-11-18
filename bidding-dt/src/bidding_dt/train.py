@@ -92,8 +92,9 @@ def main():
     ap.add_argument("--max-steps", type=int, default=None)
     ap.add_argument("--max-deals", type=int, default=None, help="subsample train split")
     ap.add_argument("--system-cache", default=None,
-                    help="generated system-convention cache "
-                         "(bidding_dt.conventions.gen) mixed into the train split")
+                    help="a second generated auction store (data/parse.py "
+                         "layout, e.g. from bidding_dt.hand.gen) mixed into "
+                         "the train split")
     ap.add_argument("--system-repeat", type=int, default=None,
                     help="repeat the system cache this many times (oversample)")
     ap.add_argument("--val-every", type=int, default=None)
@@ -149,7 +150,7 @@ def main():
         extra *= max(1, int(cfg.data.system_repeat))
         train_ds = ConcatDataset([train_ds, *extra])
         print(f"train data: {len(train_ds)} sequences "
-              f"(+ {len(extra[0])} x {len(extra)} system-convention sequences)")
+              f"(+ {len(extra[0])} x {len(extra)} extra-store sequences)")
     val_ds = BiddingDataset(cfg.data.cache_dir, "val", max_deals=cfg.data.max_deals)
     pin = device.type == "cuda"
     train_loader = DataLoader(train_ds, batch_size=cfg.train.batch_size, shuffle=True,

@@ -170,6 +170,14 @@ class AuctionReader:
         self.rkcb_asker = -1
         self.rkcb_trump = -1
         self._pass_run = 0             # consecutive passes before next call
+        # sticky game force: set whenever gf is established (structurally or,
+        # via patterns.fold_state, by a system-file GF entry) and cleared ONLY
+        # when the system dissolves its own force (the strong-2C 2NT rebid).
+        # Bidding game does NOT clear it: the terminal gf_pass check
+        # (rules.terminal_gf_violations) judges the FINAL contract, and
+        # defending an undoubled contract violates the force even after
+        # reaching game.
+        self.gf_outstanding = [False, False]
 
     # -- queries ------------------------------------------------------------
 
@@ -400,6 +408,7 @@ class AuctionReader:
                 if level == 2 and denom == 0:      # strong 2C opening
                     self.strong2c_side = side
                     self.gf[side] = True
+                    self.gf_outstanding[side] = True
             elif side != self.opener % 2 and self.overcaller < 0:
                 self.overcaller = seat
 
@@ -427,16 +436,21 @@ class AuctionReader:
         if info.kind != "bid":
             return
         # strong 2C: after a 2D waiting response, opener's 2NT rebid is
-        # invitational (22-24), not a game force
+        # invitational (22-24), not a game force -- the system dissolves its
+        # own force, so the sticky gf_outstanding clears with it
         if self.strong2c_side == side and seat == self.opener:
             self.s2c_opener_calls += 1
             if (self.s2c_opener_calls == 2 and self.s2c_waiting
                     and info.level == 2 and info.denom == DENOM_N):
                 self.gf[side] = False
+                self.gf_outstanding[side] = False
         if info.is_2over1 or info.fourth_suit or info.xyz_2d or info.smolen:
             self.gf[side] = True
+            self.gf_outstanding[side] = True
         if is_game_or_above(info.level, info.denom):
-            self.gf[side] = False      # obligation fulfilled
+            self.gf[side] = False      # obligation fulfilled (gf_outstanding
+            #                           stays: the terminal check judges the
+            #                           final contract, not this bid)
 
     def _update_xyz(self, call: int, seat: int, info: CallInfo):
         stage = self.xyz_stage

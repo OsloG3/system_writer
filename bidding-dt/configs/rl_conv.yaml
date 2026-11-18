@@ -14,26 +14,31 @@
 # (gf, balancing, jump=1, their_bid>=4S, ...) and descriptions that double as
 # the enforcement spec (lengths, K&R point ranges, balanced, OR branches,
 # F/GF forcing, TO/PENALTY double discipline). Top-level config lines tune
-# the thresholds (kr_tolerance, conv_bonus, to_pass_min_len, ...). A matched
-# entry with weight>0 replaces the built-in checks for that call; unmatched
-# calls fall back to conventions/rules.py defaults (5-card majors, 15-17
-# 1NT, strong 2C, GF 2/1, splinters, smolen, RKCB steps, XYZ, ...). The same
-# file's entry descriptions are what the website serves as bid alerts. Hands
-# are evaluated in Kaplan-Rubens points (rpbridge.net/8j19.htm); every range
-# carries +-kr_tolerance slack. The penalty is conv_weight * sum(violated
-# weights), subtracted from each offending call's row reward; correctly
-# using an artificial convention (XYZ, RKCB, splinter, smolen, fourth suit,
-# cuebid raise) instead adds the small flat conv_bonus reward. The
-# conv_rules / conv_params below layer on top of the file for experiments
-# (conv_rules tunes the built-in fallback weights).
+# the thresholds (kr_tolerance, to_pass_min_len, ...). A matched entry with
+# weight>0 replaces the built-in checks for that call; unmatched calls fall
+# back to conventions/rules.py defaults (5-card majors, 15-17 1NT, strong
+# 2C, GF 2/1, splinters, smolen, RKCB steps, XYZ, ...). The same file's
+# entry descriptions are what the website serves as bid alerts. Hands are
+# evaluated in Kaplan-Rubens points (rpbridge.net/8j19.htm); every range
+# carries +-kr_tolerance slack.
+#
+# The file is a PURE CONSTRAINT: the penalty is conv_weight * sum(violated
+# weights), subtracted from each offending call's row reward -- there is no
+# positive convention shaping (no usage bonus, no auxiliary system-teacher
+# loss, no exploration overrides). Force discipline: F is per-call
+# (bid-(pass)-pass charges the PARTNER's pass, f_pass); GF is terminal --
+# when the GF side ends the auction declaring an undoubled partscore or
+# defending an undoubled contract, its LAST pass is the single call charged
+# (gf_pass). The conv_rules / conv_params below layer on top of the file for
+# experiments (conv_rules tunes the built-in fallback weights).
 #   uv run python -m bidding_dt.rl.train_ppo --config configs/rl_conv.yaml \
 #       --preset small --bc-ckpt runs/small/best.pt --out runs/rl_conv
 #
 model:
   dropout: 0.0
 rl:
-  iters: 800
-  deals_per_iter: 256
+  iters: 300
+  deals_per_iter: 512
   lr: 1.0e-4
   warmup_iters: 64
   minibatch_size: 128
@@ -51,41 +56,23 @@ rl:
   kl_beta: 0.1
   kl_beta_end: 0.0
   league_prob: 0.5
-  snapshot_every: 30
+  snapshot_every: 20
   max_snapshots: 24
-  eval_every: 25
+  eval_every: 16
   eval_deals: 128
   cache_path: cache/dd.sqlite
-  # --- convention enforcement ------------------------------------------------
+  # --- convention enforcement (penalty-only) ----------------------------------
   conv_weight: 1.0          # multiplier on the file's per-call violation
-                            # weights. Penalties/bonuses are now scaled by
-                            # reward_scale (0.2) like the IMP reward, so a file
-                            # weight of W costs W IMP-equivalents (a weight-2.0
-                            # break ~ 2 IMPs). This keeps convention shaping
+                            # weights. Penalties are scaled by reward_scale
+                            # (0.2) like the IMP reward, so a file weight of
+                            # W costs W IMP-equivalents (a weight-2.0 break
+                            # ~ 2 IMPs). This keeps convention shaping
                             # comparable to a board outcome instead of
                             # overwhelming it. Raise if conv_viol_rate stays
                             # high; lower if IMPs regress.
-  # --- system teacher (positive half) ----------------------------------------
-  # The penalty above only teaches "don't break the entry"; these make the
-  # entry's bid the preferred call. On each decision where the system file has
-  # a clean artificial convention, PPO also minimizes CE(target, policy).
-  sys_weight: 0.3           # auxiliary loss weight (0 disables). Kept moderate:
-                            # the teacher averages over targeted rows only, so
-                            # its per-row pull is ~sys_weight/sys_target_rate
-                            # times the policy loss -- too high distorts the
-                            # policy toward the conventions and away from IMPs.
-  sys_weight_end: 0.05      # anneal (a persistent floor keeps conventions)
-  sys_target_floor: 0.02    # target mass left on all legal calls
-  sys_target_min_prob: 0.02 # safety valve ON: only target a convention the
-                            # policy already gives >= 2% probability, so an
-                            # underspecified entry can't override a confident
-                            # natural bid (protects against forcing garbage).
-  sys_explore: 0.1          # force a clean convention into this fraction of
-                            # eligible rollout decisions, so PPO sees it
   # conv_rules:             # per-rule weight overrides (0 disables a rule):
   #   gf_pass: 2.0
   #   open_values: 0.0
   # conv_params:            # threshold overrides (see ConventionConfig):
   #   kr_tolerance: 0.75
   #   js_range: [10.5, 12.5]
-  #   conv_bonus: 0.1       # small reward per correct convention use

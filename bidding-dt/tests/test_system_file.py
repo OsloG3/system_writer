@@ -193,18 +193,22 @@ def _enf():
     return SystemEnforcer(spec, spec.config()), spec
 
 
-@pytest.mark.skipif(not SHIPPED.is_file(), reason="models/system.txt absent")
-def test_stayman_requires_strength():
-    """Garbage Stayman must not be a clean/targeted convention."""
-    enf, _ = _enf()
+def test_stayman_requires_strength(tmp_path):
+    """Garbage Stayman must be PENALIZED, not a free bid. The file is a pure
+    constraint: the old positive clean_use/target gating is gone, so what
+    remains is the hand-description penalty on the entry itself."""
+    f = tmp_path / "system.txt"
+    f.write_text("1N = p15-17 balanced\n"
+                 "1N-2C = p>7.5 4+H OR p>7.5 4+S stayman ask @!\n")
+    spec = parse_system_file(f)
+    enf = SystemEnforcer(spec, spec.config())
     r = feed_all(["1N", P])
     bust = HandInfo("743.8632.952.843")     # 4 hearts, ~-0.5 K&R
     good = HandInfo("K74.Q863.A52.K84")     # 4 hearts, ~11 K&R
-    assert enf.clean_use(r, 2, bust, B("2C")) is None       # not rewarded
-    assert enf.target(r, 2, bust, np.ones(39, bool)) is None
-    assert enf.clean_use(r, 2, good, B("2C")) is not None   # real Stayman
-    # a bust Stayman is a violation, not a free bid
+    # a bust Stayman is a violation ...
     assert [v.code for v in enf.check(r, 2, bust, B("2C"))] == ["pat:1N-2C"]
+    # ... a real Stayman hand is clean
+    assert enf.check(r, 2, good, B("2C")) == []
 
 
 @pytest.mark.skipif(not SHIPPED.is_file(), reason="models/system.txt absent")

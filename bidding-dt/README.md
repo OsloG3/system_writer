@@ -339,8 +339,8 @@ a simple raise), XYZ, RKCB 1430 with follow-ups, weak-two feature asks, the
 full competitive toolbox (overcalls, negative / takeout / penalty doubles,
 advancer bids and raises, cuebid raises, Michaels, unusual 2NT, Lebensohl)
 and slam-bidding glue. Every entry carries the hand requirements its call
-promises, so the file drives training enforcement, the demonstration
-generator, the rule-based bidder AND the website alerts from one source.
+promises, so the file drives training enforcement (as penalties -- see
+"Penalty-only enforcement" below) AND the website alerts from one source.
 The whole file is a **sequence-pattern script**: one entry per line, checked
 in file order, first match wins:
 
@@ -389,9 +389,13 @@ PATTERN[; CLAUSES] = DESCRIPTION [@weight] [@!]
   a leading `!` (`!stop` = no stopper, `!balanced` = unbalanced). A token that
   looks like enforcement but is misspelled (`kc=3/0`, `S>=4`) is reported as a
   parse warning rather than silently ignored.
-  Entry keywords: `F` (one-round force -- PARTNER passing it is penalized,
-  an intervening opponent bid releases it), `GF` (game force -- passing
-  below game is penalized), and for doubles `TO` / `PENALTY`: the doubler's
+  Entry keywords: `F` (one-round force -- the violation is bid-(pass)-pass:
+  the PARTNER's pass of the forcing bid is the single penalized call; an
+  intervening opponent bid releases the force), `GF` (game force -- judged
+  over the COMPLETED auction: the GF side's LAST pass is penalized when the
+  final contract is an undoubled partscore it declares or an undoubled
+  contract, at any level, that it defends; a doubled/redoubled ending is
+  accepted), and for doubles `TO` / `PENALTY`: the doubler's
   hand is deliberately NOT described; instead the PARTNER is penalized for
   passing a TO double without `to_pass_min_len` trumps or pulling a PENALTY
   double with more than `penalty_pull_max_len`. `{T}`/`{P}`/`{L}`/`{O}`/`{X}`
@@ -401,38 +405,33 @@ PATTERN[; CLAUSES] = DESCRIPTION [@weight] [@!]
   description is empty suppresses the alert.
 
 Top-level `key = value` **config lines** tune the rest: `kr_tolerance`,
-`conv_bonus`, `open_min_kr`, `open_min_kr_late`, `open_rule20`,
-`rkcb_min_kr`, `rkcb_min_fit` and the discipline params (`f_pass_weight`,
-`to_pass_weight`, `penalty_pull_weight`, `to_pass_min_len`,
-`penalty_pull_max_len`).
+`open_min_kr`, `open_min_kr_late`, `open_rule20` and the discipline params
+(`f_pass_weight`, `to_pass_weight`, `penalty_pull_weight`, `to_pass_min_len`,
+`penalty_pull_max_len`). (`conv_bonus`, `rkcb_min_kr` and `rkcb_min_fit` are
+still accepted as legacy keys but no longer do anything -- the positive
+convention-usage bonus was removed.)
 
-Three consumers, one file:
+Two consumers, one file:
 
 - **Training interprets it at startup** (`rl/train_ppo.py`, when
-  `rl.conv_weight > 0` or `rl.sys_weight > 0`): the config lines fold into a
+  `rl.conv_weight > 0`): the config lines fold into a
   `ConventionConfig` (`system_file.SystemSpec.config`, with `rl.conv_rules` /
   `rl.conv_params` from the YAML layering on top for experiments) and the
   entries are enforced per call by `patterns.SystemEnforcer` (wired through
   `rl/rollout.convention_penalties`): a matched entry with weight>0
   REPLACES the built-in check for that call, OR branches are checked
-  against the hero's hand in K&R points, and F/GF/TO/PENALTY add the force
-  and double-discipline penalties (`f_pass`, `gf_pass`, `to_pass`,
-  `penalty_pull`, `pat:<pattern>` violation codes in the log's `conv_top`).
-  Calls no entry matches fall back to the built-in rule checks
-  (`conventions/rules.py`, default weights). The same entries are the
-  positive teacher described below (`clean_use` / `target`). The init log
+  against the hero's hand in K&R points, and F/TO/PENALTY add the force
+  and double-discipline penalties (`f_pass`, `to_pass`, `penalty_pull`,
+  `pat:<pattern>` violation codes in the log's `conv_top`). The GF
+  discipline is judged over the completed auction instead
+  (`rules.terminal_gf_violations`, code `gf_pass` -- see "Penalty-only
+  enforcement" below). Calls no entry matches fall back to the built-in
+  rule checks (`conventions/rules.py`, default weights). The init log
   line records which file was read; a missing explicit `--system` path is a
   hard error, a missing default falls back to the built-in values.
   `parse_system_file` also lints each description for misspelled enforcement
   tokens (e.g. `kc=3/0`, `S>=4`) and prints a warning, so a token that would
   silently degrade to free text is caught at load time.
-- **The rule-based bidder plays it directly** (`conventions/bidder.py`,
-  `SystemBidder`): bridge logic proposes the ideal call for each position and
-  the `SystemEnforcer` validates it, falling back to the best *consistent*
-  legal call. This is the literal "bot following the rules" -- no neural net --
-  used to deal system-consistent auctions for `conventions/gen.py` /
-  `hand/gen.py` (the `system:` policy) and as the check that the file is
-  detailed enough to bid on its own (its auctions score ~par double-dummy).
 - **The website generates its bid alerts from it** (system_writer's
   `system_file.go` + `patterns.go` + `auction.go`): the Go server replays
   the live auction through ports of the Python auction reader and pattern
@@ -449,91 +448,46 @@ the bots actually enforce. `tests/test_patterns.py` +
 implementations in lockstep. The full grammar lives in
 `conventions/patterns.py` (Python) and `system_writer/patterns.go` (Go).
 
-### Making the bot actually use the conventions
+### Penalty-only enforcement
 
-Enforcement alone has a bad optimum: a violation is penalized, but a pass or
-a safe natural bid that ignores an available convention is not, so the policy
-learns to avoid the risk. The bid also has to survive **greedy serving** (the
-website's `/bid` uses temperature 0), where a 2%-probability convention never
-wins. Three mechanisms in the trainer close that gap; they are independent
-and can be enabled together:
+The system file is a **pure constraint** on the RL policy: it only ever
+penalizes infringements of the conventions it describes. There is no
+positive convention shaping of any kind -- no per-use bonus, no auxiliary
+system-teacher loss, no system-guided exploration overrides in the rollout,
+and no rule-based auto bidder dealing "system-consistent" auctions into the
+training data (the old `rl.sys_weight` / `rl.sys_explore` / `conv_bonus`
+mechanisms and `conventions/bidder.py` / `conventions/gen.py` were removed).
+The policy is free to invent its own protocols; the file only draws lines it
+should not cross, and the IMP reward decides everything else.
 
-- **Positive, file-driven reward.** `convention_penalties` now calls
-  `SystemEnforcer.clean_use`: a call matching an artificial entry whose hand
-  description the hero satisfies earns `conv_bonus`, and its pattern is
-  reported in `conv_used` (not just the seven hard-coded rule kinds in
-  `rules.py`). This is the reward-side counterpart of the penalty.
-- **System-teacher auxiliary loss (`rl.sys_weight`).** On every learner
-  decision with a clean artificial convention available,
-  `SystemEnforcer.target` builds a distribution over the legal calls with
-  `1 - sys_target_floor` of its mass on the convention(s) and the rest spread
-  uniformly. PPO minimizes `sys_weight * CE(target, pi)` in addition to the
-  IMP reward, so the convention becomes the policy's *preferred* call rather
-  than merely an unpenalized alternative. `sys_weight` anneals to
-  `sys_weight_end`; a small persistent floor is deliberate. `sys_target_min_prob`
-  is a safety valve: a convention the policy already gives less than that
-  probability to is not forced, which protects underspecified entries (e.g.
-  a Stayman entry with no strength clause) from overriding a confident
-  natural bid. Entries with no hand tokens at all (e.g. the wildcard
-  `...-4N; we_bid` RKCB ask) are skipped by the positive teacher, because a
-  context-free pattern can look "clean" in an unrelated auction; give such an
-  entry a shape/context clause if you want it targeted.
-- **System-guided exploration (`rl.sys_explore`).** With this probability, a
-  learner decision that has a clean convention is overridden with one of
-  those calls (the stored logprob is the policy's own, and the choice is
-  seeded by the rollout RNG). This manufactures convention auctions even when
-  the policy would almost never draw the bid, so PPO gets outcome data for
-  it. It also makes both partners practice the follow-ups in self-play.
+The two forcing disciplines are attributed differently, matching how the
+violations actually happen:
 
-The per-iteration log now carries `conv_used_rate` / `conv_used_top` /
-`conv_used_entries` (which file entries were used cleanly), `sys_target_rate`
-(how often an auxiliary target existed), `sys_agree` (how often the chosen
-call had target mass) and `sys_ce` (the auxiliary loss). Watch `conv_used_top`
-to see which conventions are migrating into the policy; entries that never
-appear there are the ones the file may describe too narrowly (or that the
-bot never reaches).
+- **F (one-round force), per call.** The violation is bid-(pass)-pass:
+  partner makes a forcing bid, an opponent passes, and the F bidder's
+  PARTNER passes. That partner pass -- and only that pass -- is charged
+  `f_pass` (weight `f_pass_weight`, default 2.0). The forcing bid itself is
+  never charged for the force (it can still carry a `pat:` violation if the
+  hand doesn't match the entry's description), and an intervening opponent
+  BID releases the force entirely.
+- **GF (game force), terminal.** A GF bid obliges the partnership to keep
+  bidding until the auction ends in an accepted outcome: the GF side
+  declares a game-or-above contract, declares a DOUBLED/REDOUBLED partscore,
+  or defends a DOUBLED/REDOUBLED contract. If instead the auction ends with
+  the GF side declaring an undoubled partscore or defending an undoubled
+  contract (at any level -- even after the side bid game itself, so passing
+  out an undoubled overbid counts), the side's LAST pass is the single call
+  charged `gf_pass` (rule weight, default 2.0). Intermediate passes below
+  game are never penalized (a forcing pass while the auction is alive is
+  normal bridge), and the strong-2C 2NT rebid dissolves the force outright.
 
-**Demonstrations for the rest.** If a convention is still never reached,
-`conventions/gen.py` deals auctions that actually use the file's system. The
-default `--policy system` plays every seat with the **rule-based
-`conventions/bidder.py`** -- a bot that reads the same entries and bids them
-directly, with no neural net -- so the demonstrations are exactly the system
-the file describes (and a good way to sanity-check the file: if it is detailed
-enough, these auctions are sensible bridge). A neural fallback policy with
-convention substitution is still available for variety:
-
-```
-# file-driven (default): the rule-based bidder plays the system
-uv run python -m bidding_dt.conventions.gen \
-    --system ../models/system.txt --deals 50000 --out cache/system
-
-# or: roll a BC model and substitute clean system calls into it
-uv run python -m bidding_dt.conventions.gen \
-    --system ../models/system.txt --deals 50000 --conv-prob 0.85 \
-    --policy bc:runs/bc_small/best.pt --out cache/system
-
-# ask the rule-based bidder directly (one hand, or self-play auctions):
-uv run python -m bidding_dt.conventions.bidder \
-    --hand "AT7.KT943.A42.K8" --dealer N --auction "P 1D" --hero N
-uv run python -m bidding_dt.conventions.bidder --selfplay --deals 20
-```
-
-Mix it into BC with `data.system_cache` / `data.system_repeat` (or
-`--system-cache` / `--system-repeat`; see `configs/small_system.yaml`). The
-generated auctions use exactly the file's hand constraints, including the
-built-in RKCB fit/values gate for wildcard entries, so they teach the system
-the bot is supposed to play. A good loop is: generate demonstrations, BC on
-the mixture, then RL with `conv_weight` + `sys_weight` + `sys_explore`.
-
-`configs/rl_conv.yaml` carries the starting values (`sys_weight: 0.3` down to
-`0.05`, `sys_explore: 0.1`, `sys_target_min_prob: 0.02`); lower `sys_weight`
-or raise `sys_target_min_prob` if IMPs regress, raise them if `conv_used_rate`
-stays near zero. Note the convention penalty/bonus are scaled by
+The per-iteration log carries `conv_pen_mean`, `conv_viol_rate` and
+`conv_top` (the most frequent violation codes, including `gf_pass` /
+`f_pass` / `pat:<pattern>`). The convention penalty is scaled by
 `reward_scale` like the IMP reward, so a file weight of `W` costs `W`
-IMP-equivalents (a weight-2.0 break ~ 2 IMPs) and `conv_bonus` earns that many
-IMPs -- keep the two comparable so using a convention is not 20x riskier than
-skipping it (the old unscaled penalty was, which is why the policy avoided
-every convention).
+IMP-equivalents (a weight-2.0 break ~ 2 IMPs) -- keep it comparable to a
+board outcome so the penalty guides without overwhelming.
+`configs/rl_conv.yaml` carries the starting values (`conv_weight: 1.0`).
 
 ## Hand inference (VQ encoder-decoder)
 
@@ -764,13 +718,11 @@ src/bidding_dt/
   env/auction_env.py   # batched auction env (hero-rotated obs, legal masks)
   conventions/kr.py    # Kaplan-Rubens point count (26-step evaluator)
   conventions/auction.py # sequential auction reader: structural classification
-  conventions/rules.py # built-in convention violations + convention bonuses
-                       # (the fallback for calls no system-file entry matches)
+  conventions/rules.py # built-in convention violations + the terminal GF
+                       # check (the fallback for calls no file entry matches)
   conventions/alerts.py # built-in alert texts (for tooling without a file)
   conventions/patterns.py # the system-file pattern language: parse, match,
                        # replay state, SystemEnforcer, alert rendering
-  conventions/bidder.py  # rule-based bidder that plays the system file
-                       # directly (a `system:` policy for the generators)
   conventions/system_file.py # models/system.txt: config lines + entries,
                        # ConventionConfig builder, alert_for_call
   rl/config.py         # RLConfig / RLTrainConfig (YAML)

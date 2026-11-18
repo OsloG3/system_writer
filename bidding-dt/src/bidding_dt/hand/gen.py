@@ -52,25 +52,16 @@ def split_weight(spec: str) -> tuple[str, float]:
 def policy_pool(specs, device):
     """Load frozen policies from league specs -> (models, names, probs).
 
-    Besides the neural league specs (`random` | `bc:<ckpt>` | `rl:<ckpt>` |
-    `<ckpt>`), a `system` or `system:<path>` spec loads the rule-based
-    conventions.bidder.SystemBidder over the system file, so auctions can be
-    dealt from the file alone.
+    Specs are the neural league specs (`random` | `bc:<ckpt>` | `rl:<ckpt>` |
+    `<ckpt>`).
     """
     if not specs:
         raise ValueError("no generator policies given (--policy SPEC)")
-    from ..conventions.bidder import load_bidder
     models, names, weights = [], [], []
     league = League(device, persist_dir=None)
     for spec in specs:
         cleaned, weight = split_weight(spec)
-        if cleaned == "system" or cleaned.startswith("system:"):
-            path = cleaned.split(":", 1)[1] if ":" in cleaned else None
-            models.append(load_bidder(path))
-            names.append(cleaned)
-            weights.append(weight)
-        else:
-            league.add_spec(cleaned, weight=weight)
+        league.add_spec(cleaned, weight=weight)
     for m in league.members:
         models.append(m.model)
         names.append(m.name)

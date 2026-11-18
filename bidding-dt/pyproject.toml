@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Bridge bidding decision transformer (supervised pretraining, offline-RL-ready)"
 requires-python = ">=3.10,<3.13"
 dependencies = [
+    "bridgebots>=0.0.12",
     "numpy>=1.26",
     "pyyaml>=6.0",
     "tqdm>=4.66",

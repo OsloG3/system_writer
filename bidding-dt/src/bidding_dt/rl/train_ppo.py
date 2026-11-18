@@ -45,13 +45,18 @@ built-in checks for that call; unmatched calls fall back to the built-in
 rule checks (conventions/rules.py with its default weights: 5-card majors,
 15-17 1NT, strong 2C, GF 2/1, splinters, smolen, RKCB steps, XYZ, ...
 -- hands evaluated in Kaplan-Rubens points). The weighted sum of the
-violations is subtracted from that decision's row reward. Correctly using an
-artificial convention (XYZ, RKCB, splinter, smolen, fourth suit, cuebid
-raise) earns the small flat conv_bonus reward instead. The same file's entry
-descriptions are what the website serves as bid alerts, so what the bots are
-trained to play and what the site explains always agree.
-Per-iteration logs carry conv_pen_mean / conv_viol_rate / conv_top /
-conv_bonus_mean (pattern violations show up as `pat:<pattern>` codes).
+violations is subtracted from that decision's row reward. The file is a
+PURE CONSTRAINT -- it only ever penalizes infringements; there is no
+positive convention shaping (no usage bonus, no auxiliary system-teacher
+loss, no exploration overrides). Force discipline: an F bid is enforced
+per call -- bid-(pass)-pass charges the PARTNER's pass (f_pass); a GF bid
+is enforced over the COMPLETED auction -- when the GF side declares an
+undoubled partscore or defends an undoubled contract, its LAST pass is the
+single call charged (gf_pass). The same file's entry descriptions are what
+the website serves as bid alerts, so what the bots are trained to play and
+what the site explains always agree.
+Per-iteration logs carry conv_pen_mean / conv_viol_rate / conv_top
+(pattern violations show up as `pat:<pattern>` codes).
 
 CPU smoke:
   python -m bidding_dt.rl.train_ppo --preset tiny --bc-ckpt runs/smoke/best.pt \
@@ -141,16 +146,6 @@ def main():
                          ">0 checks every learner call against the enforced "
                          "bidding system (conventions/) and subtracts the "
                          "weighted violations from that call's reward")
-    ap.add_argument("--sys-weight", type=float, default=None,
-                    help="system-teacher auxiliary loss weight (rl.sys_weight); "
-                         ">0 adds a cross-entropy loss toward the system "
-                         "file's clean artificial conventions on every "
-                         "decision where one is available, so the policy "
-                         "learns to use them instead of merely avoiding "
-                         "penalties")
-    ap.add_argument("--sys-explore", type=float, default=None,
-                    help="probability of forcing a clean system convention "
-                         "into a learner rollout decision (rl.sys_explore)")
     ap.add_argument("--system", default=None,
                     help="path to the system file (conventions text file, "
                          "default search: rl.system_file, "
@@ -185,10 +180,6 @@ def main():
         rl.cpu_bf16 = True
     if args.conv_weight is not None:
         rl.conv_weight = args.conv_weight
-    if args.sys_weight is not None:
-        rl.sys_weight = args.sys_weight
-    if args.sys_explore is not None:
-        rl.sys_explore = args.sys_explore
 
     # system-convention enforcement (conventions/): weighted per-call penalty
     # for bids inconsistent with the system, subtracted from row rewards. The
@@ -197,11 +188,12 @@ def main():
     # ConventionConfig thresholds and its sequence-pattern entries are
     # enforced per call (SystemEnforcer, with the built-in rules as the
     # fallback); the same file is what the website generates its bid alerts
-    # from (system_writer/system_file.go + patterns.go).
+    # from (system_writer/system_file.go + patterns.go). The file is a pure
+    # constraint: it only penalizes infringements.
     conv_cfg = None
     conv_spec = None
     system_path = None
-    if rl.conv_weight > 0 or rl.sys_weight > 0 or rl.sys_explore > 0:
+    if rl.conv_weight > 0:
         try:
             system_path = find_system_file(args.system or rl.system_file
                                            or None)
@@ -218,14 +210,9 @@ def main():
                                                        rl.conv_params)
             print("no system file found (models/system.txt); using the "
                   "built-in convention defaults")
-        if (rl.sys_weight > 0 or rl.sys_explore > 0) and conv_spec is None:
-            ap.error("--sys-weight / --sys-explore need a system file "
-                     "(models/system.txt or --system): the auxiliary target "
-                     "comes from its artificial pattern entries")
         n_on = sum(1 for w in conv_cfg.weights.values() if w > 0)
         n_pat = len(conv_spec.entries) if conv_spec is not None else 0
         print(f"system conventions on: conv_weight={rl.conv_weight} "
-              f"sys_weight={rl.sys_weight} sys_explore={rl.sys_explore} "
               f"({n_on} rules, {n_pat} pattern entries, "
               f"kr_tolerance={conv_cfg.kr_tolerance})"
               + (f", system file {system_path}" if system_path else ""))
@@ -357,7 +344,7 @@ def main():
     log({"event": "init", "params": model.num_params(), "device": str(device),
          "cfg": cfg.to_dict(), "bc_ckpt": args.bc_ckpt,
          "init_kind": init_kind, "league": league.names(),
-         "conv_weight": rl.conv_weight, "sys_weight": rl.sys_weight,
+         "conv_weight": rl.conv_weight,
          "system_file": system_path})
 
     def draw_deals():
@@ -371,7 +358,6 @@ def main():
         t0 = time.time()
         beta = anneal(rl.kl_beta, rl.kl_beta_end, it, rl.iters)
         ent = anneal(rl.ent_coef, rl.ent_coef_end, it, rl.iters)
-        sys_w = anneal(rl.sys_weight, rl.sys_weight_end, it, rl.iters)
 
         opp_model = None
         member = None
@@ -385,11 +371,7 @@ def main():
                                cache=cache, opponent=opp_model,
                                greedy=rl.greedy, temp=rl.rollout_temp,
                                amp=rollout_amp, presolve=presolve,
-                               conv_cfg=conv_cfg, conv_spec=conv_spec,
-                               sys_target=sys_w > 0 or rl.sys_explore > 0,
-                               sys_target_floor=rl.sys_target_floor,
-                               sys_target_min_prob=rl.sys_target_min_prob,
-                               sys_explore=rl.sys_explore)
+                               conv_cfg=conv_cfg, conv_spec=conv_spec)
         if member is not None:
             league.update_result(member, roll.team_imps)
 
@@ -410,7 +392,7 @@ def main():
         tensors = buf.to_torch(device)
         stats = ppo_update(model, ref_model, tensors, opt, device, rl,
                            beta, ent, rng, use_amp=use_amp,
-                           temp=rl.rollout_temp, sys_weight=sys_w)
+                           temp=rl.rollout_temp)
         sched.step()
 
         if rl.snapshot_every and (it + 1) % rl.snapshot_every == 0:
@@ -445,7 +427,6 @@ def main():
                "member_winrate": round(member.winrate, 3) if member else None,
                "beta": round(beta, 4),
                "ent_coef": round(ent, 5),
-               "sys_weight": round(sys_w, 4),
                "lr": round(sched.get_last_lr()[0], 7),
                "wall": round(time.time() - t0, 1),
                **{k: round(v, 5) for k, v in stats.items()}}
@@ -455,25 +436,6 @@ def main():
             rec["conv_viol_rate"] = round(
                 float((roll.conv_pen > 0).mean()), 4)
             rec["conv_top"] = cnt.most_common(3)
-            rec["conv_bonus_mean"] = round(float(roll.conv_bonus.mean()), 5)
-        if roll.conv_used is not None and buf.n:
-            used = Counter(u for u in roll.conv_used if u)
-            rec["conv_used_rate"] = round(
-                float(np.mean([bool(u) for u in roll.conv_used])), 4)
-            rec["conv_used_top"] = used.most_common(5)
-            rec["conv_used_entries"] = len(used)
-        if roll.sys_target is not None and buf.n:
-            targeted = roll.sys_target.sum(1) > 0
-            rec["sys_target_rate"] = round(float(targeted.mean()), 4)
-            if targeted.any():
-                # A call "agrees" when it is one of the convention calls the
-                # teacher put its mass on, not merely a legal call (the target
-                # spreads a small floor over ALL legal calls, so "> 0" would
-                # always be true). Convention calls carry (1-floor)/n_clean >>
-                # floor, so thresholding at the floor separates them.
-                mass = roll.sys_target[np.arange(buf.n), np.asarray(buf.action)]
-                chosen_ok = mass > rl.sys_target_floor
-                rec["sys_agree"] = round(float(chosen_ok[targeted].mean()), 4)
         log(rec)
 
         if rl.eval_every and (it + 1) % rl.eval_every == 0:

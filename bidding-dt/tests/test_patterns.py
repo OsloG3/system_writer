@@ -374,17 +374,30 @@ def test_f_pass_discipline():
     assert "f_pass" not in codes(vs)
 
 
-def test_file_gf_pass_and_no_duplicate():
+def test_file_gf_is_terminal_and_not_duplicated():
     enf, _ = make_enforcer(["1N-2C = GF artificial checkback @1.0"])
-    # N passes below game with the file-defined GF on -> one gf_pass
+    # the per-call check NEVER emits gf_pass -- not even on a pass below game
+    # with the file-defined GF live (that used to punish forcing passes)
     r = feed_all(["1N", P, "2C", P])
     vs = enf.check(r, 0, HandInfo("982.543.652.9872"), B("P"))
-    assert codes(vs).count("gf_pass") == 1
-    # structural GF (2/1) -> exactly one gf_pass (layer 1; not doubled up)
+    assert "gf_pass" not in codes(vs)
+    # the file GF latches into the sticky reader flag (fold_state)...
+    calls = ids(["1N", P, "2C", P, P, P])
+    st = enf.state(0, calls)
+    assert st.reader.gf_outstanding[0]
+    # ...and is judged terminally: N-S declared an undoubled 2C partscore,
+    # so the side's LAST pass (N at index 4) is the single penalized call
+    from bidding_dt.conventions import terminal_gf_violations
+    term = terminal_gf_violations(st.reader, enf.cfg)
+    assert [(s, i) for s, i, _ in term] == [(0, 4)]
+
+    # structural GF (2/1) with NO file entry -> exactly one terminal gf_pass
+    # (not doubled up between the structural and file layers)
     enf2, _ = make_enforcer(["kr_tolerance = 1.0"])
-    r = feed_all(["1C", P, "2D", P])
-    vs = enf2.check(r, 0, HandInfo("982.543.652.9872"), B("P"))
-    assert codes(vs).count("gf_pass") == 1
+    st2 = enf2.state(0, ids(["1C", P, "2D", P, P, P]))
+    term2 = terminal_gf_violations(st2.reader, enf2.cfg)
+    assert [(s, i) for s, i, _ in term2] == [(0, 4)]
+    assert [v.code for _, _, v in term2] == ["gf_pass"]
 
 
 def test_to_pass_discipline():
@@ -500,55 +513,6 @@ def test_entry_index_matches_full_match():
             assert (got is None) == (want is None), (calls, id_to_call(action))
             if got is not None:
                 assert got.pat == want.pat
-
-
-def test_system_target_stayman():
-    enf, _ = make_enforcer(["1N-2C = 4+H OR 4+S stayman ask @!"])
-    r = feed_all(["1N", P])
-    mask = np.zeros(VOCAB_SIZE, dtype=bool)
-    for c in ("P", "2C", "2D", "2H"):
-        mask[B(c)] = True
-    hi = HandInfo("KJ7.QT94.743.T98")            # 4 hearts: 2C is available
-    e = enf.clean_use(r, 2, hi, B("2C"))
-    assert e is not None and e.pat == "1N-2C"
-    t = enf.target(r, 2, hi, mask)
-    assert t is not None
-    assert t[B("2C")] > 0.9                       # convention gets the mass
-    assert t[B("P")] > 0.0                        # ... but never a hard one-hot
-    assert t.sum() == pytest.approx(1.0)
-    # no 4-card major: the file gives no convention, so no target
-    assert enf.clean_use(r, 2, HandInfo("KJ7.732.K743.T98"), B("2C")) is None
-    assert enf.target(r, 2, HandInfo("KJ7.732.K743.T98"), mask) is None
-
-
-def test_system_target_stayman_response():
-    enf, _ = make_enforcer([
-        "1N-2C = 4+H OR 4+S stayman ask @!",
-        "1N-2C-2D = stayman response: no 4-card major noMajor @!",
-        "1N-2C-2H = stayman response: 4 hearts 4+H @!",
-        "1N-2C-2S = stayman response: 4 spades 4+S @!",
-    ])
-    r = feed_all(["1N", P, "2C", P])
-    no_major = HandInfo("KJ7.732.K743.T98")
-    four_hearts = HandInfo("KJ7.QT94.743.T98")
-    assert enf.clean_use(r, 0, no_major, B("2D")) is not None
-    assert enf.clean_use(r, 0, no_major, B("2H")) is None
-    assert enf.clean_use(r, 0, four_hearts, B("2D")) is None
-    assert enf.clean_use(r, 0, four_hearts, B("2H")) is not None
-
-
-def test_clean_use_wildcard_needs_builtin_gate():
-    # RKCB's file entry has no shape tokens. The positive teacher skips it by
-    # default (a wildcard `...-4N` can look clean over an unrelated Stayman
-    # auction); opting in uses the built-in fit/values gate instead of
-    # rewarding every 4NT.
-    enf, _ = make_enforcer(["...-4N; we_bid = RKCB ask for {T} @!"])
-    r = feed_all(["1S", P, "2S", P])
-    assert enf.clean_use(r, 0, HandInfo("KQJ.A753.AJT5.43"), B("4N")) is None
-    assert enf.clean_use(r, 0, HandInfo("KQJ.A753.AJT5.43"), B("4N"),
-                         checkable_only=False) is not None
-    assert enf.clean_use(r, 0, HandInfo("KQJ.752.T9854.T9"), B("4N"),
-                         checkable_only=False) is None
 
 
 def test_special_tokens():

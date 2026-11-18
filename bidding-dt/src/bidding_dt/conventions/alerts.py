@@ -2,9 +2,9 @@
 
 `convention_alert` takes a classified call (auction.py CallInfo) and returns
 the alert the bid requires -- or None for natural, non-alertable calls. It
-covers exactly the conventions the rules reward (rules.convention_kind):
-XYZ 2C/2D, RKCB asks and step responses, splinters, Smolen, fourth-suit GF
-and support cuebids of the opponents' suit. These built-in texts are the
+covers the system's artificial conventions: XYZ 2C/2D, RKCB asks and step
+responses, splinters, Smolen, fourth-suit GF and support cuebids of the
+opponents' suit. These built-in texts are the
 fallback for tooling that runs WITHOUT a system file (rl/analyze.py without
 --system); the live website and the training-side dumps with a system file
 use its pattern entries instead (system_file.SystemSpec.alert_for_call).
@@ -14,8 +14,8 @@ from .auction import DENOM_N, MAJORS, CallInfo
 
 _SYM = ("♣", "♦", "♥", "♠")        # project denom order C,D,H,S
 
-# step (1..4 = 5C..5S) -> what the RKCB response shows (1430, as played by
-# models/system.txt: 5C = 1/4, 5D = 0/3)
+# step (1..4 = 5C..5S) -> what the RKCB response shows (1430 in the built-in
+# texts; a system file's kc= entries override these on the site)
 RKCB_STEPS = {
     1: "1 or 4 keycards",
     2: "0 or 3 keycards",

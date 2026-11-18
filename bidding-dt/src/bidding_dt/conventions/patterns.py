@@ -64,13 +64,18 @@ Description  the alert text AND the training spec. " OR " (uppercase, own
                kc=0/3 | kc=1/4 | kc=2- | kc=2+
                                RKCB keycards (aces + the {T} king; 2- / 2+
                                without / with the trump queen)
-             Entry-level keywords: F (one-round force: partner passing it is
-             penalized; an intervening opponent BID releases the force), GF
-             (game force: passing below game is penalized), and for doubles
-             TO / PENALTY. TO/PENALTY do NOT describe the doubler's hand --
-             instead the PARTNER is penalized for passing a TO double without
-             a trump stack (to_pass_min_len in their suit) or for pulling a
-             PENALTY double with length there (penalty_pull_max_len).
+             Entry-level keywords: F (one-round force: bid-(pass)-pass is
+             the violation -- the PARTNER's pass is the single penalized
+             call; an intervening opponent BID releases the force), GF
+             (game force: judged over the COMPLETED auction -- the GF
+             side's LAST pass is penalized when the final contract is an
+             undoubled partscore it declares or an undoubled contract, at
+             any level, that it defends; a doubled/redoubled ending is
+             accepted), and for doubles TO / PENALTY. TO/PENALTY do NOT
+             describe the doubler's hand -- instead the PARTNER is
+             penalized for passing a TO double without a trump stack
+             (to_pass_min_len in their suit) or for pulling a PENALTY
+             double with length there (penalty_pull_max_len).
              {X} {T} {P} {L} {O} in the text render as suit symbols.
              Everything else is free alert text.
 
@@ -98,8 +103,7 @@ import numpy as np
 
 from ..data.vocab import CALL_PASS, CALL_X, CALL_XX, FIRST_BID, VOCAB_SIZE
 from .auction import DENOM_N, MAJORS, AuctionReader, bid_id, is_game_or_above
-from .rules import (ConventionConfig, HandInfo, Violation, check_call,
-                    convention_bonus)
+from .rules import (ConventionConfig, HandInfo, Violation, check_call)
 
 VAR_CHARS = "XYZW"
 CTX_CHARS = "TPLO"                     # context suit refs (bound at match)
@@ -637,6 +641,10 @@ def fold_state(entries, dealer: int, st: MatchState, i: int, call: int) -> None:
         if live:
             if "GF" in entry.flags:
                 st.gf_file[side] = True
+                # sticky GF for the terminal gf_pass check: the file's GF
+                # entries establish the force exactly like the structural
+                # reader's (2/1, fourth suit, smolen, strong 2C) do
+                st.reader.gf_outstanding[side] = True
             if "F" in entry.flags:
                 st.f_pending[side] = seat
         if is_game_or_above(level, denom):
@@ -944,8 +952,11 @@ class SystemEnforcer:
 
     A matched entry with weight > 0 REPLACES the rule checks for that call
     (weight 0 = alert-only: rules keep enforcing); force/double discipline
-    (f_pass, gf_pass beyond the structural one, to_pass, penalty_pull) is
-    always file-driven and additive.
+    (f_pass, to_pass, penalty_pull) is always file-driven and additive. The
+    GF discipline is NOT checked here: it is judged over the completed
+    auction by rules.terminal_gf_violations (the GF side's last pass is the
+    single penalized call), which reads the gf_outstanding flags that
+    fold_state maintains for the file's GF entries.
     """
 
     def __init__(self, spec, cfg: ConventionConfig | None = None):
@@ -960,11 +971,9 @@ class SystemEnforcer:
         self.pull_len = int(p.get("penalty_pull_max_len",
                                   SPEC_PARAMS["penalty_pull_max_len"]))
         self._states: dict = {}
-        # Last-call indexes: match() only tries entries whose final step can
-        # possibly be the candidate, and target() only scans the actions that
-        # can use an artificial entry.
+        # Last-call index: match() only tries entries whose final step can
+        # possibly be the candidate.
         self._index = entry_index(spec.entries)
-        self._art_index = entry_index([e for e in spec.entries if e.artificial])
 
     def state(self, dealer: int, calls) -> MatchState:
         """Memoized replay state; extends the parent prefix's state."""
@@ -990,99 +999,6 @@ class SystemEnforcer:
         return match_first(candidates, dealer, calls, action,
                            state=self.state(dealer, calls))
 
-    def clean_use(self, reader: AuctionReader, hero: int, hi,
-                  action: int, checkable_only: bool = True):
-        """The artificial entry `action` cleanly uses, or None.
-
-        A clean use means the action matches an artificial entry and the
-        hand satisfies its description (or, for a wildcard description, the
-        built-in convention check with its fit/values gate). This is the
-        positive counterpart of the violation checks: the trainer rewards
-        these calls with conv_bonus and targets them with the system policy.
-
-        checkable_only (default) skips entries with no hand tokens. A
-        wildcard like `...-4N; we_bid` can look "clean" in an unrelated
-        auction (e.g. 4NT over Stayman) because only the built-in gate
-        guards it; excluding it from the positive teacher keeps the policy
-        from being pushed into a context-free slam ask. The built-in
-        convention_bonus still rewards a genuinely classified use.
-        """
-        entry, binds = self.match(reader.dealer, list(reader.calls), action)
-        if entry is None or not entry.artificial:
-            return None
-        if checkable_only and not entry.checkable:
-            return None
-        hi = HandInfo(hi)
-        info = reader.classify(int(action), seat=hero)
-        if entry.checkable:
-            ctx = _Ctx(reader, info, self.cfg, hero)
-            if hand_violations(entry, binds or {}, hi, ctx):
-                return None
-            return entry
-        # Wildcard description: the file gives no shape, so use the built-in
-        # convention gate (e.g. RKCB ask needs a fit and slam values).
-        vs = check_call(reader, hero, hi, action, self.cfg)
-        if vs or convention_bonus(info, hi, vs, self.cfg) <= 0:
-            return None
-        return entry
-
-    def clean_actions(self, reader: AuctionReader, hero: int, hi, legal,
-                      probs=None, min_prob: float = 0.0,
-                      checkable_only: bool = True) -> list:
-        """Legal calls that cleanly use an artificial file entry."""
-        if isinstance(legal, np.ndarray) and legal.dtype == bool:
-            legal = np.flatnonzero(legal)
-        legal = [int(a) for a in legal if 0 <= int(a) < VOCAB_SIZE]
-        if not legal:
-            return []
-        hi = HandInfo(hi)
-        clean = []
-        for action in legal:
-            if not self._art_index[action]:
-                continue
-            if probs is not None and min_prob > 0.0 \
-                    and float(probs[action]) < min_prob:
-                continue
-            if self.clean_use(reader, hero, hi, action,
-                              checkable_only=checkable_only) is not None:
-                clean.append(action)
-        return clean
-
-    def target(self, reader: AuctionReader, hero: int, hi, legal,
-               floor: float = 0.02, probs=None, min_prob: float = 0.0,
-               checkable_only: bool = True):
-        """System-policy target over the legal calls, or None.
-
-        The target puts `1 - floor` of its mass uniformly on every legal
-        artificial convention whose hand description the hero satisfies, and
-        spreads `floor` uniformly over all legal calls (so the auxiliary loss
-        never demands a single deterministic action). None means no clean
-        artificial call is available in this position.
-
-        `probs` (the current policy's masked probabilities) + `min_prob` are
-        an applicability guard: a clean file entry the policy already gives
-        less than `min_prob` to is not forced. That keeps an underspecified
-        entry (e.g. "stayman: 4+H" with no strength clause) from overriding a
-        confident natural bid, while still promoting conventions the model
-        considers but underweights.
-        """
-        if isinstance(legal, np.ndarray) and legal.dtype == bool:
-            legal = np.flatnonzero(legal)
-        legal = [int(a) for a in legal if 0 <= int(a) < VOCAB_SIZE]
-        if not legal:
-            return None
-        clean = self.clean_actions(reader, hero, hi, legal, probs=probs,
-                                   min_prob=min_prob,
-                                   checkable_only=checkable_only)
-        if not clean:
-            return None
-        out = np.zeros(VOCAB_SIZE, dtype=np.float32)
-        floor = min(max(float(floor), 0.0), 0.99)
-        if floor > 0.0:
-            out[legal] = floor / len(legal)
-        out[clean] += (1.0 - floor) / len(clean)
-        return out
-
     def check(self, reader: AuctionReader, hero: int, hi,
               action: int) -> list:
         calls = [int(c) for c in reader.calls]
@@ -1099,17 +1015,15 @@ class SystemEnforcer:
             out += check_call(reader, hero, hi, action, self.cfg)
             if entry is not None and entry.weight > 0 and entry.checkable:
                 out += hand_violations(entry, binds or {}, hi, ctx)
+            # F discipline: bid-(pass)-pass -- passing partner's forcing bid
+            # (with no intervening opponent bid to release it) is charged to
+            # THIS pass, the partner's. The GF discipline is not checked
+            # here: it is judged over the completed auction by
+            # rules.terminal_gf_violations (last pass of the GF side only).
             if self.f_w > 0 and st.f_pending[side] >= 0 \
                     and st.f_pending[side] != hero:
                 out.append(Violation("f_pass", self.f_w,
                                      "passed partner's forcing bid"))
-            if (st.gf[side] and not reader.gf[side]
-                    and not is_game_or_above(reader.high_level,
-                                             reader.high_denom)):
-                w = self.cfg.weight("gf_pass")
-                if w > 0:
-                    out.append(Violation("gf_pass", w,
-                                         "passed below a file-defined GF"))
             out += self._to_pass(st, side, hero, hi)
             return out
 

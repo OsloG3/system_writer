@@ -7,9 +7,12 @@ jump shift, splinter, smolen, overcall, XYZ, fourth suit, RKCB ask/response,
 double meaning, per-side game-force status). `rules.py` ties the two
 together: given the hero's hand, the auction so far and a candidate call,
 `call_violations` reports the built-in system conventions that call would
-break, each with a weight, `call_penalty` sums them, and `call_bonus`
-rewards one clean use of an artificial convention. `alerts.py` renders the
-built-in alert texts (the fallback for tooling without a system file).
+break, each with a weight, and `call_penalty` sums them. The game-force
+discipline is judged over the COMPLETED auction instead
+(`terminal_gf_violations`): the GF side's last pass is the single penalized
+call when the partnership declares an undoubled partscore or defends an
+undoubled contract. `alerts.py` renders the built-in alert texts (the
+fallback for tooling without a system file).
 
 The system itself is WRITTEN IN A TEXT FILE -- models/system.txt -- in the
 sequence-pattern language of `patterns.py`: one entry per call kind
@@ -24,16 +27,18 @@ same grammar and matching over the same file to generate the website's bid
 alerts -- the tests on both sides pin them to the same goldens.
 
 Used by the RL trainer (rl/rollout.py + rl/train_ppo.py, `rl.conv_weight`)
-to penalize the decision-transformer policy for bids inconsistent with the
-system: 5-card majors, 15-17 1NT, strong 2C, 20-21 2NT, GF 2/1,
-invitational jump shifts (6 cards, 10-11, also in competition), standard
-overcalls (balancing 1NT = 12-15), splinter double jumps below 4H, smolen
-after 1/2NT stayman, RKCB step responses (the 4NT ask itself is free),
-support cuebids of the opponents' suit, XYZ, doubles with TO/PENALTY
-partner discipline, fourth-suit GF, reverses and standard natural bidding.
-Correctly using XYZ, RKCB, splinter, smolen, fourth suit or a support
-cuebid earns the small `conv_bonus` reward. The enforced numbers live in
-models/system.txt; rules.py holds the built-in defaults and rule codes.
+to PENALIZE the decision-transformer policy for bids inconsistent with the
+system -- the file is a pure constraint, there is no positive
+convention-usage shaping: 5-card majors, 15-17 1NT, strong 2C, 20-21 2NT,
+GF 2/1, invitational jump shifts (6 cards, 10-11, also in competition),
+standard overcalls (balancing 1NT = 12-15), splinter double jumps below 4H,
+smolen after 1/2NT stayman, RKCB step responses (the 4NT ask itself is
+free), support cuebids of the opponents' suit, XYZ, doubles with
+TO/PENALTY partner discipline, F/GF forcing discipline (F: the partner's
+pass of a forcing bid is penalized; GF: judged terminally on the final
+contract), reverses and standard natural bidding. The enforced numbers
+live in models/system.txt; rules.py holds the built-in defaults and rule
+codes.
 """
 
 from .alerts import RKCB_STEPS, convention_alert
@@ -43,8 +48,8 @@ from .patterns import (SPEC_PARAMS, Entry, MatchState, SystemEnforcer,
                        call_id_of, fold_state, hand_violations, match_first,
                        parse_entry, render_desc, replay_state)
 from .rules import (DEFAULT_WEIGHTS, ConventionConfig, HandInfo, Violation,
-                    call_bonus, call_penalty, call_violations, check_call,
-                    convention_bonus, convention_kind)
+                    call_penalty, call_violations, check_call,
+                    terminal_gf_violations)
 from .system_file import SystemSpec, find_system_file, parse_system_file
 
 __all__ = [
@@ -55,7 +60,7 @@ __all__ = [
     "fold_state", "hand_violations", "match_first", "parse_entry",
     "render_desc", "replay_state",
     "DEFAULT_WEIGHTS", "ConventionConfig", "HandInfo", "Violation",
-    "call_bonus", "call_penalty", "call_violations", "check_call",
-    "convention_bonus", "convention_kind",
+    "call_penalty", "call_violations", "check_call",
+    "terminal_gf_violations",
     "SystemSpec", "find_system_file", "parse_system_file",
 ]
